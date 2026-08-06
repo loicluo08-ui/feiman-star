@@ -1,7 +1,7 @@
 {
   "name": "feimanstar",
   "version": "0.1.0",
-  "packageManager": "npm@11.13.0",
+  
   "private": true,
   "scripts": {
     "dev": "WATCHPACK_POLLING=true next dev",
