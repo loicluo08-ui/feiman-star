@@ -59,7 +59,7 @@ export function ChatPanel() {
         {messages.map((message, index) => (
           <article key={`${message.role}-${index}`} className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-7 ${message.role === "user" ? "ml-auto bg-[#1a1a1a] text-white" : "border border-[#e5e5e7] bg-white"}`}>
             <p className="whitespace-pre-wrap">{message.content}</p>
-            {message.sources?.length ? <p className="mt-3 border-t border-[#e5e5e7] pt-2 text-xs text-[#8e8e93]">参考文档：{message.sources.join("、")}</p> : null}
+            {message.sources?.length ? <p className="mt-3 border-t border-[#e5e5e7] pt-2 text-xs text-[#8e8e93]">参考来源：{message.sources.join("、")}</p> : null}
           </article>
         ))}
         {loading ? <p className="text-sm text-[#8e8e93]">正在检索知识库并生成回答…</p> : null}
