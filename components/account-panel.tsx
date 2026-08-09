@@ -6,11 +6,18 @@ import { useEffect, useState } from "react";
 type SessionState =
   | { loading: true }
   | { loading: false; authenticated: false }
-  | { loading: false; authenticated: true; phone?: string };
+  | { loading: false; authenticated: true; email?: string; phone?: string };
 
 function maskPhone(phone?: string) {
   if (!phone) return "已登录";
   return phone.replace(/(\d{3})\d+(\d{4})$/, "$1****$2");
+}
+
+function maskEmail(email?: string) {
+  if (!email) return undefined;
+  const [name, domain] = email.split("@");
+  if (!name || !domain) return email;
+  return `${name.slice(0, 2)}***@${domain}`;
 }
 
 export function AccountPanel() {
@@ -20,11 +27,16 @@ export function AccountPanel() {
     let active = true;
     fetch("/api/auth/session", { cache: "no-store" })
       .then((response) => response.json())
-      .then((payload: { authenticated?: boolean; user?: { phone?: string } }) => {
+      .then((payload: { authenticated?: boolean; user?: { email?: string; phone?: string } }) => {
         if (!active) return;
         setSession(
           payload.authenticated
-            ? { loading: false, authenticated: true, phone: payload.user?.phone }
+            ? {
+                loading: false,
+                authenticated: true,
+                email: payload.user?.email,
+                phone: payload.user?.phone,
+              }
             : { loading: false, authenticated: false },
         );
       })
@@ -44,7 +56,7 @@ export function AccountPanel() {
 
   return (
     <div className="rounded-xl border border-[#e5e5e7] bg-white p-3">
-      <p className="truncate text-xs text-[#6e6e73]">{maskPhone(session.phone)}</p>
+      <p className="truncate text-xs text-[#6e6e73]">{maskEmail(session.email) ?? maskPhone(session.phone)}</p>
       <button type="button" onClick={logout} className="focus-ring mt-2 rounded text-xs font-medium text-[#1a1a1a] underline underline-offset-4">退出登录</button>
     </div>
   );

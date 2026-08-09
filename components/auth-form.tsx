@@ -5,56 +5,42 @@ import { FormEvent, useState } from "react";
 
 type AuthFormProps = { mode: "login" | "register" };
 
-function normalizePhone(value: string) {
-  const compact = value.replace(/[\s-]/g, "");
-  if (/^1\d{10}$/.test(compact)) return `+86${compact}`;
-  return compact;
-}
-
 async function readError(response: Response) {
-  const payload = (await response.json().catch(() => ({}))) as {
-    error?: string;
-  };
+  const payload = (await response.json().catch(() => ({}))) as { error?: string };
   return payload.error ?? "请求失败，请稍后重试";
 }
 
 export function AuthForm({ mode }: AuthFormProps) {
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState<"phone" | "code">("phone");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
+  const [confirmationSent, setConfirmationSent] = useState(false);
   const isRegister = mode === "register";
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true);
     setError("");
+    if (isRegister && password !== confirmPassword) {
+      setError("两次输入的密码不一致");
+      return;
+    }
 
-    const normalizedPhone = normalizePhone(phone);
+    setLoading(true);
     try {
-      if (step === "phone") {
-        const response = await fetch("/api/auth/otp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: normalizedPhone,
-            createUser: isRegister,
-          }),
-        });
-        if (!response.ok) throw new Error(await readError(response));
-        setPhone(normalizedPhone);
-        setStep("code");
-        return;
-      }
-
-      const response = await fetch("/api/auth/verify", {
+      const response = await fetch(`/api/auth/${isRegister ? "register" : "login"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: normalizedPhone, token: code }),
+        body: JSON.stringify({ email, password }),
       });
       if (!response.ok) throw new Error(await readError(response));
+
+      const payload = (await response.json()) as { requiresEmailConfirmation?: boolean };
+      if (payload.requiresEmailConfirmation) {
+        setConfirmationSent(true);
+        return;
+      }
 
       const params = new URLSearchParams(window.location.search);
       const next = params.get("next");
@@ -77,66 +63,87 @@ export function AuthForm({ mode }: AuthFormProps) {
           </span>
         </Link>
 
-        <h1 className="text-2xl font-semibold tracking-tight">{isRegister ? "创建账户" : "登录费曼星"}</h1>
-        <p className="mt-2 text-sm leading-6 text-[#8e8e93]">
-          {step === "phone" ? "使用手机号接收验证码" : `验证码已发送至 ${phone}`}
-        </p>
+        {confirmationSent ? (
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">请验证您的邮箱</h1>
+            <p className="mt-3 text-sm leading-6 text-[#6e6e73]">
+              确认邮件已发送至 {email}。完成邮箱验证后，请返回登录。
+            </p>
+            <Link href="/login" className="focus-ring mt-8 block h-12 rounded-xl bg-[#1a1a1a] px-4 text-center text-sm font-medium leading-[3rem] text-white">
+              返回登录
+            </Link>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-2xl font-semibold tracking-tight">{isRegister ? "创建账户" : "登录费曼星"}</h1>
+            <p className="mt-2 text-sm leading-6 text-[#8e8e93]">使用邮箱和密码{isRegister ? "注册" : "登录"}</p>
 
-        <form onSubmit={submit} className="mt-8 space-y-5">
-          {step === "phone" ? (
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium">手机号</span>
-              <input
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="138 0000 0000"
-                required
-                className="focus-ring h-12 w-full rounded-xl border border-[#d1d1d6] px-4 text-base outline-none transition-colors focus:border-[#1a1a1a]"
-              />
-              <span className="mt-2 block text-xs text-[#8e8e93]">中国大陆手机号可直接输入，其他地区请带国家区号。</span>
-            </label>
-          ) : (
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium">6位验证码</span>
-              <input
-                value={code}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="000000"
-                pattern="\d{6}"
-                required
-                autoFocus
-                className="focus-ring h-12 w-full rounded-xl border border-[#d1d1d6] px-4 text-center text-lg tracking-[0.35em] outline-none transition-colors focus:border-[#1a1a1a]"
-              />
-            </label>
-          )}
+            <form onSubmit={submit} className="mt-8 space-y-5">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium">邮箱</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  placeholder="name@example.com"
+                  required
+                  maxLength={254}
+                  className="focus-ring h-12 w-full rounded-xl border border-[#d1d1d6] px-4 text-base outline-none transition-colors focus:border-[#1a1a1a]"
+                />
+              </label>
 
-          {error ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium">密码</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={isRegister ? "new-password" : "current-password"}
+                  placeholder="至少8位"
+                  required
+                  minLength={8}
+                  maxLength={72}
+                  className="focus-ring h-12 w-full rounded-xl border border-[#d1d1d6] px-4 text-base outline-none transition-colors focus:border-[#1a1a1a]"
+                />
+              </label>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="focus-ring h-12 w-full rounded-xl bg-[#1a1a1a] px-4 text-sm font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "请稍候…" : step === "phone" ? "获取验证码" : isRegister ? "注册并登录" : "登录"}
-          </button>
+              {isRegister ? (
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium">确认密码</span>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    autoComplete="new-password"
+                    placeholder="再次输入密码"
+                    required
+                    minLength={8}
+                    maxLength={72}
+                    className="focus-ring h-12 w-full rounded-xl border border-[#d1d1d6] px-4 text-base outline-none transition-colors focus:border-[#1a1a1a]"
+                  />
+                </label>
+              ) : null}
 
-          {step === "code" ? (
-            <button type="button" onClick={() => { setStep("phone"); setCode(""); setError(""); }} className="focus-ring w-full rounded-lg py-2 text-sm text-[#6e6e73]">
-              更换手机号
-            </button>
-          ) : null}
-        </form>
+              {error ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
-        <p className="mt-8 text-center text-sm text-[#8e8e93]">
-          {isRegister ? "已有账户？" : "还没有账户？"}{" "}
-          <Link href={isRegister ? "/login" : "/register"} className="focus-ring rounded font-medium text-[#1a1a1a] underline underline-offset-4">
-            {isRegister ? "直接登录" : "立即注册"}
-          </Link>
-        </p>
+              <button
+                type="submit"
+                disabled={loading}
+                className="focus-ring h-12 w-full rounded-xl bg-[#1a1a1a] px-4 text-sm font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? "请稍候…" : isRegister ? "注册" : "登录"}
+              </button>
+            </form>
+
+            <p className="mt-8 text-center text-sm text-[#8e8e93]">
+              {isRegister ? "已有账户？" : "还没有账户？"}{" "}
+              <Link href={isRegister ? "/login" : "/register"} className="focus-ring rounded font-medium text-[#1a1a1a] underline underline-offset-4">
+                {isRegister ? "直接登录" : "立即注册"}
+              </Link>
+            </p>
+          </>
+        )}
       </section>
     </main>
   );

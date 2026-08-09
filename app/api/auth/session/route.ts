@@ -7,7 +7,10 @@ export async function GET() {
   const auth = await getAuthenticatedUser();
   return NextResponse.json(
     auth
-      ? { authenticated: true, user: { id: auth.user.id, phone: auth.user.phone } }
+      ? {
+          authenticated: true,
+          user: { id: auth.user.id, email: auth.user.email, phone: auth.user.phone },
+        }
       : { authenticated: false },
     { headers: { "Cache-Control": "private, no-store" } },
   );

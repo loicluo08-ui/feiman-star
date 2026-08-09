@@ -2,7 +2,7 @@
 
 Next.js 14 + TypeScript + Tailwind CSS 的 AI 工具站，当前包含：
 
-- Supabase 手机验证码注册/登录，JWT 只保存在 HTTP-only Cookie
+- Supabase 邮箱+密码注册/登录，JWT 只保存在 HTTP-only Cookie
 - Free / Lite / Pro / VIP 套餐、兑换码与 AI 调用额度
 - 教培客服话术、高转化商品文案与通用 AI 对话
 - 用户私有知识库：TXT / Markdown / PDF 上传、智谱 embedding-2、Supabase pgvector 检索
@@ -36,7 +36,7 @@ ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 1. `supabase/migrations/202608090001_billing.sql`
 2. `supabase/migrations/202608090002_rag.sql`
 
-第二个迁移会启用 `pgcrypto` 和 `vector` 扩展，并创建用户隔离的知识库表与相似度检索函数。手机号验证码还需要在 Supabase Auth 中配置短信供应商。
+第二个迁移会启用 `pgcrypto` 和 `vector` 扩展，并创建用户隔离的知识库表与相似度检索函数。当前邮箱确认已开启，注册用户需先点击确认邮件再登录；手机号登录代码保留，后续配置短信供应商后再开放入口。
 
 ## 本地运行
 
