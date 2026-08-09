@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAI, sanitizeInput } from "@/lib/ai";
 import { buildEduScriptPrompt } from "@/lib/prompts/edu-script";
+import { refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,6 +28,8 @@ function optionalText(value: unknown, maxLength = 20_000) {
 }
 
 export async function POST(req: NextRequest) {
+  let reservation: Awaited<ReturnType<typeof reserveAiCall>> | null = null;
+  let succeeded = false;
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const institutionName = sanitizeInput(body.institutionName, 200);
@@ -43,6 +46,9 @@ export async function POST(req: NextRequest) {
     if (priceRange === null || institutionInfo === null || knowledgeBase === null) {
       return NextResponse.json({ success: false, error: "输入不合法" }, { status: 400 });
     }
+
+    reservation = await reserveAiCall();
+    if (!reservation.ok) return reservation.response;
 
     const messages = buildEduScriptPrompt({
       institutionName: institutionName.text,
@@ -68,12 +74,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "AI输出格式异常" }, { status: 502 });
     }
 
+    succeeded = true;
     return NextResponse.json(
-      { success: true, data: parsed },
+      { success: true, data: parsed, usage: usagePayload(reservation) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
     console.error("[edu-script] api_error", error instanceof Error ? error.name : "unknown");
     return NextResponse.json({ success: false, error: "服务器内部错误" }, { status: 500 });
+  } finally {
+    if (reservation?.ok && !succeeded) await refundAiCall(reservation);
   }
 }

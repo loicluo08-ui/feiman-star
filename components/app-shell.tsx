@@ -11,6 +11,7 @@ const navigationItems = [
   { href: "/tools", label: "工具中心", short: "具" },
   { href: "/templates", label: "模板库", short: "模" },
   { href: "/knowledge", label: "知识库", short: "知" },
+  { href: "/redeem", label: "兑换套餐", short: "兑" },
   { href: "/pricing", label: "定价", short: "价" },
 ];
 

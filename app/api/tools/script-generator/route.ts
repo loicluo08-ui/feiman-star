@@ -8,13 +8,19 @@ import {
   scriptGeneratorInputSchema,
   scriptGeneratorOutputSchema,
 } from "@/lib/tool-schemas";
+import { refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  let reservation: Awaited<ReturnType<typeof reserveAiCall>> | null = null;
+  let succeeded = false;
   try {
     const { input, upload } = await parseToolRequest(request, scriptGeneratorInputSchema);
+    reservation = await reserveAiCall();
+    if (!reservation.ok) return reservation.response;
+
     const systemPrompt = renderPrompt(scriptGeneratorPrompt, {
       ...input,
       kb_content: buildUploadedContext(
@@ -28,8 +34,14 @@ export async function POST(request: Request) {
       maxTokens: 4_096,
     });
 
-    return NextResponse.json({ data }, { headers: { "Cache-Control": "no-store" } });
+    succeeded = true;
+    return NextResponse.json(
+      { data, usage: usagePayload(reservation) },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     return apiErrorResponse(error);
+  } finally {
+    if (reservation?.ok && !succeeded) await refundAiCall(reservation);
   }
 }
