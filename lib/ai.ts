@@ -10,6 +10,7 @@ export type CallAIOptions = {
   max_tokens?: number;
   retry?: number;
   timeout?: number;
+  responseFormat?: "json" | "text";
 };
 
 export type SanitizeResult =
@@ -66,7 +67,9 @@ export async function callAI(
           body: JSON.stringify({
             model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-flash",
             messages,
-            response_format: { type: "json_object" },
+            ...(options.responseFormat === "text"
+              ? {}
+              : { response_format: { type: "json_object" } }),
             thinking: { type: "disabled" },
             stream: false,
             temperature: options.temperature ?? 0.7,

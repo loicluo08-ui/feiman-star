@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   const auth = await getAuthenticatedUser();
   if (!auth) return NextResponse.json({ success: false, error: "请先登录" }, { status: 401 });
 
-  const input = requestSchema.safeParse(await request.json());
+  const input = requestSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) {
     return NextResponse.json({ success: false, error: "兑换码格式不正确" }, { status: 400 });
   }

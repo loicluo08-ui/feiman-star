@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "无管理员权限" }, { status: 401 });
   }
 
-  const input = requestSchema.safeParse(await request.json());
+  const input = requestSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) return NextResponse.json({ error: "参数不正确" }, { status: 400 });
 
   try {
