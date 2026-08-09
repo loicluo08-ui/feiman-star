@@ -1,7 +1,6 @@
 import "server-only";
 
 import { extname } from "node:path";
-import { PDFParse } from "pdf-parse";
 import { PublicApiError } from "@/lib/api-error";
 import { ACCEPTED_UPLOAD_EXTENSIONS, MAX_UPLOAD_BYTES } from "@/lib/file-upload";
 
@@ -36,6 +35,10 @@ export async function extractUploadedFile(file: File): Promise<ExtractedUpload> 
 
   try {
     if (extension === ".pdf") {
+      // pdf-parse loads pdfjs and its optional canvas polyfills at module
+      // evaluation time. Keep it out of TXT/Markdown/Word requests so a
+      // missing serverless canvas binary cannot break unrelated uploads.
+      const { PDFParse } = await import("pdf-parse");
       const parser = new PDFParse({ data: buffer });
       try {
         text = (await parser.getText()).text;
