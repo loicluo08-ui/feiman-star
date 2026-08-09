@@ -67,7 +67,10 @@ export async function POST(request: NextRequest) {
       p_size_bytes: file.size,
     });
     if (createError) {
-      if (createError.message.includes("document_limit_reached")) {
+      if (
+        createError.message.includes("document_limit_reached") ||
+        createError.message.includes("最多上传10个文档")
+      ) {
         throw new PublicApiError(409, "DOCUMENT_LIMIT", "每个用户最多上传10个文档。");
       }
       throw createError;
