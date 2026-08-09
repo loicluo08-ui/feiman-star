@@ -12,6 +12,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const ragExtensions = new Set([".txt", ".md", ".markdown", ".pdf"]);
+const mimeTypesByExtension: Record<string, Set<string>> = {
+  ".txt": new Set(["text/plain"]),
+  ".md": new Set(["text/markdown", "text/plain", "text/x-markdown"]),
+  ".markdown": new Set(["text/markdown", "text/plain", "text/x-markdown"]),
+  ".pdf": new Set(["application/pdf"]),
+};
 
 export async function POST(request: NextRequest) {
   const auth = await getAuthenticatedUser();
@@ -34,6 +40,10 @@ export async function POST(request: NextRequest) {
     if (!ragExtensions.has(extension)) {
       throw new PublicApiError(400, "UNSUPPORTED_FILE_TYPE", "知识库仅支持 TXT、Markdown 和 PDF 文件。");
     }
+    const mimeType = file.type.toLowerCase().split(";", 1)[0];
+    if (mimeType && !mimeTypesByExtension[extension]?.has(mimeType)) {
+      throw new PublicApiError(400, "FILE_TYPE_MISMATCH", "文件类型与扩展名不一致，请重新选择。");
+    }
 
     const extracted = await extractUploadedFile(file);
     let chunks: string[];
@@ -53,7 +63,7 @@ export async function POST(request: NextRequest) {
     const { data: createdFileId, error: createError } = await admin.rpc("create_knowledge_file", {
       p_user_id: auth.user.id,
       p_filename: extracted.fileName,
-      p_mime_type: file.type || "application/octet-stream",
+      p_mime_type: mimeType || "application/octet-stream",
       p_size_bytes: file.size,
     });
     if (createError) {

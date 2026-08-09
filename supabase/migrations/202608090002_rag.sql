@@ -2,7 +2,7 @@ create extension if not exists pgcrypto with schema extensions;
 create extension if not exists vector with schema extensions;
 
 create table if not exists public.knowledge_files (
-  id uuid primary key default extensions.gen_random_uuid(),
+  id uuid primary key default gen_random_uuid(),
   user_id varchar(64) not null,
   filename varchar(256) not null,
   mime_type varchar(128) not null,
