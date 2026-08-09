@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI } from "@/lib/ai";
-import { retrieveDocumentContext } from "@/lib/rag";
+import { retrieveDocumentContext, retrieveFewshotCases } from "@/lib/rag";
 import { refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
 
 export const runtime = "nodejs";
@@ -21,14 +21,26 @@ export async function POST(request: NextRequest) {
 
   try {
     let contexts: Awaited<ReturnType<typeof retrieveDocumentContext>> = [];
+    let fewshotCases: Awaited<ReturnType<typeof retrieveFewshotCases>> = [];
     try {
       contexts = await retrieveDocumentContext(reservation.userId, input.data.question);
+      const matchedIndustry = contexts.find((item) => item.is_system && item.industry)?.industry ?? null;
+      fewshotCases = await retrieveFewshotCases(matchedIndustry);
     } catch (error) {
       console.error(`[chat] rag_skipped reason=${error instanceof Error ? error.name : "unavailable"}`);
     }
 
     const contextBlock = contexts.length
       ? contexts.map((item, index) => `[文档片段${index + 1}｜${item.filename}]\n${item.content}`).join("\n\n")
+      : "";
+    const examplesBlock = fewshotCases.length
+      ? fewshotCases.map((item, index) => [
+          `[案例${index + 1}｜${item.case_id}｜${item.industry}]`,
+          `场景：${item.scenario.slice(0, 800)}`,
+          `输入：${item.input.slice(0, 1_200)}`,
+          `参考输出：${item.output.slice(0, 1_600)}`,
+          `关键经验：${item.key_lesson.slice(0, 800)}`,
+        ].join("\n")).join("\n\n")
       : "";
     const systemPrompt = contextBlock
       ? [
@@ -38,6 +50,12 @@ export async function POST(request: NextRequest) {
           "<documents>",
           contextBlock,
           "</documents>",
+          ...(examplesBlock ? [
+            "下面案例只用于学习同一行业的解决思路，不得照搬其中的机构事实、价格或结果数据。",
+            "<examples>",
+            examplesBlock,
+            "</examples>",
+          ] : []),
         ].join("\n")
       : "你是费曼星AI助手。请准确、清晰地回答用户问题；如果不确定，请明确说明。";
 

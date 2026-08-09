@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "knowledge:preview": "node scripts/import-system-knowledge.mjs",
+    "knowledge:import": "node --env-file=.env.local scripts/import-system-knowledge.mjs --confirm"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.112.2",
