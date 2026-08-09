@@ -44,7 +44,7 @@ export function ChatPanel() {
     <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-5 py-10">
       <header className="mb-6">
         <h1 className="text-3xl font-semibold tracking-tight">AI 对话</h1>
-        <p className="mt-2 text-sm text-[#8e8e93]">已上传的知识库内容会自动检索并参与回答。</p>
+        <p className="mt-2 text-sm text-[#8e8e93]">自动检索12行业系统知识库与您上传的专属文档。</p>
       </header>
 
       <section className="flex-1 space-y-4 rounded-2xl border border-[#e5e5e7] bg-[#f7f7f8] p-5 sm:p-6">
