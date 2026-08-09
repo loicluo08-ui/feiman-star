@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { AccountPanel } from "@/components/account-panel";
 
 const navigationItems = [
   { href: "/", label: "首页", short: "首" },
@@ -44,6 +45,13 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const isAuthPage =
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname.startsWith("/auth/");
+
+  if (isAuthPage) return <>{children}</>;
 
   return (
     <div className="min-h-screen bg-white">
@@ -58,10 +66,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         </Link>
         <Navigation />
-        <div className="mt-auto border-t border-[#e5e5e7] px-2 pt-4 text-xs leading-5 text-[#8e8e93]">
-          P0 · 两工具完整闭环
-          <br />
-          DeepSeek · 服务端直连
+        <div className="mt-auto space-y-4 border-t border-[#e5e5e7] px-2 pt-4 text-xs leading-5 text-[#8e8e93]">
+          <AccountPanel />
+          <p>
+            P0 · 安全登录与 AI 工具
+            <br />
+            DeepSeek · 服务端直连
+          </p>
         </div>
       </aside>
 
