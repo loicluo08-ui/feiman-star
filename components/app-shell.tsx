@@ -2,40 +2,37 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { AccountPanel } from "@/components/account-panel";
+import { useEffect, useState } from "react";
 
 const navigationItems = [
-  { href: "/", label: "首页", short: "首" },
-  { href: "/chat", label: "AI对话", short: "聊" },
-  { href: "/tools", label: "工具中心", short: "具" },
-  { href: "/templates", label: "模板库", short: "模" },
-  { href: "/knowledge", label: "知识库", short: "知" },
-  { href: "/redeem", label: "兑换套餐", short: "兑" },
-  { href: "/pricing", label: "定价", short: "价" },
+  { href: "/", label: "首页" },
+  { href: "/tools", label: "功能" },
+  { href: "/pricing", label: "定价" },
+  { href: "/knowledge", label: "知识库" },
 ];
+
+type SessionState =
+  | { loading: true }
+  | { loading: false; authenticated: boolean };
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="主导航" className="space-y-1">
+    <nav aria-label="主导航" className="flex flex-col gap-1 md:flex-row md:items-center md:gap-1">
       {navigationItems.map((item) => {
         const active =
           pathname === item.href ||
-          (item.href === "/tools" && pathname.startsWith("/tools/"));
+          (item.href !== "/" && pathname.startsWith(`${item.href}/`));
         return (
           <Link
             key={item.href}
             href={item.href}
             onClick={onNavigate}
-            className={`focus-ring flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
-              active ? "bg-white font-medium shadow-sm" : "text-neutral-600 hover:bg-white/70"
+            className={`focus-ring rounded-lg px-3 py-2 text-sm transition-colors ${
+              active ? "bg-[#f2f2f3] font-medium text-[#1a1a1a]" : "text-[#6e6e73] hover:bg-[#f7f7f8] hover:text-[#1a1a1a]"
             }`}
           >
-            <span aria-hidden className="grid h-7 w-7 place-items-center rounded-lg border border-neutral-200 bg-white text-xs">
-              {item.short}
-            </span>
             {item.label}
           </Link>
         );
@@ -45,82 +42,69 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
-  const isAuthPage =
-    pathname === "/login" ||
-    pathname === "/register" ||
-    pathname.startsWith("/auth/");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [session, setSession] = useState<SessionState>({ loading: true });
+  const isAuthPage = pathname === "/login" || pathname === "/register" || pathname.startsWith("/auth/");
+
+  useEffect(() => {
+    if (isAuthPage) return;
+    let active = true;
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload: { authenticated?: boolean }) => {
+        if (active) setSession({ loading: false, authenticated: Boolean(payload.authenticated) });
+      })
+      .catch(() => active && setSession({ loading: false, authenticated: false }));
+    return () => { active = false; };
+  }, [isAuthPage, pathname]);
 
   if (isAuthPage) return <>{children}</>;
 
+  const accountHref = !session.loading && session.authenticated ? "/dashboard" : "/login";
+  const accountLabel = !session.loading && session.authenticated ? "用户中心" : "登录";
+
   return (
     <div className="min-h-screen bg-white">
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 border-r border-[#e5e5e7] bg-[#f7f7f8] p-4 lg:flex lg:flex-col">
-        <Link href="/" className="focus-ring mb-8 flex items-center gap-3 rounded-lg px-2 py-1.5">
-          <span aria-hidden className="grid h-9 w-9 place-items-center rounded-xl bg-[#1a1a1a] text-sm font-semibold text-white">
-            费
-          </span>
-          <span>
-            <span className="block text-sm font-semibold">费曼星</span>
-            <span className="block text-xs text-[#8e8e93]">AI 工具平台</span>
-          </span>
-        </Link>
-        <Navigation />
-        <div className="mt-auto space-y-4 border-t border-[#e5e5e7] px-2 pt-4 text-xs leading-5 text-[#8e8e93]">
-          <AccountPanel />
-          <p>
-            P0 · 安全登录与 AI 工具
-            <br />
-            DeepSeek · 服务端直连
-          </p>
-        </div>
-      </aside>
+      <header className="sticky top-0 z-30 border-b border-[#e5e5e7] bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
+          <Link href="/" className="focus-ring flex items-center gap-2.5 rounded-lg" aria-label="费曼星首页">
+            <span aria-hidden className="grid h-9 w-9 place-items-center rounded-xl bg-[#1a1a1a] text-sm font-semibold text-white">费</span>
+            <span>
+              <span className="block text-sm font-semibold leading-4">费曼星</span>
+              <span className="block text-[10px] leading-4 text-[#8e8e93]">AI 客服平台</span>
+            </span>
+          </Link>
 
-      <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[#e5e5e7] bg-white/90 px-5 backdrop-blur lg:hidden">
-        <Link href="/" className="focus-ring flex items-center gap-2 rounded-lg">
-          <span aria-hidden className="grid h-8 w-8 place-items-center rounded-lg bg-[#1a1a1a] text-xs font-semibold text-white">
-            费
-          </span>
-          <span className="text-sm font-semibold">费曼星</span>
-        </Link>
-        <button
-          type="button"
-          aria-label={menuOpen ? "关闭导航" : "打开导航"}
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((value) => !value)}
-          className="focus-ring grid h-10 w-10 place-items-center rounded-lg border border-[#e5e5e7] bg-white"
-        >
-          <span aria-hidden className="text-lg leading-none">{menuOpen ? "×" : "☰"}</span>
-        </button>
-      </header>
+          <div className="hidden items-center gap-3 md:flex">
+            <Navigation />
+            <Link href={accountHref} className="focus-ring ml-2 rounded-lg bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-white">
+              {session.loading ? "登录" : accountLabel}
+            </Link>
+          </div>
 
-      {menuOpen ? (
-        <div className="fixed inset-0 z-30 lg:hidden">
           <button
             type="button"
-            aria-label="关闭导航遮罩"
-            className="absolute inset-0 bg-black/20"
-            onClick={() => setMenuOpen(false)}
-          />
-          <aside className="absolute inset-y-0 left-0 w-[min(84vw,320px)] border-r border-[#e5e5e7] bg-[#f7f7f8] p-5 shadow-xl">
-            <div className="mb-8 flex items-center justify-between">
-              <span className="font-semibold">费曼星</span>
-              <button
-                type="button"
-                onClick={() => setMenuOpen(false)}
-                className="focus-ring grid h-9 w-9 place-items-center rounded-lg border border-[#e5e5e7] bg-white"
-                aria-label="关闭导航"
-              >
-                ×
-              </button>
-            </div>
-            <Navigation onNavigate={() => setMenuOpen(false)} />
-          </aside>
+            aria-label={menuOpen ? "关闭导航" : "打开导航"}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((value) => !value)}
+            className="focus-ring grid h-10 w-10 place-items-center rounded-lg border border-[#e5e5e7] md:hidden"
+          >
+            <span aria-hidden>{menuOpen ? "×" : "☰"}</span>
+          </button>
         </div>
-      ) : null}
 
-      <main className="lg:pl-60">{children}</main>
+        {menuOpen ? (
+          <div className="border-t border-[#e5e5e7] bg-white px-5 py-4 md:hidden">
+            <Navigation onNavigate={() => setMenuOpen(false)} />
+            <Link href={accountHref} onClick={() => setMenuOpen(false)} className="focus-ring mt-3 block rounded-lg bg-[#1a1a1a] px-4 py-2.5 text-center text-sm font-medium text-white">
+              {session.loading ? "登录" : accountLabel}
+            </Link>
+          </div>
+        ) : null}
+      </header>
+
+      <main>{children}</main>
     </div>
   );
 }
