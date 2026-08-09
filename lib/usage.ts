@@ -109,6 +109,20 @@ export async function refundAiCall(reservation: UsageReservation) {
   }
 }
 
+export async function recordAiCall(reservation: UsageReservation, endpoint: string) {
+  try {
+    const admin = createSupabaseAdminClient();
+    const { error } = await admin.from("ai_usage_events").insert({
+      user_id: reservation.userId,
+      endpoint: endpoint.slice(0, 64),
+    });
+    if (error) console.error(`[usage] event_failed code=${error.code ?? "unknown"}`);
+  } catch {
+    // 统计失败不应影响用户已完成的AI结果。
+    console.error("[usage] event_unavailable");
+  }
+}
+
 export function usagePayload(reservation: UsageReservation) {
   return {
     plan: reservation.plan,

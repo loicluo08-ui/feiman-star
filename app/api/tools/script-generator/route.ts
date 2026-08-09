@@ -8,7 +8,7 @@ import {
   scriptGeneratorInputSchema,
   scriptGeneratorOutputSchema,
 } from "@/lib/tool-schemas";
-import { refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
+import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +35,7 @@ export async function POST(request: Request) {
     });
 
     succeeded = true;
+    await recordAiCall(reservation, "script-generator");
     return NextResponse.json(
       { data, usage: usagePayload(reservation) },
       { headers: { "Cache-Control": "no-store" } },

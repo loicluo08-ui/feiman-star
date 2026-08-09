@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAI, sanitizeInput } from "@/lib/ai";
 import { buildProductCopyPrompt } from "@/lib/prompts/product-copy";
-import { refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
+import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
     }
 
     succeeded = true;
+    await recordAiCall(reservation, "product-copy");
     return NextResponse.json(
       { success: true, data: parsed, usage: usagePayload(reservation) },
       { headers: { "Cache-Control": "no-store" } },

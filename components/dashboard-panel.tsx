@@ -23,6 +23,7 @@ type DashboardState = {
   email?: string;
   plan: PlanState | null;
   files: KnowledgeFile[];
+  usage: { today: number; week: number; month: number };
 };
 
 function planLabel(plan?: string) {
@@ -35,7 +36,7 @@ async function apiMessage(response: Response) {
 }
 
 export function DashboardPanel() {
-  const [state, setState] = useState<DashboardState>({ plan: null, files: [] });
+  const [state, setState] = useState<DashboardState>({ plan: null, files: [], usage: { today: 0, week: 0, month: 0 } });
   const [loading, setLoading] = useState(true);
   const [code, setCode] = useState("");
   const [redeeming, setRedeeming] = useState(false);
@@ -45,18 +46,20 @@ export function DashboardPanel() {
   const loadDashboard = useCallback(async () => {
     setError("");
     try {
-      const [sessionResponse, planResponse, filesResponse] = await Promise.all([
+      const [sessionResponse, planResponse, filesResponse, usageResponse] = await Promise.all([
         fetch("/api/auth/session", { cache: "no-store" }),
         fetch("/api/plan", { cache: "no-store" }),
         fetch("/api/documents", { cache: "no-store" }),
+        fetch("/api/usage", { cache: "no-store" }),
       ]);
-      if (!sessionResponse.ok || !planResponse.ok || !filesResponse.ok) {
+      if (!sessionResponse.ok || !planResponse.ok || !filesResponse.ok || !usageResponse.ok) {
         throw new Error("用户中心数据加载失败，请刷新重试");
       }
       const sessionPayload = (await sessionResponse.json()) as { user?: { email?: string } };
       const planPayload = (await planResponse.json()) as { data: PlanState | null };
       const filesPayload = (await filesResponse.json()) as { data: KnowledgeFile[] };
-      setState({ email: sessionPayload.user?.email, plan: planPayload.data, files: filesPayload.data ?? [] });
+      const usagePayload = (await usageResponse.json()) as { data: DashboardState["usage"] };
+      setState({ email: sessionPayload.user?.email, plan: planPayload.data, files: filesPayload.data ?? [], usage: usagePayload.data });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "用户中心数据加载失败");
     } finally {
@@ -133,6 +136,18 @@ export function DashboardPanel() {
             <div className="rounded-2xl border border-[#e5e5e7] bg-[#f7f7f8] p-6">
               <p className="text-xs text-[#8e8e93]">套餐到期时间</p>
               <p className="mt-3 text-lg font-semibold">{plan?.expires_at ? new Date(plan.expires_at).toLocaleDateString("zh-CN") : "长期有效"}</p>
+            </div>
+          </section>
+
+          <section className="mt-8 rounded-2xl border border-[#e5e5e7] p-6" aria-labelledby="usage-title">
+            <div>
+              <h2 id="usage-title" className="text-lg font-semibold">用量统计</h2>
+              <p className="mt-1 text-xs text-[#8e8e93]">仅统计成功完成的AI调用，北京时间更新。</p>
+            </div>
+            <div className="mt-5 grid grid-cols-3 divide-x divide-[#e5e5e7] rounded-xl bg-[#f7f7f8] py-5 text-center">
+              <div><p className="text-2xl font-semibold">{state.usage.today}</p><p className="mt-1 text-xs text-[#8e8e93]">今日</p></div>
+              <div><p className="text-2xl font-semibold">{state.usage.week}</p><p className="mt-1 text-xs text-[#8e8e93]">本周</p></div>
+              <div><p className="text-2xl font-semibold">{state.usage.month}</p><p className="mt-1 text-xs text-[#8e8e93]">本月</p></div>
             </div>
           </section>
 

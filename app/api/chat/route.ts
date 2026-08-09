@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI } from "@/lib/ai";
 import { retrieveDocumentContext, retrieveFewshotCases } from "@/lib/rag";
-import { refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
+import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
     if (!answer) return NextResponse.json({ error: "AI服务暂时不可用" }, { status: 503 });
 
     succeeded = true;
+    await recordAiCall(reservation, "chat");
     const sources = Array.from(new Set(contexts.map((item) => item.filename)));
     return NextResponse.json(
       { data: { answer, sources }, usage: usagePayload(reservation) },
