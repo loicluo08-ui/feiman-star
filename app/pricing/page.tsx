@@ -67,7 +67,7 @@ export const metadata = { title: "定价" };
 
 export default function PricingPage() {
   return (
-    <main className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-20">
+    <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-20">
       <section className="text-center">
         <p className="text-sm font-medium text-[#8e8e93]">简单透明</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">按需要选择，不为复杂功能买单</h1>
@@ -113,6 +113,6 @@ export default function PricingPage() {
         <h2 className="text-2xl font-semibold tracking-[-0.02em]">常见问题</h2>
         <div className="mt-6 divide-y divide-[#e5e5e7] border-y border-[#e5e5e7]">{faqs.map((faq) => <details key={faq.question} className="group py-5"><summary className="focus-ring flex cursor-pointer list-none items-center justify-between rounded-lg font-medium"><span>{faq.question}</span><span className="text-xl font-light text-[#8e8e93] transition-transform group-open:rotate-45">＋</span></summary><p className="max-w-3xl pt-3 text-sm leading-7 text-[#6e6e73]">{faq.answer}</p></details>)}</div>
       </section>
-    </main>
+    </div>
   );
 }
