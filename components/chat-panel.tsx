@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, KeyboardEvent, useState } from "react";
 
 type ChatItem = { role: "user" | "assistant"; content: string; sources?: string[] };
 
@@ -40,19 +40,27 @@ export function ChatPanel() {
     }
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      const form = event.currentTarget.form;
+      if (form && !loading && question.trim()) form.requestSubmit();
+    }
+  }
+
   return (
-    <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-5 py-10">
-      <header className="mb-6">
-        <h1 className="text-3xl font-semibold tracking-tight">AI 对话</h1>
-        <p className="mt-2 text-sm text-[#8e8e93]">自动检索12行业系统知识库与您上传的专属文档。</p>
+    <div className="mx-auto flex h-full max-w-4xl flex-col px-6 py-6">
+      <header className="mb-4">
+        <h1 className="text-2xl font-semibold tracking-tight">AI 对话</h1>
+        <p className="mt-1 text-sm text-[#8e8e93]">自动检索系统知识库，基于行业数据回答问题。</p>
       </header>
 
-      <section className="flex-1 space-y-4 rounded-2xl border border-[#e5e5e7] bg-[#f7f7f8] p-5 sm:p-6">
+      <section className="flex-1 space-y-3 overflow-y-auto rounded-xl border border-[#e5e5e7] bg-[#f7f7f8] p-4 sm:p-5">
         {messages.length === 0 ? (
-          <div className="grid min-h-[340px] place-items-center text-center">
+          <div className="grid min-h-[280px] place-items-center text-center">
             <div>
               <p className="font-medium">从一个问题开始</p>
-              <p className="mt-2 text-sm text-[#8e8e93]">例如：根据我上传的产品手册，总结三个核心卖点。</p>
+              <p className="mt-2 text-sm text-[#8e8e93]">试试：健身卡退费怎么处理？教培一对一多少钱？</p>
             </div>
           </div>
         ) : null}
@@ -67,7 +75,7 @@ export function ChatPanel() {
 
       {error ? <p role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
       <form onSubmit={submit} className="mt-4 flex gap-3">
-        <textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} maxLength={4000} placeholder="输入您的问题…" className="focus-ring min-h-14 flex-1 resize-none rounded-xl border border-[#d1d1d6] px-4 py-3 text-sm outline-none focus:border-[#1a1a1a]" />
+        <textarea value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={handleKeyDown} rows={2} maxLength={4000} placeholder="输入您的问题…（Enter发送，Shift+Enter换行）" className="focus-ring min-h-14 flex-1 resize-none rounded-xl border border-[#d1d1d6] px-4 py-3 text-sm outline-none focus:border-[#1a1a1a]" />
         <button type="submit" disabled={loading || !question.trim()} className="focus-ring self-stretch rounded-xl bg-[#1a1a1a] px-5 text-sm font-medium text-white disabled:opacity-40">发送</button>
       </form>
     </div>
