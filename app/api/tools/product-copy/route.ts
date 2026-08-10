@@ -1,88 +1,45 @@
-import { NextRequest, NextResponse } from "next/server";
-import { callAI, sanitizeInput } from "@/lib/ai";
-import { buildProductCopyPrompt } from "@/lib/prompts/product-copy";
+import { NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/api-error";
+import { generateStructuredJson } from "@/lib/deepseek";
+import { buildUploadedContext } from "@/lib/file-extractor";
+import { productCopyPrompt, renderPrompt } from "@/lib/prompt-loader";
+import { parseToolRequest } from "@/lib/tool-request";
+import { productCopyInputSchema, productCopyOutputSchema } from "@/lib/tool-schemas";
 import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-function parseAIJson(raw: string) {
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[0]) as unknown;
-    } catch {
-      return null;
-    }
-  }
-}
-
-function optionalText(value: unknown, maxLength = 20_000) {
-  if (value === undefined || value === null || value === "") return undefined;
-  const result = sanitizeInput(value, maxLength);
-  return result.ok ? result.text : null;
-}
-
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   let reservation: Awaited<ReturnType<typeof reserveAiCall>> | null = null;
   let succeeded = false;
   try {
-    const body = (await req.json()) as Record<string, unknown>;
-    const productName = sanitizeInput(body.productName, 200);
-    const productInfo = sanitizeInput(body.productInfo);
-    const targetAudience = sanitizeInput(body.targetAudience, 500);
-    const platform = sanitizeInput(body.platform, 50);
-
-    if (!productName.ok || !productInfo.ok || !targetAudience.ok || !platform.ok) {
-      return NextResponse.json({ success: false, error: "缺少必填字段或输入不合法" }, { status: 400 });
-    }
-
-    const priceRange = optionalText(body.priceRange, 200);
-    const knowledgeBase = optionalText(body.knowledgeBase, 50_000);
-    if (priceRange === null || knowledgeBase === null) {
-      return NextResponse.json({ success: false, error: "输入不合法" }, { status: 400 });
-    }
-
+    const { input, upload } = await parseToolRequest(request, productCopyInputSchema);
     reservation = await reserveAiCall();
     if (!reservation.ok) return reservation.response;
 
-    const messages = buildProductCopyPrompt({
-      productName: productName.text,
-      productInfo: productInfo.text,
-      targetAudience: targetAudience.text,
-      platform: platform.text,
-      priceRange,
-      knowledgeBase,
+    const systemPrompt = renderPrompt(productCopyPrompt, {
+      ...input,
+      kb_content: buildUploadedContext(
+        upload,
+        "本轮未导入商品资料；不得把模型常识当作商品的具体参数、销量或承诺。",
+      ),
     });
-    const raw = await callAI(messages, {
-      temperature: 0.7,
-      max_tokens: 2_500,
-      retry: 1,
-      timeout: 45_000,
+    const data = await generateStructuredJson({
+      systemPrompt,
+      outputSchema: productCopyOutputSchema,
+      maxTokens: 4_096,
     });
-
-    if (!raw) {
-      return NextResponse.json({ success: false, error: "AI服务暂时不可用" }, { status: 503 });
-    }
-
-    const parsed = parseAIJson(raw);
-    if (!parsed) {
-      return NextResponse.json({ success: false, error: "AI输出格式异常" }, { status: 502 });
-    }
 
     succeeded = true;
     await recordAiCall(reservation, "product-copy");
     return NextResponse.json(
-      { success: true, data: parsed, usage: usagePayload(reservation) },
+      { data, usage: usagePayload(reservation) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    console.error("[product-copy] api_error", error instanceof Error ? error.name : "unknown");
-    return NextResponse.json({ success: false, error: "服务器内部错误" }, { status: 500 });
+    return apiErrorResponse(error);
   } finally {
     if (reservation?.ok && !succeeded) await refundAiCall(reservation);
   }

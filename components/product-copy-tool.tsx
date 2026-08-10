@@ -5,6 +5,7 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { FormError, GenerateButton } from "@/components/generate-button";
 import { SelectField, TextAreaField, TextField } from "@/components/form-field";
 import { PromotionCard } from "@/components/promotion-card";
+import { ResultActions } from "@/components/result-actions";
 import { SettingsSection } from "@/components/settings-section";
 import { ToolLayout } from "@/components/tool-layout";
 import { postFormData, postJson } from "@/lib/client-api";
@@ -24,6 +25,13 @@ const copySections = [
 ] as const;
 
 function ProductCopyResult({ result }: { result: ProductCopyOutput }) {
+  const copyContent = [
+    `标题5选1：\n${result.titles.map((title, index) => `${index + 1}. ${title}`).join("\n")}`,
+    ...copyStyles.map(([style, label]) => [label, ...copySections.map(([section, sectionLabel]) => `${sectionLabel}：${result.copies[style][section]}`)].join("\n")),
+    `卖点提炼：\n${result.refined_selling_points.map((point) => `- ${point}`).join("\n")}`,
+    `竞品摘要：${result.competitor_insight}`,
+  ].join("\n\n");
+
   return (
     <div className="space-y-4" aria-live="polite">
       <article className="rounded-xl border border-[#e5e5e7] bg-white p-4">
@@ -66,6 +74,7 @@ function ProductCopyResult({ result }: { result: ProductCopyOutput }) {
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{result.competitor_insight}</p>
         <p className="mt-3 border-t border-white/15 pt-3 text-xs leading-5 text-white/55">AI 基于常识分析，仅供参考，不代表实时市场数据。</p>
       </article>
+      <ResultActions tool="product-copy" content={copyContent} />
     </div>
   );
 }

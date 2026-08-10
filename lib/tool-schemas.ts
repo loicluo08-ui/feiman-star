@@ -34,6 +34,7 @@ export const scriptGeneratorOutputSchema = z
     stable: scriptSectionSchema,
     aggressive: scriptSectionSchema,
     gentle: scriptSectionSchema,
+    title_suggestions: z.array(z.string().min(1)).length(3),
     follow_up_advice: z.string().min(1),
   })
   .strict();

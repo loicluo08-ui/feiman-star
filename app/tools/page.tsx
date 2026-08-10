@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const toolCards = [
-  { href: "/tools/edu-script", title: "教培客服话术", description: "生成稳健、积极、温和三种4段式成交话术。" },
+  { href: "/tools/script-generator", title: "教培客服话术", description: "生成稳健、积极、温和三种4段式成交话术。" },
   { href: "/tools/product-copy", title: "高转化商品文案", description: "生成三类详情页文案、SEO标题和评论引导。" },
 ];
 

@@ -5,6 +5,7 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { FormError, GenerateButton } from "@/components/generate-button";
 import { SelectField, TextAreaField, TextField } from "@/components/form-field";
 import { PromotionCard } from "@/components/promotion-card";
+import { ResultActions } from "@/components/result-actions";
 import { SettingsSection } from "@/components/settings-section";
 import { ToolLayout } from "@/components/tool-layout";
 import { postFormData, postJson } from "@/lib/client-api";
@@ -27,6 +28,14 @@ const courseOptions = ["钢琴", "英语", "数学", "美术", "编程", "舞蹈
 const faqOptions = ["价格", "课时", "师资", "试听", "退费", "教材", "班型", "进度", "作业", "假期安排"] as const;
 
 function ScriptResult({ result }: { result: ScriptGeneratorOutput }) {
+  const copyContent = strategies.map((strategy) => [
+    strategy.label,
+    ...sections.map(([key, label]) => `${label}：${result[strategy.key][key]}`),
+  ].join("\n")).concat([
+    `标题建议：\n${result.title_suggestions.map((title, index) => `${index + 1}. ${title}`).join("\n")}`,
+    `24小时跟进建议：${result.follow_up_advice}`,
+  ]).join("\n\n");
+
   return (
     <div className="space-y-4" aria-live="polite">
       {strategies.map((strategy) => (
@@ -45,10 +54,15 @@ function ScriptResult({ result }: { result: ScriptGeneratorOutput }) {
           </div>
         </article>
       ))}
+      <article className="rounded-xl border border-[#e5e5e7] bg-white p-4">
+        <h3 className="font-semibold">附赠标题建议</h3>
+        <ol className="mt-3 space-y-2 text-sm leading-6">{result.title_suggestions.map((title, index) => <li key={`${title}-${index}`} className="flex gap-3"><span className="text-[#8e8e93]">{index + 1}.</span><span>{title}</span></li>)}</ol>
+      </article>
       <article className="rounded-xl bg-[#1a1a1a] p-4 text-white">
         <p className="text-xs font-medium text-white/60">24 小时跟进建议</p>
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{result.follow_up_advice}</p>
       </article>
+      <ResultActions tool="script-generator" content={copyContent} />
     </div>
   );
 }
@@ -134,7 +148,7 @@ export function ScriptGeneratorTool() {
       description="填写机构真实资料与家长原话，生成稳健、积极、温和三种成交策略，以及24小时跟进动作。"
       resultTitle="三种策略，一次准备"
       resultDescription="结果严格区分策略与节奏，并以你提供的机构事实为准。"
-      resultItems={["稳健型话术", "积极型话术", "温和型话术", "24 小时跟进建议"]}
+      resultItems={["稳健型话术", "积极型话术", "温和型话术", "3 个标题建议", "24 小时跟进建议"]}
       resultContent={result ? <ScriptResult result={result} /> : undefined}
       resultFooter={
         <PromotionCard
