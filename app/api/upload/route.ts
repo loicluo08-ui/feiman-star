@@ -5,6 +5,7 @@ import { extractUploadedFile } from "@/lib/file-extractor";
 import { getAuthenticatedUser } from "@/lib/server-auth";
 import { createSupabaseAdminClient, SupabaseConfigError } from "@/lib/supabase";
 import { chunkText } from "@/lib/text-chunker";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { createEmbeddingsInBatches, ZhipuConfigError } from "@/lib/zhipu";
 
 export const runtime = "nodejs";
@@ -20,6 +21,13 @@ const mimeTypesByExtension: Record<string, Set<string>> = {
 };
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, "upload", RATE_LIMITS.upload);
+  if (limited) {
+    return NextResponse.json(
+      { error: `上传过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
   const auth = await getAuthenticatedUser();
   if (!auth) {
     return NextResponse.json(

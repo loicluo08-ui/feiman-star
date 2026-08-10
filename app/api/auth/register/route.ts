@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { setSessionCookies } from "@/lib/auth-cookies";
 import { createSupabaseAnonClient, SupabaseConfigError } from "@/lib/supabase";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,13 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, "auth", RATE_LIMITS.auth);
+  if (limited) {
+    return NextResponse.json(
+      { success: false, error: `操作过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
   const input = requestSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) {
     return NextResponse.json(

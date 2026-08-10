@@ -5,6 +5,7 @@ import { searchKnowledgeWithMetadata } from "@/lib/kb";
 import { escapeXmlText } from "@/lib/prompt-security";
 import { retrieveFewshotCases } from "@/lib/rag";
 import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,14 @@ export const maxDuration = 60;
 const requestSchema = z.object({ question: z.string().trim().min(1).max(4_000) });
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, "chat", RATE_LIMITS.chat);
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const input = requestSchema.safeParse(body);
   if (!input.success) return NextResponse.json({ error: "请输入1-4000字的问题" }, { status: 400 });

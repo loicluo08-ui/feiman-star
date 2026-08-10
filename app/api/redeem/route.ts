@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthenticatedUser } from "@/lib/server-auth";
 import { createSupabaseUserClient, SupabaseConfigError } from "@/lib/supabase";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,13 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, "redeem", RATE_LIMITS.redeem);
+  if (limited) {
+    return NextResponse.json(
+      { error: `操作过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
   const auth = await getAuthenticatedUser();
   if (!auth) return NextResponse.json({ success: false, error: "请先登录" }, { status: 401 });
 

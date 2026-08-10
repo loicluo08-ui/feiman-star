@@ -5,6 +5,7 @@ import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/u
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 export const dynamic = "force-dynamic";
 
 function parseAIJson(raw: string) {
@@ -28,6 +29,13 @@ function optionalText(value: unknown, maxLength = 20_000) {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = enforceRateLimit(request, "tools", RATE_LIMITS.tools);
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
   let reservation: Awaited<ReturnType<typeof reserveAiCall>> | null = null;
   let succeeded = false;
   try {
