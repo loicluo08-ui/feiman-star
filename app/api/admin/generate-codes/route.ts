@@ -1,6 +1,7 @@
-import { randomBytes, timingSafeEqual } from "crypto";
+import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { requireAdmin } from "@/lib/admin-auth";
 import { createSupabaseAdminClient, SupabaseConfigError } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -12,12 +13,6 @@ const requestSchema = z.object({
 });
 
 const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-function secureTokenMatches(candidate: string, expected: string) {
-  const left = Buffer.from(candidate);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
 
 function codePart() {
   const bytes = randomBytes(5);
@@ -31,14 +26,8 @@ function generateCodes(count: number) {
 }
 
 export async function POST(request: NextRequest) {
-  const adminToken = process.env.ADMIN_TOKEN;
-  const suppliedToken = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  if (!adminToken) {
-    return NextResponse.json({ error: "管理员服务尚未配置" }, { status: 503 });
-  }
-  if (!secureTokenMatches(suppliedToken, adminToken)) {
-    return NextResponse.json({ error: "无管理员权限" }, { status: 401 });
-  }
+  const denied = requireAdmin(request);
+  if (denied) return denied;
 
   const input = requestSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) return NextResponse.json({ error: "参数不正确" }, { status: 400 });
