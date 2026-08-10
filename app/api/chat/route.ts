@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI } from "@/lib/ai";
+import { searchKnowledgeWithMetadata } from "@/lib/kb";
 import { escapeXmlText } from "@/lib/prompt-security";
-import { retrieveDocumentContext, retrieveFewshotCases } from "@/lib/rag";
+import { retrieveFewshotCases } from "@/lib/rag";
 import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
 
 export const runtime = "nodejs";
@@ -21,11 +22,11 @@ export async function POST(request: NextRequest) {
   let succeeded = false;
 
   try {
-    let contexts: Awaited<ReturnType<typeof retrieveDocumentContext>> = [];
+    let contexts: Awaited<ReturnType<typeof searchKnowledgeWithMetadata>> = [];
     let fewshotCases: Awaited<ReturnType<typeof retrieveFewshotCases>> = [];
     try {
-      contexts = await retrieveDocumentContext(reservation.userId, input.data.question);
-      const matchedIndustry = contexts.find((item) => item.is_system && item.industry)?.industry ?? null;
+      contexts = await searchKnowledgeWithMetadata(input.data.question, 5);
+      const matchedIndustry = contexts.find((item) => item.industry !== "通用")?.industry ?? null;
       fewshotCases = await retrieveFewshotCases(matchedIndustry);
     } catch (error) {
       console.error(`[chat] rag_skipped reason=${error instanceof Error ? error.name : "unavailable"}`);
