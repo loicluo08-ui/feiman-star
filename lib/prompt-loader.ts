@@ -17,6 +17,10 @@ function readPrompt(filename: string) {
 export const scriptGeneratorPrompt = readPrompt("script-generator-v1.1.md");
 export const productCopyPrompt = readPrompt("product-copy-v1.0.md");
 
+export function replacePromptExamples(template: string, examples: string) {
+  return template.replace(/<examples>[\s\S]*?<\/examples>/, `<examples>\n${examples.trim()}\n</examples>`);
+}
+
 export function renderPrompt(template: string, variables: Record<string, string>) {
   return Object.entries(variables).reduce(
     (prompt, [name, value]) => prompt.replaceAll(`{{${name}}}`, value),

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse } from "@/lib/api-error";
 import { generateStructuredJson } from "@/lib/deepseek";
 import { buildUploadedContext } from "@/lib/file-extractor";
-import { renderPrompt, scriptGeneratorPrompt } from "@/lib/prompt-loader";
+import { renderPrompt, replacePromptExamples, scriptGeneratorPrompt } from "@/lib/prompt-loader";
 import { parseToolRequest } from "@/lib/tool-request";
 import {
   scriptGeneratorInputSchema,
@@ -13,6 +13,41 @@ import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/u
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const safeFewShotExample = `<example>
+<example_context>
+机构名称：示例艺术中心
+课程类型：钢琴
+价格区间：120-180元/课时
+机构常见问题：只有“价格/课时/师资/试听”关注项，没有标准答案
+机构知识库：未提供
+</example_context>
+<input>你们钢琴课多少钱？孩子5岁零基础，之前学过半年没兴趣了</input>
+<output>
+{
+  "stable": {
+    "answer": "单课时在120-180元之间。总课时、班型和对应价格资料里没有，我需要向教务确认后回复您，今天内给您准确答复。",
+    "value": "孩子5岁零基础，课程安排需要结合年龄和之前的学习体验来判断。具体怎么帮助孩子重新建立兴趣，我先核对课程方案，不先给您空承诺。",
+    "objection": "您担心的不只是价格，更怕孩子再次失去兴趣、钱花了没有继续学。这一点需要把课程方式和孩子情况一起确认，不能只看报价。",
+    "action": "您可以告诉我孩子之前主要在哪个环节觉得没兴趣，我今天向教务核对适合的安排和完整费用，再把准确资料发您。"
+  },
+  "aggressive": {
+    "answer": "目前能确认的是单课时120-180元；总课时和班型价格需要教务按孩子情况核对，我今天内给您准确答复。",
+    "value": "5岁零基础又有过中断经历，先判断不感兴趣的原因，比直接报班更重要。课程方案资料尚未提供，我会先替您把关键问题问清楚。",
+    "objection": "如果只报一个价格，您仍然不知道孩子这次能不能适应。先把班型、上课方式和费用对应关系查清楚，才能避免盲目选择。",
+    "action": "把孩子之前每次上课时长和不喜欢的表现发我，我马上向教务核对，今天给您一份价格和安排都清楚的回复。"
+  },
+  "gentle": {
+    "answer": "单课时是120-180元，其他费用和班型我需要向教务确认后回复您，今天内给您准确答复。",
+    "value": "孩子之前学过却没兴趣，先了解原因会更稳妥，不用急着做决定。具体课程如何安排，我确认真实资料后再和您说明。",
+    "objection": "您担心再次报了课孩子还是不喜欢，这个顾虑很实际。现在资料不足，我不会先承诺效果，也不会催您报名。",
+    "action": "您方便说说孩子之前最抗拒什么吗？我先记录下来，连同准确价格和课程安排一起确认后发您。"
+  },
+  "title_suggestions": ["5岁钢琴课程费用确认", "零基础班型资料核对", "孩子兴趣情况沟通"],
+  "follow_up_advice": "今天内向教务确认总课时、班型、师资和试听政策，再把有依据的完整资料发给家长；未确认前不发送案例或效果承诺。"
+}
+</output>
+</example>`;
+
 export async function POST(request: Request) {
   let reservation: Awaited<ReturnType<typeof reserveAiCall>> | null = null;
   let succeeded = false;
@@ -21,7 +56,7 @@ export async function POST(request: Request) {
     reservation = await reserveAiCall();
     if (!reservation.ok) return reservation.response;
 
-    const systemPrompt = renderPrompt(scriptGeneratorPrompt, {
+    const systemPrompt = renderPrompt(replacePromptExamples(scriptGeneratorPrompt, safeFewShotExample), {
       ...input,
       kb_content: buildUploadedContext(
         upload,
