@@ -2,6 +2,7 @@ import "server-only";
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { escapeXmlText } from "@/lib/prompt-security";
 
 function readPrompt(filename: string) {
   const source = readFileSync(join(process.cwd(), "prompts", filename), "utf8");
@@ -23,7 +24,7 @@ export function replacePromptExamples(template: string, examples: string) {
 
 export function renderPrompt(template: string, variables: Record<string, string>) {
   return Object.entries(variables).reduce(
-    (prompt, [name, value]) => prompt.replaceAll(`{{${name}}}`, value),
+    (prompt, [name, value]) => prompt.replaceAll(`{{${name}}}`, escapeXmlText(value)),
     template,
   );
 }

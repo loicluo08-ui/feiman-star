@@ -3,6 +3,7 @@ import { apiErrorResponse } from "@/lib/api-error";
 import { generateStructuredJson } from "@/lib/deepseek";
 import { buildUploadedContext } from "@/lib/file-extractor";
 import { renderPrompt, replacePromptExamples, scriptGeneratorPrompt } from "@/lib/prompt-loader";
+import { escapeXmlText } from "@/lib/prompt-security";
 import { parseToolRequest } from "@/lib/tool-request";
 import {
   scriptGeneratorInputSchema,
@@ -73,14 +74,14 @@ export async function POST(request: Request) {
     const data = await generateStructuredJson({
       systemPrompt: `<role>你是教培话术的事实审核员。你的唯一任务是重写草稿，删除一切没有资料依据的机构事实，同时保持三种策略和JSON结构完整。</role>
 <allowed_facts>
-机构名称：${input.institution_name}
-课程类型：${input.course_type}
-价格区间：${input.price_range}
-机构常见问题与标准答案：${input.faq_list}
-机构知识库：${uploadedContext}
-家长原话：${input.parent_question}
+机构名称：${escapeXmlText(input.institution_name)}
+课程类型：${escapeXmlText(input.course_type)}
+价格区间：${escapeXmlText(input.price_range)}
+机构常见问题与标准答案：${escapeXmlText(input.faq_list)}
+机构知识库：${escapeXmlText(uploadedContext)}
+家长原话：${escapeXmlText(input.parent_question)}
 </allowed_facts>
-<draft>${JSON.stringify(draft)}</draft>
+<draft>${escapeXmlText(JSON.stringify(draft))}</draft>
 <audit_rules>
 1. 只有allowed_facts中的明确陈述可写成当前机构事实。关注项名称不等于标准答案。
 2. 删除或改写所有无依据的课时数、班型、分班方式、师生比、教材、教学方法、师资、试听、时间、名额、优惠、学员案例、效果、服务和政策。

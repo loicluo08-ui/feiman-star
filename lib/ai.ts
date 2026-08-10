@@ -1,5 +1,7 @@
 import "server-only";
 
+import { appendFinalPromptGuard, escapeXmlText } from "@/lib/prompt-security";
+
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -26,7 +28,7 @@ export function sanitizeInput(value: unknown, maxLength = 20_000): SanitizeResul
     .trim();
 
   if (!text || text.length > maxLength) return { ok: false };
-  return { ok: true, text };
+  return { ok: true, text: escapeXmlText(text) };
 }
 
 function extractMessageContent(payload: unknown) {
@@ -66,7 +68,7 @@ export async function callAI(
           },
           body: JSON.stringify({
             model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-flash",
-            messages,
+            messages: messages.map((message) => message.role === "system" ? { ...message, content: appendFinalPromptGuard(message.content) } : message),
             ...(options.responseFormat === "text"
               ? {}
               : { response_format: { type: "json_object" } }),

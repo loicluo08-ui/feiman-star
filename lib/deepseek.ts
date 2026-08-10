@@ -2,6 +2,7 @@ import "server-only";
 
 import { z, type ZodType } from "zod";
 import { PublicApiError } from "@/lib/api-error";
+import { appendFinalPromptGuard } from "@/lib/prompt-security";
 
 const deepSeekResponseSchema = z.object({
   choices: z
@@ -46,7 +47,7 @@ export async function generateStructuredJson<T>({
         body: JSON.stringify({
           model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-flash",
           messages: [
-            { role: "system", content: systemPrompt },
+            { role: "system", content: appendFinalPromptGuard(systemPrompt) },
             { role: "user", content: "请严格执行以上任务，只输出一个合法的 JSON 对象。" },
           ],
           response_format: { type: "json_object" },

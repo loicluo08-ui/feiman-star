@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI } from "@/lib/ai";
+import { escapeXmlText } from "@/lib/prompt-security";
 import { retrieveDocumentContext, retrieveFewshotCases } from "@/lib/rag";
 import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
 
@@ -31,15 +32,15 @@ export async function POST(request: NextRequest) {
     }
 
     const contextBlock = contexts.length
-      ? contexts.map((item, index) => `[文档片段${index + 1}｜${item.filename}]\n${item.content}`).join("\n\n")
+      ? contexts.map((item, index) => `[文档片段${index + 1}｜${escapeXmlText(item.filename)}]\n${escapeXmlText(item.content)}`).join("\n\n")
       : "";
     const examplesBlock = fewshotCases.length
       ? fewshotCases.map((item, index) => [
           `[案例${index + 1}｜${item.case_id}｜${item.industry}]`,
-          `场景：${item.scenario.slice(0, 800)}`,
-          `输入：${item.input.slice(0, 1_200)}`,
-          `参考输出：${item.output.slice(0, 1_600)}`,
-          `关键经验：${item.key_lesson.slice(0, 800)}`,
+          `场景：${escapeXmlText(item.scenario.slice(0, 800))}`,
+          `输入：${escapeXmlText(item.input.slice(0, 1_200))}`,
+          `参考输出：${escapeXmlText(item.output.slice(0, 1_600))}`,
+          `关键经验：${escapeXmlText(item.key_lesson.slice(0, 800))}`,
         ].join("\n")).join("\n\n")
       : "";
     const systemPrompt = contextBlock
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
     const answer = await callAI(
       [
         { role: "system", content: systemPrompt },
-        { role: "user", content: input.data.question },
+        { role: "user", content: escapeXmlText(input.data.question) },
       ],
       { responseFormat: "text", temperature: 0.5, max_tokens: 2_000, retry: 1 },
     );

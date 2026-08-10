@@ -3,6 +3,7 @@ import { apiErrorResponse } from "@/lib/api-error";
 import { generateStructuredJson } from "@/lib/deepseek";
 import { buildUploadedContext } from "@/lib/file-extractor";
 import { productCopyPrompt, renderPrompt, replacePromptExamples } from "@/lib/prompt-loader";
+import { escapeXmlText } from "@/lib/prompt-security";
 import { parseToolRequest } from "@/lib/tool-request";
 import { productCopyInputSchema, productCopyOutputSchema } from "@/lib/tool-schemas";
 import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/usage";
@@ -75,13 +76,13 @@ export async function POST(request: Request) {
     const audited = await generateStructuredJson({
       systemPrompt: `<role>你是电商文案的商品事实审核员。重写草稿，删除所有没有当前商品资料依据的具体事实与经营承诺，同时保留转化力和JSON结构。</role>
 <allowed_facts>
-商品名称：${input.product_name}
-原始卖点：${input.selling_points}
-目标人群：${input.target_audience}
-投放平台：${input.platform}
-用户商品资料：${uploadedContext}
+商品名称：${escapeXmlText(input.product_name)}
+原始卖点：${escapeXmlText(input.selling_points)}
+目标人群：${escapeXmlText(input.target_audience)}
+投放平台：${escapeXmlText(input.platform)}
+用户商品资料：${escapeXmlText(uploadedContext)}
 </allowed_facts>
-<draft>${JSON.stringify(draft)}</draft>
+<draft>${escapeXmlText(JSON.stringify(draft))}</draft>
 <audit_rules>
 1. 商品的数字、材质属性、功效、规格、版型、耐用性、价格、优惠、库存、活动、赠品、发货和售后承诺，只能来自allowed_facts原文。
 2. 删除模型根据商品类别自动补出的事实。例如：没有依据就不能写具体温度、凉感程度、洗后表现、组合价更低、今天发货或限时库存。
