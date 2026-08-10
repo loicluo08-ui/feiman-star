@@ -12,6 +12,7 @@ import { recordAiCall, refundAiCall, reserveAiCall, usagePayload } from "@/lib/u
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 const safeFewShotExample = `<example>
 <example_context>
@@ -56,15 +57,39 @@ export async function POST(request: Request) {
     reservation = await reserveAiCall();
     if (!reservation.ok) return reservation.response;
 
+    const uploadedContext = buildUploadedContext(
+      upload,
+      "本轮未接入知识库；不得把模型常识当作本机构事实。",
+    );
     const systemPrompt = renderPrompt(replacePromptExamples(scriptGeneratorPrompt, safeFewShotExample), {
       ...input,
-      kb_content: buildUploadedContext(
-        upload,
-        "本轮未接入知识库；不得把模型常识当作本机构事实。",
-      ),
+      kb_content: uploadedContext,
+    });
+    const draft = await generateStructuredJson({
+      systemPrompt,
+      outputSchema: scriptGeneratorOutputSchema,
+      maxTokens: 4_096,
     });
     const data = await generateStructuredJson({
-      systemPrompt,
+      systemPrompt: `<role>你是教培话术的事实审核员。你的唯一任务是重写草稿，删除一切没有资料依据的机构事实，同时保持三种策略和JSON结构完整。</role>
+<allowed_facts>
+机构名称：${input.institution_name}
+课程类型：${input.course_type}
+价格区间：${input.price_range}
+机构常见问题与标准答案：${input.faq_list}
+机构知识库：${uploadedContext}
+家长原话：${input.parent_question}
+</allowed_facts>
+<draft>${JSON.stringify(draft)}</draft>
+<audit_rules>
+1. 只有allowed_facts中的明确陈述可写成当前机构事实。关注项名称不等于标准答案。
+2. 删除或改写所有无依据的课时数、班型、分班方式、师生比、教材、教学方法、师资、试听、时间、名额、优惠、学员案例、效果、服务和政策。
+3. 资料不足时必须写“这个问题我需要向教务确认后回复您，今天内给您准确答复”，不能用模型常识补齐。
+4. 可以分析家长顾虑，但不能把一般建议写成“我们机构就是这样做”的事实。
+5. 保留stable/aggressive/gentle各4段、3条title_suggestions和follow_up_advice；三版策略仍须有明显差异。
+6. 禁用“亲爱的”“非常理解”“您说得对”，不使用绝对承诺，不评价其他机构。
+7. 只输出与草稿相同结构的合法JSON对象。
+</audit_rules>`,
       outputSchema: scriptGeneratorOutputSchema,
       maxTokens: 4_096,
     });
