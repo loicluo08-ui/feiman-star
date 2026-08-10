@@ -17,6 +17,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [confirmationSent, setConfirmationSent] = useState(false);
+  const [registrationComplete, setRegistrationComplete] = useState(false);
   const isRegister = mode === "register";
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -42,6 +43,11 @@ export function AuthForm({ mode }: AuthFormProps) {
         return;
       }
 
+      if (isRegister) {
+        setRegistrationComplete(true);
+        return;
+      }
+
       const params = new URLSearchParams(window.location.search);
       const next = params.get("next");
       window.location.assign(next?.startsWith("/") && !next.startsWith("//") ? next : "/chat");
@@ -54,7 +60,12 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   return (
     <main className="grid min-h-screen place-items-center bg-[#f7f7f8] px-5 py-12">
-      <section className="w-full max-w-md rounded-2xl border border-[#e5e5e7] bg-white p-7 shadow-sm sm:p-9">
+      <section className="grid w-full max-w-4xl overflow-hidden rounded-2xl border border-[#e5e5e7] bg-white shadow-sm md:grid-cols-[0.85fr_1.15fr]">
+        <aside className="hidden bg-[#1a1a1a] p-9 text-white md:flex md:flex-col md:justify-between">
+          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">费曼星</p><h2 className="mt-4 text-3xl font-semibold leading-tight tracking-[-0.03em]">把行业方法，变成随手可用的AI工具。</h2></div>
+          <ul className="space-y-3 text-sm leading-6 text-white/70"><li>12个行业知识库已预置</li><li>注册即得每日15次体验额度</li><li>资料与API密钥仅在服务端处理</li></ul>
+        </aside>
+        <div className="p-7 sm:p-9">
         <Link href="/" className="focus-ring mb-8 inline-flex items-center gap-3 rounded-lg">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#1a1a1a] text-sm font-semibold text-white">费</span>
           <span>
@@ -63,12 +74,21 @@ export function AuthForm({ mode }: AuthFormProps) {
           </span>
         </Link>
 
-        {confirmationSent ? (
+        {registrationComplete ? (
+          <div>
+            <div className="grid h-12 w-12 place-items-center rounded-full bg-[#1a1a1a] text-lg text-white" aria-hidden="true">✓</div>
+            <h1 className="mt-6 text-2xl font-semibold tracking-tight">注册成功</h1>
+            <p className="mt-3 text-sm leading-6 text-[#6e6e73]">体验版已开通，每日15次AI调用。</p>
+            <p className="mt-4 rounded-xl bg-[#f7f7f8] px-4 py-3 text-sm leading-6">系统已预置12个行业知识库，去对话页体验。</p>
+            <Link href="/chat?welcome=1" className="focus-ring mt-7 block h-12 rounded-xl bg-[#1a1a1a] px-4 text-center text-sm font-medium leading-[3rem] text-white">去对话页体验</Link>
+          </div>
+        ) : confirmationSent ? (
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">请验证您的邮箱</h1>
             <p className="mt-3 text-sm leading-6 text-[#6e6e73]">
               确认邮件已发送至 {email}。完成邮箱验证后，请返回登录。
             </p>
+            <p className="mt-4 rounded-xl bg-[#f7f7f8] px-4 py-3 text-sm leading-6">系统已预置12个行业知识库，验证并登录后即可去对话页体验。</p>
             <Link href="/login" className="focus-ring mt-8 block h-12 rounded-xl bg-[#1a1a1a] px-4 text-center text-sm font-medium leading-[3rem] text-white">
               返回登录
             </Link>
@@ -144,6 +164,7 @@ export function AuthForm({ mode }: AuthFormProps) {
             </p>
           </>
         )}
+        </div>
       </section>
     </main>
   );
