@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase";
+import { createEmbeddings } from "@/lib/zhipu";
 
 type KnowledgeRow = {
   id: number | string;
@@ -130,11 +131,42 @@ async function queryByTerm(term: string, industry: string | null) {
 }
 
 /**
- * 使用 Supabase ilike 对系统预置知识库做全文关键词检索。
- * 当前云端 embedding 是零向量，因此这里不会调用向量检索。
+ * 向量检索 + 全文搜索混合模式
+ * 1. 用智谱embedding-2把query向量化
+ * 2. 调Supabase match_documents RPC做向量搜索
+ * 3. 如果向量搜索无结果，降级为全文搜索
  */
 export async function searchKnowledgeWithMetadata(query: string, limit = 5): Promise<KnowledgeMatch[]> {
   const normalized = normalizeQuery(query);
+  if (!normalized || TRIVIAL_QUERY.test(normalized)) return [];
+
+  // 向量搜索
+  try {
+    const admin = createSupabaseAdminClient();
+    const queryEmbedding = await createEmbeddings([normalized.slice(0, 2048)]);
+
+    if (queryEmbedding.length > 0) {
+      const { data: vectorResults, error } = await admin.rpc("match_documents", {
+        query_embedding: queryEmbedding[0],
+        match_count: limit,
+        filter_user_id: "system",
+      });
+
+      if (!error && vectorResults && vectorResults.length > 0) {
+        return vectorResults.map((row: Record<string, unknown>) => ({
+          id: String(row.id),
+          content: String(row.content ?? "").slice(0, 800),
+          industry: String(row.industry ?? "通用"),
+          filename: String(row.filename ?? "系统知识库"),
+          relevance: Number(row.similarity ?? 1),
+        }));
+      }
+    }
+  } catch (error) {
+    console.error("[kb] vector search failed, falling back to text search:", error);
+  }
+
+  // 降级：全文搜索
   const terms = extractKnowledgeTerms(normalized);
   if (!terms.length) return [];
 
