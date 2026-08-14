@@ -24,6 +24,31 @@ type ReviewAnalysisResult = {
 
 const STORAGE_KEY = "feimanstar_reviews";
 const REVIEW_TASK_KEY = "review-analysis";
+const REVIEW_DRAFT_KEY = "feimanstar_review_draft";
+
+type ReviewDraft = {
+  trades: string;
+  strategy: string;
+  questions: string;
+};
+
+function readReviewDraft(): ReviewDraft | null {
+  try {
+    const saved = localStorage.getItem(REVIEW_DRAFT_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved) as Partial<ReviewDraft>;
+    if (
+      typeof parsed.trades !== "string"
+      || typeof parsed.strategy !== "string"
+      || typeof parsed.questions !== "string"
+    ) {
+      return null;
+    }
+    return parsed as ReviewDraft;
+  } catch {
+    return null;
+  }
+}
 
 type ParsedTrade = {
   date?: string;
@@ -211,12 +236,20 @@ export default function ReviewPage() {
   const [resolvedTradeStats, setResolvedTradeStats] = useState<TradeStats | null>(null);
   const [statsSource, setStatsSource] = useState<"local" | "ai" | "fallback">("local");
   const [progressStep, setProgressStep] = useState("正在解析交易记录…");
+  const [draftHydrated, setDraftHydrated] = useState(false);
   const mountedRef = useRef(false);
   const localTradeStats = useMemo(() => calculateTradeStats(trades), [trades]);
   const tradeStats = resolvedTradeStats ?? localTradeStats;
 
   useEffect(() => {
     mountedRef.current = true;
+    const draft = readReviewDraft();
+    if (draft) {
+      setTrades(draft.trades);
+      setStrategy(draft.strategy);
+      setQuestions(draft.questions);
+    }
+    setDraftHydrated(true);
     const task = getTask<ReviewAnalysisResult>(REVIEW_TASK_KEY);
 
     const applyResult = (result: ReviewAnalysisResult) => {
@@ -254,6 +287,15 @@ export default function ReviewPage() {
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+    try {
+      localStorage.setItem(REVIEW_DRAFT_KEY, JSON.stringify({ trades, strategy, questions }));
+    } catch {
+      // localStorage不可用时不影响复盘分析。
+    }
+  }, [draftHydrated, questions, strategy, trades]);
 
   // 加载历史
   function loadHistory() {

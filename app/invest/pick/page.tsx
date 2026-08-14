@@ -85,6 +85,33 @@ type PickHistoryRecord = {
 
 const PICK_TASK_KEY = "pick-analysis";
 const PICK_HISTORY_KEY = "feimanstar_pick_history";
+const PICK_STOCKDATA_KEY = "feimanstar_pick_stockdata";
+
+function readStoredStockData(): StockData | null {
+  try {
+    const saved = localStorage.getItem(PICK_STOCKDATA_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved) as Partial<StockData>;
+    if (
+      typeof parsed.code !== "string"
+      || typeof parsed.name !== "string"
+      || !Array.isArray(parsed.candles)
+    ) {
+      return null;
+    }
+    return parsed as StockData;
+  } catch {
+    return null;
+  }
+}
+
+function storeStockData(stockData: StockData) {
+  try {
+    localStorage.setItem(PICK_STOCKDATA_KEY, JSON.stringify(stockData));
+  } catch {
+    // localStorage不可用时不影响行情展示。
+  }
+}
 
 function readPickHistory(): PickHistoryRecord[] {
   try {
@@ -151,10 +178,16 @@ export default function PickPage() {
   useEffect(() => {
     mountedRef.current = true;
     setPickHistory(readPickHistory());
+    const savedStockData = readStoredStockData();
+    if (savedStockData) {
+      setStockData(savedStockData);
+      setQuery(savedStockData.code);
+    }
     const task = getTask<PickAnalysisResult>(PICK_TASK_KEY);
 
     const applyResult = (result: PickAnalysisResult) => {
       if (!mountedRef.current) return;
+      storeStockData(result.stockData);
       setStockData(result.stockData);
       setQuery(result.stockData.code);
       setUserNotes(result.userNotes);
@@ -232,8 +265,10 @@ export default function PickPage() {
         throw new Error(json.error || "获取失败");
       }
       const json = await res.json();
-      setStockData(json.data);
-      setQuery(json.data.code);
+      const nextStockData = json.data as StockData;
+      storeStockData(nextStockData);
+      setStockData(nextStockData);
+      setQuery(nextStockData.code);
     } catch (err) {
       setError(err instanceof Error ? err.message : "获取行情失败");
     } finally {
