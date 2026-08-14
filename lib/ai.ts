@@ -62,7 +62,7 @@ export async function callAI(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 30_000);
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 55_000);
 
     try {
       const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -76,6 +76,7 @@ export async function callAI(
           messages,
           temperature: options.temperature ?? 0.7,
           max_tokens: options.max_tokens ?? 2_500,
+          ...(options.responseFormat === "json" ? { response_format: { type: "json_object" } } : {}),
         }),
         cache: "no-store",
         signal: controller.signal,
