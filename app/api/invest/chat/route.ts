@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI, callVisionAI, type VisionMessage } from "@/lib/ai";
+import { loadKnowledgeBase } from "@/lib/knowledge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +74,9 @@ export async function POST(request: NextRequest) {
     "- 不给出买卖建议，只做分析",
     "- 高风险话题（如期权、杠杆）要提示风险",
     "- 末尾加「本分析由AI生成，仅供研究参考，不构成投资建议」",
+    "",
+    "费曼星投资知识库参考：",
+    loadKnowledgeBase().slice(0, 2500),
   ].join("\n");
 
   try {

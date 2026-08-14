@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI } from "@/lib/ai";
+import { getRelevantKnowledge } from "@/lib/knowledge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -158,6 +159,10 @@ export async function POST(request: NextRequest) {
     "- 末尾加「本分析由AI生成，仅供研究参考，不构成投资建议」",
   ].join("\n");
 
+  // 加载相关知识库片段
+  const sector = stockData.includes("sector") ? null : null; // sector从marketData JSON里无法直接取，后面改
+  const knowledge = getRelevantKnowledge(sector);
+
   const newsBlock = (input.data.news ?? []).length > 0
     ? [
         "最近新闻：",
@@ -194,6 +199,7 @@ export async function POST(request: NextRequest) {
     earningsBlock,
     pulseBlock,
     userNotes ? `用户补充：${userNotes}` : "",
+    knowledge ? `\n\n---\n\n费曼星投资知识库参考（请基于此框架分析）：\n${knowledge.slice(0, 3000)}` : "",
   ].join("\n");
 
   const answer = await callAI(

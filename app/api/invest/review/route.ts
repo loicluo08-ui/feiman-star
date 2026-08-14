@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI } from "@/lib/ai";
+import { loadKnowledgeBase } from "@/lib/knowledge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,9 @@ export async function POST(request: NextRequest) {
     strategy ? `使用的策略：${strategy}` : "",
     "",
     questions ? `特别想分析的问题：${questions}` : "",
+    "",
+    "费曼星投资知识库参考（模块5仓位策略+模块6行为偏差）：",
+    loadKnowledgeBase().slice(0, 2000),
   ].join("\n");
 
   const answer = await callAI(
