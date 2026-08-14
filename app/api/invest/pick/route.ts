@@ -6,10 +6,47 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+type NewsItem = {
+  headline: string;
+  source: string;
+  date: string;
+  summary: string;
+};
+
 const requestSchema = z.object({
   stockName: z.string().trim().min(1).max(100),
   stockCode: z.string().trim().min(1).max(20),
   marketData: z.string().trim().min(1).max(10000),
+  news: z.array(z.object({
+    headline: z.string(),
+    source: z.string(),
+    date: z.string(),
+    summary: z.string(),
+  })).optional().default([]),
+  nextEarnings: z.object({
+    date: z.string(),
+    epsEstimate: z.number().nullable(),
+    hour: z.string(),
+  }).nullable().optional().default(null),
+  marketPulse: z.object({
+    sentiment: z.string(),
+    strongestSector: z.string().nullable(),
+    weakestSector: z.string().nullable(),
+    indices: z.array(z.object({
+      name: z.string(),
+      symbol: z.string(),
+      price: z.number().nullable(),
+      change: z.number().nullable(),
+      changePct: z.number().nullable(),
+    })).optional(),
+    sectors: z.array(z.object({
+      name: z.string(),
+      symbol: z.string(),
+      price: z.number().nullable(),
+      change: z.number().nullable(),
+      changePct: z.number().nullable(),
+    })).optional(),
+  }).nullable().optional().default(null),
   userNotes: z.string().trim().max(2000).optional().default(""),
 });
 
@@ -121,6 +158,30 @@ export async function POST(request: NextRequest) {
     "- 末尾加「本分析由AI生成，仅供研究参考，不构成投资建议」",
   ].join("\n");
 
+  const newsBlock = (input.data.news ?? []).length > 0
+    ? [
+        "最近新闻：",
+        ...(input.data.news ?? []).map((n, i) =>
+          `${i + 1}. [${n.date}] ${n.headline}（来源：${n.source}）`
+        ),
+        "",
+      ].join("\n")
+    : "";
+
+  const earningsBlock = input.data.nextEarnings
+    ? `下次财报：${input.data.nextEarnings.date}${input.data.nextEarnings.epsEstimate != null ? `，EPS预期：$${input.data.nextEarnings.epsEstimate.toFixed(2)}` : ""}${input.data.nextEarnings.hour ? `，${input.data.nextEarnings.hour === "bmo" ? "盘前" : "盘后"}` : ""}\n\n`
+    : "";
+
+  const pulseBlock = input.data.marketPulse
+    ? [
+        "当前市场环境：",
+        `- 市场情绪：${input.data.marketPulse.sentiment}`,
+        input.data.marketPulse.strongestSector ? `- 最强板块：${input.data.marketPulse.strongestSector}` : "",
+        input.data.marketPulse.weakestSector ? `- 最弱板块：${input.data.marketPulse.weakestSector}` : "",
+        "",
+      ].filter(Boolean).join("\n")
+    : "";
+
   const userContent = [
     `股票：${stockName}（${stockCode}）`,
     "",
@@ -129,6 +190,9 @@ export async function POST(request: NextRequest) {
     marketData,
     "```",
     "",
+    newsBlock,
+    earningsBlock,
+    pulseBlock,
     userNotes ? `用户补充：${userNotes}` : "",
   ].join("\n");
 

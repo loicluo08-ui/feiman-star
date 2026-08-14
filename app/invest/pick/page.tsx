@@ -178,6 +178,15 @@ export default function PickPage() {
 
     try {
       const marketDataStr = JSON.stringify(stockData, null, 2);
+
+      // 并行拉取新闻+市场快报
+      const [newsRes, pulseRes] = await Promise.all([
+        fetch(`/api/invest/news?code=${encodeURIComponent(stockData.code)}`).catch(() => null),
+        fetch("/api/invest/market-pulse").catch(() => null),
+      ]);
+      const newsData = newsRes?.ok ? await newsRes.json() : null;
+      const pulseData = pulseRes?.ok ? await pulseRes.json() : null;
+
       const res = await fetch("/api/invest/pick", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -185,6 +194,9 @@ export default function PickPage() {
           stockName: stockData.name,
           stockCode: stockData.code,
           marketData: marketDataStr,
+          news: newsData?.data?.news ?? [],
+          nextEarnings: newsData?.data?.nextEarnings ?? null,
+          marketPulse: pulseData?.data ?? null,
           userNotes,
         }),
       });
