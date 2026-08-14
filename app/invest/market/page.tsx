@@ -16,7 +16,11 @@ type QuoteData = {
 
 type SectorData = QuoteData & {
   name: string;
+  changePct5d: number | null;
+  changePct20d: number | null;
 };
+
+type SectorPeriod = "1d" | "5d" | "20d";
 
 type PulseData = {
   sectors: SectorData[];
@@ -65,6 +69,7 @@ export default function MarketPage() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [sectorPeriod, setSectorPeriod] = useState<SectorPeriod>("1d");
   const lastManualRefreshRef = useRef(0);
 
   useEffect(() => {
@@ -205,6 +210,9 @@ export default function MarketPage() {
     "偏悲观": "text-[var(--warning)] bg-[var(--warning-bg)]",
     "恐慌": "text-[var(--negative)] bg-[var(--negative-bg)]",
   }[pulse?.sentiment ?? ""] || "text-[var(--text-muted)] bg-[var(--surface-subtle)]";
+  const getSectorChange = (sector: SectorData, period: SectorPeriod) => (
+    period === "1d" ? sector.changePct : period === "5d" ? sector.changePct5d : sector.changePct20d
+  );
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
@@ -254,7 +262,7 @@ export default function MarketPage() {
             自选列表为空，在上方输入代码添加
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+          <div className="overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
             <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_40px] border-b border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-xs font-medium text-[var(--text-muted)] sm:grid-cols-[100px_minmax(0,1fr)_130px_110px_56px]">
               <span>代码</span>
               <span className="hidden sm:block">名称</span>
@@ -322,30 +330,52 @@ export default function MarketPage() {
             </div>
           </div>
 
-          <h2 className="mb-3 text-sm font-semibold text-[var(--text-muted)]">板块涨跌</h2>
-          <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
-            <table className="w-full text-sm">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-[var(--text-muted)]">板块涨跌</h2>
+            <div className="flex rounded-lg bg-[var(--surface-muted)] p-1">
+              {(["1d", "5d", "20d"] as const).map((period) => (
+                <button
+                  key={period}
+                  onClick={() => setSectorPeriod(period)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                    sectorPeriod === period
+                      ? "bg-[var(--surface)] text-[var(--text)] shadow-sm"
+                      : "text-[var(--text-muted)] hover:text-[var(--text)]"
+                  }`}
+                >
+                  {{ "1d": "1日", "5d": "5日", "20d": "20日" }[period]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+            <table className="min-w-[560px] w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)]">
                   <th className="px-4 py-2 text-left text-xs font-medium text-[var(--text-muted)]">板块</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-[var(--text-muted)]">价格</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-[var(--text-muted)]">涨跌幅</th>
+                  <th className={`px-4 py-2 text-right text-xs font-medium ${sectorPeriod === "1d" ? "text-[var(--text)]" : "text-[var(--text-muted)]"}`}>1日涨跌</th>
+                  <th className={`px-4 py-2 text-right text-xs font-medium ${sectorPeriod === "5d" ? "text-[var(--text)]" : "text-[var(--text-muted)]"}`}>5日涨跌</th>
+                  <th className={`px-4 py-2 text-right text-xs font-medium ${sectorPeriod === "20d" ? "text-[var(--text)]" : "text-[var(--text-muted)]"}`}>20日涨跌</th>
                 </tr>
               </thead>
               <tbody>
                 {[...pulse.sectors]
-                  .sort((a, b) => (b.changePct ?? -999) - (a.changePct ?? -999))
+                  .sort((a, b) => (getSectorChange(b, sectorPeriod) ?? -999) - (getSectorChange(a, sectorPeriod) ?? -999))
                   .map((sector) => {
-                    const pct = sector.changePct ?? 0;
+                    const periods = [sector.changePct, sector.changePct5d, sector.changePct20d];
                     return (
                       <tr key={sector.symbol} className="border-b border-[var(--border)] last:border-0">
                         <td className="px-4 py-2.5 text-[var(--text)]">{sector.name}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-[var(--text-secondary)]">
-                          {sector.price != null ? `$${sector.price.toFixed(2)}` : "—"}
-                        </td>
-                        <td className={`px-4 py-2.5 text-right font-medium tabular-nums ${pct >= 0 ? "text-[var(--positive)]" : "text-[var(--negative)]"}`}>
-                          {sector.changePct == null ? "—" : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}
-                        </td>
+                        {periods.map((pct, index) => (
+                          <td
+                            key={index}
+                            className={`px-4 py-2.5 text-right font-medium tabular-nums ${
+                              pct == null ? "text-[var(--text-muted)]" : pct >= 0 ? "text-[var(--positive)]" : "text-[var(--negative)]"
+                            }`}
+                          >
+                            {pct == null ? "—" : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}
+                          </td>
+                        ))}
                       </tr>
                     );
                   })}

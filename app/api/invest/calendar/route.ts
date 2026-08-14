@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "d9ve1m9r01qv408k7rf0d9ve1m9r01qv408k7rfg";
 const PROFILE_CACHE_TTL = 12 * 60 * 60 * 1000;
-const profileCache = new Map<string, { name: string; expiresAt: number }>();
+const profileCache = new Map<string, { name: string; marketCap: number | null; expiresAt: number }>();
 
 type FinnhubEarning = {
   date?: string;
@@ -20,36 +20,45 @@ function formatDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function getCurrentWeek() {
+function getWeek(weekOffset: number) {
   const now = new Date();
   const day = now.getUTCDay();
   const mondayOffset = day === 0 ? -6 : 1 - day;
-  const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + mondayOffset));
+  const monday = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + mondayOffset + weekOffset * 7,
+  ));
   const sunday = new Date(monday);
   sunday.setUTCDate(monday.getUTCDate() + 6);
   return { from: formatDate(monday), to: formatDate(sunday) };
 }
 
-async function getCompanyName(symbol: string): Promise<string> {
+async function getCompanyProfile(symbol: string): Promise<{ name: string; marketCap: number | null }> {
   const cached = profileCache.get(symbol);
-  if (cached && cached.expiresAt > Date.now()) return cached.name;
+  if (cached && cached.expiresAt > Date.now()) {
+    return { name: cached.name, marketCap: cached.marketCap };
+  }
 
   try {
     const response = await fetch(
       `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_KEY}`,
       { signal: AbortSignal.timeout(3500) },
     );
-    if (!response.ok) return symbol;
-    const profile = (await response.json()) as { name?: string };
+    if (!response.ok) return { name: symbol, marketCap: null };
+    const profile = (await response.json()) as { name?: string; marketCapitalization?: number };
     const name = profile.name?.trim() || symbol;
-    profileCache.set(symbol, { name, expiresAt: Date.now() + PROFILE_CACHE_TTL });
-    return name;
+    const marketCap = typeof profile.marketCapitalization === "number" && profile.marketCapitalization > 0
+      ? profile.marketCapitalization * 1_000_000
+      : null;
+    profileCache.set(symbol, { name, marketCap, expiresAt: Date.now() + PROFILE_CACHE_TTL });
+    return { name, marketCap };
   } catch {
-    return symbol;
+    return { name: symbol, marketCap: null };
   }
 }
 
-/** GET /api/invest/calendar - 本周美股盈利日历 */
+/** GET /api/invest/calendar?weekOffset=0 - 指定周的美股盈利日历 */
 export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request, "chat", RATE_LIMITS.chat);
   if (limited) {
@@ -59,7 +68,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { from, to } = getCurrentWeek();
+  const rawWeekOffset = Number(new URL(request.url).searchParams.get("weekOffset") ?? "0");
+  const weekOffset = Number.isInteger(rawWeekOffset)
+    ? Math.max(-52, Math.min(52, rawWeekOffset))
+    : 0;
+  const { from, to } = getWeek(weekOffset);
   try {
     const params = new URLSearchParams({ from, to, token: FINNHUB_KEY });
     const response = await fetch(`https://finnhub.io/api/v1/calendar/earnings?${params}`, {
@@ -79,20 +92,22 @@ export async function GET(request: NextRequest) {
       .slice(0, 120);
 
     const symbolsToResolve = Array.from(new Set(
-      earnings.filter((item) => !item.name).slice(0, 48).map((item) => item.symbol as string),
+      earnings.slice(0, 48).map((item) => item.symbol as string),
     ));
-    const resolvedNames = new Map(
-      await Promise.all(symbolsToResolve.map(async (symbol) => [symbol, await getCompanyName(symbol)] as const)),
+    const resolvedProfiles = new Map(
+      await Promise.all(symbolsToResolve.map(async (symbol) => [symbol, await getCompanyProfile(symbol)] as const)),
     );
 
     return NextResponse.json({
       data: {
         from,
         to,
+        weekOffset,
         earnings: earnings.map((item) => ({
           date: item.date,
           symbol: item.symbol,
-          name: item.name?.trim() || resolvedNames.get(item.symbol as string) || item.symbol,
+          name: item.name?.trim() || resolvedProfiles.get(item.symbol as string)?.name || item.symbol,
+          marketCap: resolvedProfiles.get(item.symbol as string)?.marketCap ?? null,
           epsEstimate: typeof item.epsEstimate === "number" ? item.epsEstimate : null,
           hour: item.hour || "",
         })),

@@ -81,6 +81,13 @@ const suggestions = [
   { title: "美股分红政策对比", desc: "纯文字问答" },
 ];
 
+const sceneTemplates = [
+  { label: "财报前仓位调整", text: "我持有XXX，下周出财报，应该怎么调整仓位？" },
+  { label: "突破/跌破判断", text: "帮我分析这张K线图，是否突破/跌破关键位" },
+  { label: "止损策略", text: "我持有XXX成本价$YY，现在价格$ZZ，应该怎么止损？" },
+  { label: "组合评估", text: "帮我看下这张持仓截图，仓位配置合理吗？" },
+];
+
 export default function ChatPage() {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatItem[]>([]);
@@ -135,6 +142,14 @@ export default function ChatPage() {
     return () => {
       mountedRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const stock = params.get("stock")?.trim().toUpperCase() ?? "";
+    const name = params.get("name")?.trim() ?? "";
+    if (!/^[A-Z]{1,6}$/.test(stock)) return;
+    setQuestion((current) => current || `请分析${name ? `${name}（${stock}）` : stock}当前的投资机会、主要风险和仓位建议。`);
   }, []);
 
   function loadConversation(record: ChatHistoryRecord) {
@@ -457,6 +472,18 @@ export default function ChatPage() {
       <div className="border-t border-[var(--border)] bg-[var(--surface)] px-5 py-4">
         {error ? <p className="mb-2 text-xs text-[var(--negative)]">{error}</p> : null}
         <div className="mx-auto max-w-3xl">
+          <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+            {sceneTemplates.map((template) => (
+              <button
+                key={template.label}
+                type="button"
+                onClick={() => setQuestion(template.text)}
+                className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
+              >
+                {template.label}
+              </button>
+            ))}
+          </div>
           {/* 图片预览 */}
           {images.length > 0 ? (
             <div className="mb-2 flex flex-wrap gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-2">

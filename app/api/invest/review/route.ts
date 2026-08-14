@@ -11,6 +11,7 @@ const requestSchema = z.object({
   trades: z.string().trim().min(10).max(8000),
   strategy: z.string().trim().max(2000).optional().default(""),
   questions: z.string().trim().max(1000).optional().default(""),
+  totalCapital: z.coerce.number().positive().max(1_000_000_000).optional().default(100_000),
 });
 
 export async function POST(request: NextRequest) {
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "参数不完整" }, { status: 400 });
   }
 
-  const { trades, strategy, questions } = input.data;
+  const { trades, strategy, questions, totalCapital } = input.data;
 
   const systemPrompt = [
     "你是一位专业的美股交易复盘分析师。根据用户提供的交易记录，做归因分析和策略评估。",
@@ -67,6 +68,14 @@ export async function POST(request: NextRequest) {
     "| 🟡 中 | ... | ... |",
     "| 🟢 低 | ... | ... |",
     "",
+    "## ⚠️ 仓位规则检查",
+    `用户总资金：$${totalCapital.toLocaleString("en-US")}`,
+    "请逐笔检查并用表格列出：交易序号、代码、交易金额、占总资金比例、结论。规则：",
+    "- 单笔交易不超过总资金的15%",
+    "- 期权操作资金不超过总资金的5%",
+    "- 日内期权仓位不超过可操作资金的20%（可操作资金按总资金的5%计算）",
+    "- 如有违规，逐笔标注⚠️违规；无法从记录确认期权张数、合约乘数或日内属性时，明确标注“信息不足，需人工确认”，禁止猜测",
+    "",
     "量化约束：",
     "- 每个结论必须引用具体交易数据支撑",
     "- 胜率/盈亏比等数字必须从用户给的记录计算，不编造",
@@ -81,6 +90,8 @@ export async function POST(request: NextRequest) {
   const userContent = [
     "交易记录：",
     trades,
+    "",
+    `总资金：$${totalCapital.toLocaleString("en-US")}`,
     "",
     strategy ? `使用的策略：${strategy}` : "",
     "",

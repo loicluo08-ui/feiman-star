@@ -9,6 +9,7 @@ type ReviewRecord = {
   trades: string;
   strategy: string;
   questions: string;
+  totalCapital?: number;
   analysis: string;
 };
 
@@ -17,8 +18,10 @@ type ReviewAnalysisResult = {
   trades: string;
   strategy: string;
   questions: string;
+  totalCapital: number;
   record: ReviewRecord;
   tradeStats: TradeStats;
+  positionCheck: PositionCheck;
   parseMode: "ai" | "fallback";
 };
 
@@ -30,6 +33,7 @@ type ReviewDraft = {
   trades: string;
   strategy: string;
   questions: string;
+  totalCapital: string;
 };
 
 function readReviewDraft(): ReviewDraft | null {
@@ -37,14 +41,15 @@ function readReviewDraft(): ReviewDraft | null {
     const saved = localStorage.getItem(REVIEW_DRAFT_KEY);
     if (!saved) return null;
     const parsed = JSON.parse(saved) as Partial<ReviewDraft>;
-    if (
-      typeof parsed.trades !== "string"
-      || typeof parsed.strategy !== "string"
-      || typeof parsed.questions !== "string"
-    ) {
+    if (typeof parsed.trades !== "string" || typeof parsed.strategy !== "string" || typeof parsed.questions !== "string") {
       return null;
     }
-    return parsed as ReviewDraft;
+    return {
+      trades: parsed.trades,
+      strategy: parsed.strategy,
+      questions: parsed.questions,
+      totalCapital: typeof parsed.totalCapital === "string" ? parsed.totalCapital : "100000",
+    };
   } catch {
     return null;
   }
@@ -56,6 +61,7 @@ type ParsedTrade = {
   side: "buy" | "sell";
   quantity: number;
   price: number;
+  raw?: string;
 };
 
 type TradeStats = {
@@ -63,6 +69,20 @@ type TradeStats = {
   winRate: number | null;
   totalPnl: number;
   profitLossRatio: number | null;
+};
+
+type PositionViolation = {
+  tradeNumber: number;
+  symbol: string;
+  amount: number;
+  ratio: number;
+  rule: string;
+};
+
+type PositionCheck = {
+  totalTrades: number;
+  violationCount: number;
+  violations: PositionViolation[];
 };
 
 function toPositiveNumber(value: string | undefined): number | null {
@@ -85,6 +105,7 @@ function parseTradeEntry(raw: string): ParsedTrade | null {
         side: csv[2].toUpperCase() === "BUY" ? "buy" : "sell",
         quantity,
         price,
+        raw: text,
       };
     }
   }
@@ -110,6 +131,7 @@ function parseTradeEntry(raw: string): ParsedTrade | null {
     side,
     quantity,
     price,
+    raw: text,
   };
 }
 
@@ -196,6 +218,33 @@ function calculateTradeStats(text: string): TradeStats {
   return calculateTradeStatsFromEntries(parseTrades(text), text);
 }
 
+function calculatePositionCheck(entries: ParsedTrade[], sourceText: string, totalCapital: number): PositionCheck {
+  const normalizedCapital = Number.isFinite(totalCapital) && totalCapital > 0 ? totalCapital : 100_000;
+  const sourceLines = sourceText.split(/\r?\n/);
+  const violations: PositionViolation[] = [];
+
+  entries.forEach((entry, index) => {
+    const context = entry.raw
+      || sourceLines.find((line) => line.toUpperCase().includes(entry.symbol))
+      || "";
+    const isOption = /期权|OPTION|\bCALL\b|\bPUT\b/i.test(context);
+    const isDayTrade = isOption && /日内|DAY\s*TRADE|INTRADAY|0DTE/i.test(context);
+    const amount = entry.quantity * entry.price * (isOption ? 100 : 1);
+    const ratio = amount / normalizedCapital;
+    const limit = isDayTrade ? 0.05 * 0.2 : isOption ? 0.05 : 0.15;
+    if (ratio <= limit) return;
+    violations.push({
+      tradeNumber: index + 1,
+      symbol: entry.symbol,
+      amount,
+      ratio,
+      rule: isDayTrade ? "日内期权超过可操作资金20%" : isOption ? "期权资金超过总资金5%" : "单笔交易超过总资金15%",
+    });
+  });
+
+  return { totalTrades: entries.length, violationCount: violations.length, violations };
+}
+
 function normalizeAITrades(value: unknown): ParsedTrade[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -228,18 +277,26 @@ export default function ReviewPage() {
   const [trades, setTrades] = useState("");
   const [strategy, setStrategy] = useState("");
   const [questions, setQuestions] = useState("");
+  const [totalCapital, setTotalCapital] = useState("100000");
   const [analysis, setAnalysis] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [history, setHistory] = useState<ReviewRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [resolvedTradeStats, setResolvedTradeStats] = useState<TradeStats | null>(null);
+  const [resolvedPositionCheck, setResolvedPositionCheck] = useState<PositionCheck | null>(null);
   const [statsSource, setStatsSource] = useState<"local" | "ai" | "fallback">("local");
   const [progressStep, setProgressStep] = useState("正在解析交易记录…");
   const [draftHydrated, setDraftHydrated] = useState(false);
   const mountedRef = useRef(false);
   const localTradeStats = useMemo(() => calculateTradeStats(trades), [trades]);
   const tradeStats = resolvedTradeStats ?? localTradeStats;
+  const parsedCapital = Number(totalCapital.replace(/[$,\s]/g, ""));
+  const localPositionCheck = useMemo(
+    () => calculatePositionCheck(parseTrades(trades), trades, parsedCapital),
+    [parsedCapital, trades],
+  );
+  const positionCheck = resolvedPositionCheck ?? localPositionCheck;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -248,6 +305,7 @@ export default function ReviewPage() {
       setTrades(draft.trades);
       setStrategy(draft.strategy);
       setQuestions(draft.questions);
+      setTotalCapital(draft.totalCapital);
     }
     setDraftHydrated(true);
     const task = getTask<ReviewAnalysisResult>(REVIEW_TASK_KEY);
@@ -257,8 +315,10 @@ export default function ReviewPage() {
       setTrades(result.trades);
       setStrategy(result.strategy);
       setQuestions(result.questions);
+      setTotalCapital(String(result.totalCapital));
       setAnalysis(result.analysis);
       setResolvedTradeStats(result.tradeStats);
+      setResolvedPositionCheck(result.positionCheck);
       setStatsSource(result.parseMode);
       setHistory((previous) => [
         result.record,
@@ -292,11 +352,11 @@ export default function ReviewPage() {
   useEffect(() => {
     if (!draftHydrated) return;
     try {
-      localStorage.setItem(REVIEW_DRAFT_KEY, JSON.stringify({ trades, strategy, questions }));
+      localStorage.setItem(REVIEW_DRAFT_KEY, JSON.stringify({ trades, strategy, questions, totalCapital }));
     } catch {
       // localStorage不可用时不影响复盘分析。
     }
-  }, [draftHydrated, questions, strategy, trades]);
+  }, [draftHydrated, questions, strategy, totalCapital, trades]);
 
   // 加载历史
   function loadHistory() {
@@ -343,16 +403,19 @@ export default function ReviewPage() {
     const currentTrades = trades;
     const currentStrategy = strategy;
     const currentQuestions = questions;
+    const currentTotalCapital = Number(totalCapital.replace(/[$,\s]/g, "")) || 100_000;
     setLoading(true);
     setProgressStep("正在用AI解析交易记录…");
     setError("");
     setAnalysis("");
     setResolvedTradeStats(null);
+    setResolvedPositionCheck(null);
     setStatsSource("local");
 
     const task: BackgroundTask<ReviewAnalysisResult> = startTask(REVIEW_TASK_KEY, async () => {
       updateTaskProgress(REVIEW_TASK_KEY, "正在用AI解析交易记录…");
       let parsedStats: TradeStats;
+      let parsedPositionCheck: PositionCheck;
       let parseMode: "ai" | "fallback" = "fallback";
 
       try {
@@ -366,18 +429,23 @@ export default function ReviewPage() {
         const parsedTrades = normalizeAITrades(parseJson.data?.trades);
         if (parsedTrades.length === 0) throw new Error("empty_trades");
         parsedStats = calculateTradeStatsFromEntries(parsedTrades);
+        parsedPositionCheck = calculatePositionCheck(parsedTrades, currentTrades, currentTotalCapital);
         parseMode = "ai";
         updateTaskProgress(REVIEW_TASK_KEY, "交易解析完成，正在生成复盘报告…");
         if (mountedRef.current) {
           setResolvedTradeStats(parsedStats);
+          setResolvedPositionCheck(parsedPositionCheck);
           setStatsSource("ai");
           setProgressStep("交易解析完成，正在生成复盘报告…");
         }
       } catch {
-        parsedStats = calculateTradeStats(currentTrades);
+        const fallbackTrades = parseTrades(currentTrades);
+        parsedStats = calculateTradeStatsFromEntries(fallbackTrades, currentTrades);
+        parsedPositionCheck = calculatePositionCheck(fallbackTrades, currentTrades, currentTotalCapital);
         updateTaskProgress(REVIEW_TASK_KEY, "AI解析失败，已用本地规则解析；正在生成复盘报告…");
         if (mountedRef.current) {
           setResolvedTradeStats(parsedStats);
+          setResolvedPositionCheck(parsedPositionCheck);
           setStatsSource("fallback");
           setProgressStep("AI解析失败，已用本地规则解析；正在生成复盘报告…");
         }
@@ -397,6 +465,7 @@ export default function ReviewPage() {
             trades: currentTrades,
             strategy: currentStrategy,
             questions: currentQuestions,
+            totalCapital: currentTotalCapital,
           }),
         });
       } finally {
@@ -412,6 +481,7 @@ export default function ReviewPage() {
         trades: currentTrades,
         strategy: currentStrategy,
         questions: currentQuestions,
+        totalCapital: currentTotalCapital,
         analysis: result,
       };
       if (result) saveReview(record);
@@ -421,8 +491,10 @@ export default function ReviewPage() {
         trades: currentTrades,
         strategy: currentStrategy,
         questions: currentQuestions,
+        totalCapital: currentTotalCapital,
         record,
         tradeStats: parsedStats,
+        positionCheck: parsedPositionCheck,
         parseMode,
       };
     });
@@ -431,6 +503,7 @@ export default function ReviewPage() {
       if (!mountedRef.current) return;
       setAnalysis(result.analysis);
       setResolvedTradeStats(result.tradeStats);
+      setResolvedPositionCheck(result.positionCheck);
       setStatsSource(result.parseMode);
       setHistory((previous) => [
         result.record,
@@ -508,6 +581,7 @@ export default function ReviewPage() {
                   onClick={() => {
                     setTrades(t.content);
                     setResolvedTradeStats(null);
+                    setResolvedPositionCheck(null);
                     setStatsSource("local");
                   }}
                   className="rounded-md bg-[var(--surface-muted)] px-2 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--border)]"
@@ -523,6 +597,7 @@ export default function ReviewPage() {
             onChange={(e) => {
               setTrades(e.target.value);
               setResolvedTradeStats(null);
+              setResolvedPositionCheck(null);
               setStatsSource("local");
             }}
             rows={8}
@@ -536,7 +611,24 @@ export default function ReviewPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div>
+            <label className="block text-sm font-medium">总资金 <span className="text-[var(--text-muted)]">（美元）</span></label>
+            <input
+              type="number"
+              min="1000"
+              max="1000000000"
+              step="1000"
+              value={totalCapital}
+              onChange={(event) => {
+                setTotalCapital(event.target.value);
+                setResolvedPositionCheck(null);
+              }}
+              placeholder="100000"
+              className="mt-2 w-full rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none focus:border-[var(--text)]"
+            />
+            <p className="mt-1 text-xs text-[var(--text-muted)]">默认10万美元，用于仓位规则计算</p>
+          </div>
           <div>
             <label className="block text-sm font-medium">使用的策略 <span className="text-[var(--text-muted)]">（可选）</span></label>
             <textarea
@@ -592,6 +684,28 @@ export default function ReviewPage() {
                     ? tradeStats.profitLossRatio.toFixed(2)
                     : "—"}
               />
+            </div>
+            <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium">仓位规则检查</p>
+                <p className={`text-sm font-semibold ${positionCheck.violationCount > 0 ? "text-[var(--negative)]" : "text-[var(--positive)]"}`}>
+                  总交易 {positionCheck.totalTrades} 笔 · 违规 {positionCheck.violationCount} 笔
+                </p>
+              </div>
+              {positionCheck.violations.length > 0 ? (
+                <ul className="mt-2 space-y-1.5 text-xs text-[var(--negative)]">
+                  {positionCheck.violations.map((violation) => (
+                    <li key={`${violation.tradeNumber}-${violation.symbol}-${violation.rule}`}>
+                      ⚠️ 第{violation.tradeNumber}笔 {violation.symbol}：{violation.rule}，交易金额
+                      ${violation.amount.toLocaleString("en-US", { maximumFractionDigits: 2 })}（总资金{(violation.ratio * 100).toFixed(1)}%）
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
+                  {positionCheck.totalTrades > 0 ? "未发现可确定的仓位违规；正式报告将继续复核期权和日内交易。" : "录入可解析的数量和价格后显示检查结果。"}
+                </p>
+              )}
             </div>
           </div>
         ) : null}

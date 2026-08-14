@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
+import { useRouter } from "next/navigation";
 import { getTask, startTask, updateTaskProgress, type BackgroundTask } from "@/lib/background-task";
 
 type SearchResult = {
@@ -92,6 +93,32 @@ type PickHistoryRecord = {
 const PICK_TASK_KEY = "pick-analysis";
 const PICK_HISTORY_KEY = "feimanstar_pick_history";
 const PICK_STOCKDATA_KEY = "feimanstar_pick_stockdata";
+const WATCHLIST_KEY = "feimanstar_watchlist";
+const DEFAULT_WATCHLIST = [
+  { symbol: "SPY", name: "标普500 ETF" },
+  { symbol: "QQQ", name: "纳斯达克100 ETF" },
+  { symbol: "DIA", name: "道琼斯 ETF" },
+  { symbol: "IWM", name: "罗素2000 ETF" },
+  { symbol: "UVXY", name: "波动率 ETF" },
+];
+
+function readWatchlist(): Array<{ symbol: string; name: string }> {
+  try {
+    const saved = localStorage.getItem(WATCHLIST_KEY);
+    if (!saved) return DEFAULT_WATCHLIST;
+    const parsed = JSON.parse(saved) as unknown;
+    if (!Array.isArray(parsed)) return DEFAULT_WATCHLIST;
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const value = item as Record<string, unknown>;
+      const symbol = typeof value.symbol === "string" ? value.symbol.trim().toUpperCase() : "";
+      const name = typeof value.name === "string" ? value.name.trim() : symbol;
+      return /^[A-Z]{1,6}$/.test(symbol) ? [{ symbol, name: name || symbol }] : [];
+    }).slice(0, 20);
+  } catch {
+    return DEFAULT_WATCHLIST;
+  }
+}
 
 function readStoredStockData(): StockData | null {
   try {
@@ -176,6 +203,7 @@ function formatGeneratedTime(value: string) {
 }
 
 export default function PickPage() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [showSuggest, setShowSuggest] = useState(false);
@@ -193,6 +221,7 @@ export default function PickPage() {
   const [exporting, setExporting] = useState(false);
   const [pickHistory, setPickHistory] = useState<PickHistoryRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [inWatchlist, setInWatchlist] = useState(false);
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
@@ -243,6 +272,10 @@ export default function PickPage() {
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    setInWatchlist(Boolean(stockData && readWatchlist().some((item) => item.symbol === stockData.code)));
+  }, [stockData]);
 
   // 搜索联想（防抖300ms）
   useEffect(() => {
@@ -493,6 +526,29 @@ export default function PickPage() {
     setShowHistory(false);
     setError("");
     window.setTimeout(() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  function addToWatchlist() {
+    if (!stockData || inWatchlist) return;
+    const current = readWatchlist();
+    if (current.length >= 20) {
+      setError("自选列表最多保存20项，请先删除一项");
+      return;
+    }
+    const next = [...current, { symbol: stockData.code, name: stockData.name }];
+    try {
+      localStorage.setItem(WATCHLIST_KEY, JSON.stringify(next));
+      setInWatchlist(true);
+      setError("");
+    } catch {
+      setError("加入自选失败，请检查浏览器存储权限");
+    }
+  }
+
+  function sendToChat() {
+    if (!stockData) return;
+    const params = new URLSearchParams({ stock: stockData.code, name: stockData.name });
+    router.push(`/invest/chat?${params.toString()}`);
   }
 
   const pricePosition = stockData?.fiftyTwoWeekHigh && stockData?.fiftyTwoWeekLow && stockData?.price
@@ -833,7 +889,21 @@ export default function PickPage() {
 
             {analysis ? (
               <div className="mt-4">
-                <div className="mb-2 flex items-center justify-end gap-2">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={addToWatchlist}
+                    disabled={inWatchlist}
+                    className="rounded-md border border-[var(--border-strong)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] disabled:cursor-default disabled:bg-[var(--surface-muted)] disabled:opacity-70"
+                  >
+                    {inWatchlist ? "已加入自选" : "加入自选"}
+                  </button>
+                  <button
+                    onClick={sendToChat}
+                    className="rounded-md border border-[var(--border-strong)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
+                  >
+                    发送到对话
+                  </button>
+                  <span className="min-w-0 flex-1" />
                   <button
                     onClick={copyAnalysis}
                     className="rounded-md border border-[var(--border-strong)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
