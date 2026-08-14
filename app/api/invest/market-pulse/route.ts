@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "d9ve1m9r01qv408k7rf0d9ve1m9r
  * 市场脉搏：大盘指数+板块ETF+波动率
  * GET /api/invest/market-pulse
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const indices = [
       { symbol: "SPY", name: "标普500" },
@@ -47,6 +47,29 @@ export async function GET() {
         changePct: d.dp,
       };
     };
+
+    const requestedSymbols = (new URL(request.url).searchParams.get("symbols") ?? "")
+      .split(",")
+      .map((symbol) => symbol.trim().toUpperCase())
+      .filter((symbol, index, symbols) => /^[A-Z]{1,6}$/.test(symbol) && symbols.indexOf(symbol) === index)
+      .slice(0, 20);
+
+    if (requestedSymbols.length > 0) {
+      const quotes = await Promise.all(requestedSymbols.map(async (symbol) => {
+        const quote = await fetchQuote(symbol);
+        return {
+          symbol,
+          price: quote?.price ?? null,
+          change: quote?.change ?? null,
+          changePct: quote?.changePct ?? null,
+        };
+      }));
+
+      return NextResponse.json(
+        { data: { quotes, timestamp: new Date().toISOString() } },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
 
     const [indexData, sectorData] = await Promise.all([
       Promise.all(indices.map(async (idx) => {
