@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
           evToEbitda: metrics.enterpriseValueToEbitdaTTM ?? null,
           dividendYield: metrics.dividendYieldIndicated ?? null,
           payoutRatio: metrics.payoutRatioTTM ?? null,
-          beta: metrics.beta5YearAnnualized ?? null,
+          beta: metrics.beta5YearAnnualized ?? metrics.beta ?? null,
           roe: metrics.roeRfy ?? metrics.roeTTM ?? null,
           roa: metrics.roaTTM ?? null,
           grossMargin: metrics.grossMarginAnnual ?? metrics.grossMarginTTM ?? null,
