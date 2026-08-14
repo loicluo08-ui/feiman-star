@@ -103,7 +103,8 @@ async function getFinnhubQuote(code: string) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
-    console.error(`[invest/stock] ${code} ${message}`);
-    return NextResponse.json({ error: "行情数据暂时不可用，请稍后重试" }, { status: 503 });
+    console.error(`[invest/stock] ${code} error: ${message}`);
+    console.error(`[invest/stock] finnhub_key: ${FINNHUB_KEY ? "set" : "NOT SET"}`);
+    return NextResponse.json({ error: `行情数据暂时不可用: ${message}` }, { status: 503 });
   }
 }
