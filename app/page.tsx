@@ -8,7 +8,7 @@ const tools = [
   {
     number: "01",
     title: "AI选股助手",
-    description: "输入A股代码或名称，自动拉取行情+财务数据，AI按选股框架出分析报告。",
+    description: "输入美股代码，自动拉取实时行情数据，AI按选股框架出分析报告。",
     href: "/invest/pick",
     tags: ["实时行情", "财务指标", "AI分析"],
   },
@@ -35,7 +35,7 @@ export default function HomePage() {
       <section className="mb-14">
         <p className="text-sm font-medium text-[#8e8e93]">费曼星 · 投资分析</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
-          AI驱动的A股分析工具
+          AI驱动的美股分析工具
         </h1>
         <p className="mt-4 max-w-2xl text-[15px] leading-7 text-[#6e6e73]">
           选股、复盘、看板三件套。实时行情+财务数据+AI分析，一个站搞定。

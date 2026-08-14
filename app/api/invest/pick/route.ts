@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const requestSchema = z.object({
-  stockName: z.string().trim().min(1).max(50),
-  stockCode: z.string().trim().min(1).max(10),
+  stockName: z.string().trim().min(1).max(100),
+  stockCode: z.string().trim().min(1).max(20),
   marketData: z.string().trim().min(1).max(8000),
   userNotes: z.string().trim().max(2000).optional().default(""),
 });
@@ -23,12 +23,12 @@ export async function POST(request: NextRequest) {
   const { stockName, stockCode, marketData, userNotes } = input.data;
 
   const systemPrompt = [
-    "你是一位资深A股分析师。根据提供的实时行情和财务数据，生成结构化的选股分析报告。",
+    "你是一位资深美股分析师。根据提供的实时行情数据，生成结构化的选股分析报告。",
     "",
     "分析必须包含以下部分：",
-    "1. 基本面概况：市值、PE、PB、ROE，与行业均值对比",
-    "2. 技术面分析：当前价格位置、量价关系、关键支撑/压力位",
-    "3. 财务健康度：营收增速、利润率、资产负债率、现金流状况",
+    "1. 基本面概况：市值、PE、PB、ROE（如有），与同行业公司对比",
+    "2. 技术面分析：当前价格位置（相对52周高低点）、近期量价关系、关键支撑/压力位",
+    "3. 财务健康度：营收增速、利润率、资产负债率、现金流状况（如数据中有）",
     "4. 风险提示：至少3条具体风险（不要写"股市有风险"这种废话）",
     "5. 综合评估：给出3个维度的评分（基本面/技术面/估值）各1-10分，附一句话理由",
     "",

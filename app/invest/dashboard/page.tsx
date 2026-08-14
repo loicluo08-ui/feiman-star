@@ -4,25 +4,22 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 
 type WatchItem = {
   code: string;
-  market: string;
   name?: string;
   price?: number;
   changePct?: number;
-  amount?: number;
-  pe?: number;
+  volume?: number;
+  marketCap?: number;
 };
 
-const STORAGE_KEY = "feimanstar_watchlist";
+const STORAGE_KEY = "feimanstar_us_watchlist";
 
 export default function DashboardPage() {
   const [list, setList] = useState<WatchItem[]>([]);
   const [code, setCode] = useState("");
-  const [market, setMarket] = useState("sh");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 加载本地存储
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -34,42 +31,43 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // 保存到本地存储
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   }, [list]);
 
-  // 定时刷新行情
   async function refreshPrices(items: WatchItem[]) {
-    if (!items.length) return;
-    const results = await Promise.all(
+    if (items.length === 0) return;
+    const results = await Promise.allSettled(
       items.map(async (item) => {
-        try {
-          const res = await fetch(`/api/invest/stock?code=${item.code}&market=${item.market}`);
-          if (!res.ok) return item;
-          const json = await res.json();
-          const q = json.data?.quote;
-          if (!q) return item;
-          return {
-            ...item,
-            name: q.f58 ? String(q.f58) : item.name,
-            price: num(q.f43),
-            changePct: num(q.f170),
-            amount: num(q.f47),
-            pe: num(q.f162),
-          };
-        } catch {
-          return item;
-        }
+        const res = await fetch(`/api/invest/stock?code=${encodeURIComponent(item.code)}`);
+        if (!res.ok) throw new Error("fail");
+        const json = await res.json();
+        return json.data as WatchItem;
       }),
     );
-    setList(results);
+    setList((prev) =>
+      prev.map((item, i) => {
+        const result = results[i];
+        if (result?.status === "fulfilled") {
+          return {
+            ...item,
+            name: result.value.name,
+            price: result.value.price,
+            changePct: result.value.changePct,
+            volume: result.value.volume,
+            marketCap: result.value.marketCap,
+          };
+        }
+        return item;
+      }),
+    );
   }
 
   useEffect(() => {
-    if (list.length === 0) return;
-    refreshPrices(list);
-    timerRef.current = setInterval(() => refreshPrices(list), 15000);
+    if (list.length > 0) {
+      refreshPrices(list);
+      timerRef.current = setInterval(() => refreshPrices(list), 15000);
+    }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -78,96 +76,85 @@ export default function DashboardPage() {
 
   function add(e: FormEvent) {
     e.preventDefault();
-    const c = code.trim();
+    const c = code.trim().toUpperCase();
     if (!c || list.some((i) => i.code === c)) return;
-    const newItem: WatchItem = { code: c, market };
-    setList((prev) => [...prev, newItem]);
-    setCode("");
+    setLoading(true);
+    setError("");
+
+    fetch(`/api/invest/stock?code=${encodeURIComponent(c)}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "未找到");
+        }
+        return res.json();
+      })
+      .then((json) => {
+        const d = json.data as WatchItem;
+        setList((prev) => [...prev, { code: d.code, name: d.name, price: d.price, changePct: d.changePct, volume: d.volume, marketCap: d.marketCap }]);
+        setCode("");
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "添加失败"))
+      .finally(() => setLoading(false));
   }
 
-  function remove(code: string) {
-    setList((prev) => prev.filter((i) => i.code !== code));
+  function remove(c: string) {
+    setList((prev) => prev.filter((i) => i.code !== c));
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-10 sm:py-14">
+    <div className="mx-auto max-w-4xl px-5 py-12 sm:px-8 sm:py-16">
       <h1 className="text-2xl font-semibold tracking-tight">自选看板</h1>
-      <p className="mt-2 text-sm text-[#6e6e73]">添加自选股，每15秒自动刷新行情。</p>
+      <p className="mt-2 text-sm text-[#6e6e73]">美股自选股实时监控，15秒自动刷新。</p>
 
-      {/* 添加 */}
-      <form onSubmit={add} className="mt-6 flex flex-wrap gap-3">
-        <select
-          value={market}
-          onChange={(e) => setMarket(e.target.value)}
-          className="rounded-xl border border-[#d1d1d6] px-3 py-2.5 text-sm outline-none focus:border-[#1a1a1a]"
-        >
-          <option value="sh">沪市</option>
-          <option value="sz">深市</option>
-          <option value="bj">北证</option>
-        </select>
+      <form onSubmit={add} className="mt-8 flex gap-2.5">
         <input
           value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="股票代码"
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="输入美股代码，如 AAPL"
           maxLength={6}
-          className="min-w-[160px] flex-1 rounded-xl border border-[#d1d1d6] px-4 py-2.5 text-sm outline-none focus:border-[#1a1a1a]"
+          className="flex-1 rounded-xl border border-[#d1d1d6] px-4 py-3 text-sm uppercase outline-none focus:border-[#1a1a1a]"
         />
         <button
           type="submit"
-          disabled={!code.trim()}
-          className="rounded-xl bg-[#1a1a1a] px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+          disabled={loading || !code.trim()}
+          className="rounded-xl bg-[#1a1a1a] px-5 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          添加
+          {loading ? "添加中…" : "添加"}
         </button>
       </form>
 
-      {/* 列表 */}
+      {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
+
       {list.length === 0 ? (
-        <div className="mt-10 rounded-2xl border border-dashed border-[#d1d1d6] p-10 text-center">
-          <p className="text-sm text-[#8e8e93]">还没有自选股，添加一个开始监控。</p>
+        <div className="mt-12 rounded-2xl border border-dashed border-[#d1d1d6] py-16 text-center">
+          <p className="text-sm text-[#8e8e93]">还没有自选股，输入代码添加</p>
         </div>
       ) : (
-        <div className="mt-6 overflow-hidden rounded-2xl border border-[#e5e5e7] bg-white">
-          <table className="w-full text-sm">
+        <div className="mt-8 overflow-hidden rounded-2xl border border-[#e5e5e7] bg-white">
+          <table className="w-full">
             <thead>
-              <tr className="border-b border-[#e5e5e7] bg-[#f7f7f8] text-left text-xs text-[#8e8e93]">
-                <th className="px-4 py-3 font-medium">名称/代码</th>
-                <th className="px-4 py-3 text-right font-medium">最新价</th>
-                <th className="px-4 py-3 text-right font-medium">涨跌幅</th>
-                <th className="px-4 py-3 text-right font-medium">成交额</th>
-                <th className="px-4 py-3 text-right font-medium">PE</th>
-                <th className="px-4 py-3 font-medium">操作</th>
+              <tr className="border-b border-[#e5e5e7] bg-[#f7f7f8]">
+                <th className="px-4 py-3 text-left text-xs font-medium text-[#8e8e93]">代码</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-[#8e8e93]">名称</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-[#8e8e93]">现价</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-[#8e8e93]">涨跌%</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-[#8e8e93]">市值</th>
+                <th className="px-4 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#e5e5e7]">
+            <tbody>
               {list.map((item) => (
-                <tr key={item.code} className="transition-colors hover:bg-[#f7f7f8]">
+                <tr key={item.code} className="border-b border-[#f2f2f3] last:border-0">
+                  <td className="px-4 py-3 text-sm font-medium">{item.code}</td>
+                  <td className="px-4 py-3 text-sm text-[#6e6e73]">{item.name ?? "—"}</td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums">{fmtPrice(item.price)}</td>
+                  <td className={`px-4 py-3 text-right text-sm tabular-nums ${item.changePct != null && item.changePct >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {item.changePct != null ? `${item.changePct >= 0 ? "+" : ""}${item.changePct.toFixed(2)}%` : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-[#6e6e73]">{fmtAmt(item.marketCap)}</td>
                   <td className="px-4 py-3">
-                    <div className="font-medium">{item.name ?? item.code}</div>
-                    <div className="text-xs text-[#8e8e93]">{item.code}</div>
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {item.price != null ? item.price.toFixed(2) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {item.changePct != null ? (
-                      <span className={item.changePct >= 0 ? "text-red-600" : "text-green-600"}>
-                        {item.changePct >= 0 ? "+" : ""}
-                        {item.changePct.toFixed(2)}%
-                      </span>
-                    ) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-[#6e6e73]">
-                    {fmtAmt(item.amount)}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-[#6e6e73]">
-                    {item.pe != null ? item.pe.toFixed(1) : "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => remove(item.code)}
-                      className="text-xs text-[#8e8e93] transition-colors hover:text-red-600"
-                    >
+                    <button onClick={() => remove(item.code)} className="text-xs text-[#8e8e93] transition-colors hover:text-red-600">
                       移除
                     </button>
                   </td>
@@ -178,23 +165,20 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <p className="mt-8 text-xs text-[#8e8e93]">
-        行情数据来自东方财富，15秒自动刷新。仅供研究参考，不构成投资建议。
-      </p>
+      <p className="mt-8 text-xs text-[#8e8e93]">行情数据来自Yahoo Finance，15秒自动刷新。仅供研究参考，不构成投资建议。</p>
     </div>
   );
 }
 
-function num(v: unknown): number | undefined {
-  if (v == null || v === "") return undefined;
-  const n = Number(v);
-  return Number.isNaN(n) ? undefined : n;
+function fmtPrice(v?: number): string {
+  if (v == null) return "—";
+  return v.toFixed(2);
 }
 
 function fmtAmt(v?: number): string {
   if (v == null) return "—";
-  if (v >= 1e12) return `${(v / 1e12).toFixed(2)}万亿`;
-  if (v >= 1e8) return `${(v / 1e8).toFixed(2)}亿`;
-  if (v >= 1e4) return `${(v / 1e4).toFixed(2)}万`;
+  if (v >= 1e12) return `${(v / 1e12).toFixed(2)}T`;
+  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
   return v.toFixed(0);
 }

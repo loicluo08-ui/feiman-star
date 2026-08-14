@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   const { trades, strategy, questions } = input.data;
 
   const systemPrompt = [
-    "你是一位专业的交易复盘分析师。根据用户提供的交易记录，做归因分析和策略评估。",
+    "你是一位专业的美股交易复盘分析师。根据用户提供的交易记录，做归因分析和策略评估。",
     "",
     "分析必须包含以下部分：",
     "1. 交易概览：笔数、胜率、盈亏比、平均持仓周期",
