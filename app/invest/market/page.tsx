@@ -180,32 +180,32 @@ export default function MarketPage() {
     return (
       <div className="mx-auto max-w-4xl px-5 py-12">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 w-48 rounded-lg bg-[#f2f2f3]" />
-          <div className="h-12 rounded-xl bg-[#f2f2f3]" />
-          <div className="h-72 rounded-2xl bg-[#f2f2f3]" />
+          <div className="h-8 w-48 rounded-lg bg-[var(--surface-muted)]" />
+          <div className="h-12 rounded-xl bg-[var(--surface-muted)]" />
+          <div className="h-72 rounded-2xl bg-[var(--surface-muted)]" />
         </div>
       </div>
     );
   }
 
   const sentimentColor = {
-    "偏乐观": "text-[#16a34a] bg-[#f0fdf4]",
-    "中性": "text-[#8e8e93] bg-[#f7f7f8]",
-    "偏悲观": "text-[#d97706] bg-[#fffbeb]",
-    "恐慌": "text-[#dc2626] bg-[#fef2f2]",
-  }[pulse?.sentiment ?? ""] || "text-[#8e8e93] bg-[#f7f7f8]";
+    "偏乐观": "text-[var(--positive)] bg-[var(--positive-bg)]",
+    "中性": "text-[var(--text-muted)] bg-[var(--surface-subtle)]",
+    "偏悲观": "text-[var(--warning)] bg-[var(--warning-bg)]",
+    "恐慌": "text-[var(--negative)] bg-[var(--negative-bg)]",
+  }[pulse?.sentiment ?? ""] || "text-[var(--text-muted)] bg-[var(--surface-subtle)]";
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
       <header className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">市场快报</h1>
-          <p className="mt-1 text-sm text-[#6e6e73]">自选实时行情+板块轮动+市场情绪</p>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">自选实时行情+板块轮动+市场情绪</p>
         </div>
         <button
           onClick={() => void fetchMarket(true)}
           disabled={refreshing}
-          className="rounded-lg border border-[#e5e5e7] px-3 py-2 text-xs font-medium text-[#6e6e73] transition-colors hover:border-[#1a1a1a] disabled:opacity-40"
+          className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] disabled:opacity-40"
         >
           {refreshing ? "刷新中…" : "刷新"}
         </button>
@@ -220,31 +220,31 @@ export default function MarketPage() {
           autoCapitalize="characters"
           autoComplete="off"
           spellCheck={false}
-          className="min-w-0 flex-1 rounded-xl border border-[#d1d1d6] px-4 py-3 text-sm uppercase outline-none transition-colors focus:border-[#1a1a1a]"
+          className="min-w-0 flex-1 rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm uppercase outline-none transition-colors focus:border-[var(--text)]"
         />
         <button
           type="submit"
           disabled={adding || !query.trim()}
-          className="shrink-0 rounded-xl bg-[#1a1a1a] px-5 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="shrink-0 rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {adding ? "添加中…" : "添加"}
         </button>
       </form>
 
-      {error ? <p className="mb-5 rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="mb-5 rounded-lg bg-[var(--negative-bg)] px-4 py-2.5 text-sm text-[var(--negative)]">{error}</p> : null}
 
       <section className="mb-6">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[#8e8e93]">我的自选 ({watchlist.length})</h2>
-          <span className="text-xs text-[#8e8e93]">涨跌超过3%标记为异动</span>
+          <h2 className="text-sm font-semibold text-[var(--text-muted)]">我的自选 ({watchlist.length})</h2>
+          <span className="text-xs text-[var(--text-muted)]">涨跌超过3%标记为异动</span>
         </div>
         {watchlist.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#d1d1d6] bg-white px-5 py-10 text-center text-sm text-[#8e8e93]">
+          <div className="rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface)] px-5 py-10 text-center text-sm text-[var(--text-muted)]">
             自选列表为空，在上方输入代码添加
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-[#e5e5e7] bg-white">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_40px] border-b border-[#e5e5e7] bg-[#f7f7f8] px-4 py-2 text-xs font-medium text-[#8e8e93] sm:grid-cols-[100px_minmax(0,1fr)_130px_110px_56px]">
+          <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_40px] border-b border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-2 text-xs font-medium text-[var(--text-muted)] sm:grid-cols-[100px_minmax(0,1fr)_130px_110px_56px]">
               <span>代码</span>
               <span className="hidden sm:block">名称</span>
               <span className="text-right">价格</span>
@@ -258,27 +258,27 @@ export default function MarketPage() {
               return (
                 <div
                   key={item.symbol}
-                  className={`grid grid-cols-[minmax(0,1fr)_auto_auto_40px] items-center border-b border-[#f2f2f3] px-4 py-3 last:border-0 sm:grid-cols-[100px_minmax(0,1fr)_130px_110px_56px] ${
-                    unusual ? "bg-[#fffbeb]" : "bg-white"
+                  className={`grid grid-cols-[minmax(0,1fr)_auto_auto_40px] items-center border-b border-[var(--border)] px-4 py-3 last:border-0 sm:grid-cols-[100px_minmax(0,1fr)_130px_110px_56px] ${
+                    unusual ? "bg-[var(--warning-bg)]" : "bg-[var(--surface)]"
                   }`}
                 >
                   <div>
-                    <span className="font-semibold text-[#1a1a1a]">{item.symbol}</span>
-                    {unusual ? <span className="ml-1.5 rounded bg-[#fef3c7] px-1.5 py-0.5 text-[10px] font-medium text-[#b45309]">异动</span> : null}
-                    <p className="mt-0.5 truncate text-xs text-[#8e8e93] sm:hidden">{item.name}</p>
+                    <span className="font-semibold text-[var(--text)]">{item.symbol}</span>
+                    {unusual ? <span className="ml-1.5 rounded bg-[var(--warning-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--warning)]">异动</span> : null}
+                    <p className="mt-0.5 truncate text-xs text-[var(--text-muted)] sm:hidden">{item.name}</p>
                   </div>
-                  <span className="hidden truncate pr-3 text-sm text-[#6e6e73] sm:block">{item.name}</span>
-                  <span className="text-right font-medium tabular-nums text-[#1a1a1a]">
+                  <span className="hidden truncate pr-3 text-sm text-[var(--text-secondary)] sm:block">{item.name}</span>
+                  <span className="text-right font-medium tabular-nums text-[var(--text)]">
                     {quote?.price != null ? `$${quote.price.toFixed(2)}` : "—"}
                   </span>
                   <span className={`text-right text-sm font-medium tabular-nums ${
-                    changePct == null ? "text-[#8e8e93]" : changePct >= 0 ? "text-[#16a34a]" : "text-[#dc2626]"
+                    changePct == null ? "text-[var(--text-muted)]" : changePct >= 0 ? "text-[var(--positive)]" : "text-[var(--negative)]"
                   }`}>
                     {changePct == null ? "—" : `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%`}
                   </span>
                   <button
                     onClick={() => removeSymbol(item.symbol)}
-                    className="text-right text-xs text-[#8e8e93] transition-colors hover:text-[#dc2626]"
+                    className="text-right text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--negative)]"
                     aria-label={`删除自选 ${item.symbol}`}
                   >
                     删除
@@ -292,33 +292,33 @@ export default function MarketPage() {
 
       {pulse ? (
         <>
-          <div className="mb-6 rounded-2xl border border-[#e5e5e7] bg-white p-5">
+          <div className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <p className="text-sm text-[#8e8e93]">市场情绪</p>
+                <p className="text-sm text-[var(--text-muted)]">市场情绪</p>
                 <p className={`mt-1 inline-block rounded-lg px-3 py-1 text-base font-semibold ${sentimentColor}`}>
                   {pulse.sentiment}
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm text-[#8e8e93]">最强板块</p>
-                <p className="mt-1 text-sm font-medium text-[#16a34a]">{pulse.strongestSector || "—"}</p>
+                <p className="text-sm text-[var(--text-muted)]">最强板块</p>
+                <p className="mt-1 text-sm font-medium text-[var(--positive)]">{pulse.strongestSector || "—"}</p>
               </div>
               <div className="text-right">
-                <p className="text-sm text-[#8e8e93]">最弱板块</p>
-                <p className="mt-1 text-sm font-medium text-[#dc2626]">{pulse.weakestSector || "—"}</p>
+                <p className="text-sm text-[var(--text-muted)]">最弱板块</p>
+                <p className="mt-1 text-sm font-medium text-[var(--negative)]">{pulse.weakestSector || "—"}</p>
               </div>
             </div>
           </div>
 
-          <h2 className="mb-3 text-sm font-semibold text-[#8e8e93]">板块涨跌</h2>
-          <div className="overflow-hidden rounded-2xl border border-[#e5e5e7] bg-white">
+          <h2 className="mb-3 text-sm font-semibold text-[var(--text-muted)]">板块涨跌</h2>
+          <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#e5e5e7] bg-[#f7f7f8]">
-                  <th className="px-4 py-2 text-left text-xs font-medium text-[#8e8e93]">板块</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-[#8e8e93]">价格</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-[#8e8e93]">涨跌幅</th>
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)]">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-[var(--text-muted)]">板块</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-[var(--text-muted)]">价格</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-[var(--text-muted)]">涨跌幅</th>
                 </tr>
               </thead>
               <tbody>
@@ -327,12 +327,12 @@ export default function MarketPage() {
                   .map((sector) => {
                     const pct = sector.changePct ?? 0;
                     return (
-                      <tr key={sector.symbol} className="border-b border-[#f2f2f3] last:border-0">
-                        <td className="px-4 py-2.5 text-[#1a1a1a]">{sector.name}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-[#6e6e73]">
+                      <tr key={sector.symbol} className="border-b border-[var(--border)] last:border-0">
+                        <td className="px-4 py-2.5 text-[var(--text)]">{sector.name}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-[var(--text-secondary)]">
                           {sector.price != null ? `$${sector.price.toFixed(2)}` : "—"}
                         </td>
-                        <td className={`px-4 py-2.5 text-right font-medium tabular-nums ${pct >= 0 ? "text-[#16a34a]" : "text-[#dc2626]"}`}>
+                        <td className={`px-4 py-2.5 text-right font-medium tabular-nums ${pct >= 0 ? "text-[var(--positive)]" : "text-[var(--negative)]"}`}>
                           {sector.changePct == null ? "—" : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}
                         </td>
                       </tr>
@@ -344,7 +344,7 @@ export default function MarketPage() {
         </>
       ) : null}
 
-      <p className="mt-6 text-xs text-[#8e8e93]">
+      <p className="mt-6 text-xs text-[var(--text-muted)]">
         数据来自Finnhub实时API，30秒自动刷新。仅供研究参考，不构成投资建议。
         {lastUpdate ? <span className="ml-2">最后更新：{lastUpdate.toLocaleTimeString("zh-CN")}</span> : null}
       </p>

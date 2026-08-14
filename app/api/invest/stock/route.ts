@@ -25,6 +25,13 @@ interface FinnhubProfile {
   employeeTotal?: number;
 }
 
+interface FinnhubCandles {
+  c?: Array<number | null>;
+  t?: number[];
+  v?: Array<number | null>;
+  s?: string;
+}
+
 interface YahooChartResult {
   meta?: {
     longName?: string;
@@ -93,6 +100,39 @@ async function getFinnhubProfile(code: string): Promise<FinnhubProfile | null> {
     return profile.name ? profile : null;
   } catch {
     return null;
+  }
+}
+
+async function getFinnhubHistory(code: string) {
+  if (!FINNHUB_KEY) return [];
+
+  try {
+    const to = Math.floor(Date.now() / 1000);
+    const from = to - 365 * 24 * 60 * 60;
+    const params = new URLSearchParams({
+      symbol: code,
+      resolution: "D",
+      from: String(from),
+      to: String(to),
+      token: FINNHUB_KEY,
+    });
+    const response = await fetch(`https://finnhub.io/api/v1/stock/candle?${params}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return [];
+
+    const payload = (await response.json()) as FinnhubCandles;
+    if (payload.s !== "ok" || !Array.isArray(payload.t) || !Array.isArray(payload.c)) return [];
+
+    return payload.t
+      .map((timestamp, index) => ({
+        date: new Date(timestamp * 1000).toISOString().slice(0, 10),
+        close: payload.c?.[index] ?? null,
+        volume: payload.v?.[index] ?? null,
+      }))
+      .filter((candle) => candle.close != null);
+  } catch {
+    return [];
   }
 }
 
@@ -175,10 +215,6 @@ export async function GET(request: NextRequest) {
       getYahooChart(code),
     ]);
 
-    if (!quote && !yahooResult) {
-      return NextResponse.json({ error: `未找到股票代码 ${code}` }, { status: 404 });
-    }
-
     const price = quote?.c ?? yahooResult?.meta?.regularMarketPrice ?? null;
     const previousClose = quote?.pc ?? yahooResult?.meta?.chartPreviousClose ?? null;
     const change = quote?.d ?? (price != null && previousClose != null ? price - previousClose : null);
@@ -187,13 +223,18 @@ export async function GET(request: NextRequest) {
     const timestamps = yahooResult?.timestamp ?? [];
     const closes = yahooResult?.indicators?.quote?.[0]?.close ?? [];
     const volumes = yahooResult?.indicators?.quote?.[0]?.volume ?? [];
-    const candles = timestamps
+    const yahooCandles = timestamps
       .map((timestamp, index) => ({
         date: new Date(timestamp * 1000).toISOString().slice(0, 10),
         close: closes[index] ?? null,
         volume: volumes[index] ?? null,
       }))
       .filter((candle) => candle.close != null);
+    const candles = yahooCandles.length > 0 ? yahooCandles : await getFinnhubHistory(code);
+
+    if (!quote && !yahooResult && candles.length === 0) {
+      return NextResponse.json({ error: `未找到股票代码 ${code}` }, { status: 404 });
+    }
 
     // 检测是否为ETF（有价格指标但没有PE/PB/ROE等个股指标）
     const isETF = metrics != null && 

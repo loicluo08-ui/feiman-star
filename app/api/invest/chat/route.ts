@@ -14,7 +14,9 @@ const textSchema = z.object({
 
 const imageSchema = z.object({
   type: z.literal("image"),
-  dataUrl: z.string().regex(/^data:image\/(jpeg|png|webp);base64,/),
+  dataUrls: z.array(
+    z.string().regex(/^data:image\/(jpeg|png|webp);base64,/),
+  ).min(1).max(3),
   text: z.string().trim().max(4000).optional(),
 });
 
@@ -39,13 +41,15 @@ export async function POST(request: NextRequest) {
 
   const messages = input.data.messages;
 
-  // 检查是否有图片
-  const hasImage = messages.some(
-    (m) => m.content.type === "image" && m.content.dataUrl.length < MAX_IMAGE_SIZE * 1.4
+  const imageMessages = messages.filter((message) => message.content.type === "image");
+  const hasOversizedImage = imageMessages.some(
+    (message) => message.content.type === "image"
+      && message.content.dataUrls.some((dataUrl) => dataUrl.length > MAX_IMAGE_SIZE * 1.4),
   );
-
-  const lastUserMessages = messages.filter((m) => m.role === "user");
-  const lastMessage = lastUserMessages[lastUserMessages.length - 1];
+  if (hasOversizedImage) {
+    return NextResponse.json({ error: "单张图片不能超过4MB" }, { status: 413 });
+  }
+  const hasImage = imageMessages.length > 0;
 
   // 构建历史对话上下文（最多取最近6轮）
   const recentMessages = messages.slice(-12);
@@ -90,13 +94,16 @@ export async function POST(request: NextRequest) {
           if (m.content.type === "text") {
             return { role: m.role, content: m.content.text } as VisionMessage;
           }
-          // 图片消息：把用户文字（如有）和图片合并
-          const userText = m.content.text ?? "请分析这张图片";
+          // 图片消息：把用户文字和最多3张图片放进同一个vision消息。
+          const userText = m.content.text ?? `请分析这${m.content.dataUrls.length}张图片`;
           return {
             role: m.role,
             content: [
               { type: "text", text: userText },
-              { type: "image_url", image_url: { url: m.content.dataUrl } },
+              ...m.content.dataUrls.map((dataUrl) => ({
+                type: "image_url" as const,
+                image_url: { url: dataUrl },
+              })),
             ],
           } as VisionMessage;
         }),

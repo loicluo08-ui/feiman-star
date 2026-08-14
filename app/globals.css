@@ -3,12 +3,45 @@
 @tailwind utilities;
 
 :root {
-  --bg: #ffffff;
-  --sidebar-bg: #f7f7f8;
+  color-scheme: light;
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-subtle: #f7f7f8;
+  --surface-muted: #f2f2f3;
   --text: #1a1a1a;
+  --text-secondary: #6e6e73;
   --text-muted: #8e8e93;
   --border: #e5e5e7;
-  --surface-subtle: #fafafa;
+  --border-strong: #d1d1d6;
+  --primary: #1a1a1a;
+  --primary-foreground: #ffffff;
+  --positive: #16a34a;
+  --negative: #dc2626;
+  --warning: #d97706;
+  --positive-bg: #f0fdf4;
+  --negative-bg: #fef2f2;
+  --warning-bg: #fffbeb;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1117;
+  --surface: #1a1d28;
+  --surface-subtle: #151821;
+  --surface-muted: #242837;
+  --text: #e5e5e7;
+  --text-secondary: #b7bac4;
+  --text-muted: #8f94a3;
+  --border: #303444;
+  --border-strong: #454a5e;
+  --primary: #e5e5e7;
+  --primary-foreground: #0f1117;
+  --positive: #22c55e;
+  --negative: #ef4444;
+  --warning: #f59e0b;
+  --positive-bg: rgb(34 197 94 / 12%);
+  --negative-bg: rgb(239 68 68 / 12%);
+  --warning-bg: rgb(245 158 11 / 12%);
 }
 
 * {
@@ -27,6 +60,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC",
     "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 180ms ease, color 180ms ease;
 }
 
 a {
@@ -41,13 +75,25 @@ select {
   font: inherit;
 }
 
+input,
+textarea,
+select {
+  background: var(--surface);
+  color: var(--text);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+}
+
 ::selection {
-  background: #1a1a1a;
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .focus-ring:focus-visible {
-  outline: 2px solid #1a1a1a;
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 

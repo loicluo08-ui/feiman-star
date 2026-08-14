@@ -9,6 +9,7 @@ type SearchResult = {
   name: string;
   exchange: string | null;
   type: string;
+  industry: string;
 };
 
 type Financials = {
@@ -429,14 +430,14 @@ export default function PickPage() {
       <header className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">AI选股助手</h1>
-          <p className="mt-2 text-sm text-[#6e6e73]">输入美股代码或公司名称，拉取行情+财务数据，AI生成分析报告</p>
+          <p className="mt-2 text-sm text-[var(--text-secondary)]">输入美股代码或公司名称，拉取行情+财务数据，AI生成分析报告</p>
         </div>
         <button
           onClick={() => setShowHistory((visible) => !visible)}
           className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
             showHistory
-              ? "border-[#1a1a1a] bg-[#1a1a1a] text-white"
-              : "border-[#e5e5e7] text-[#6e6e73] hover:border-[#1a1a1a]"
+              ? "border-[var(--text)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+              : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text)]"
           }`}
         >
           历史对比{pickHistory.length > 0 ? ` ${pickHistory.length}` : ""}
@@ -444,14 +445,14 @@ export default function PickPage() {
       </header>
 
       {showHistory ? (
-        <div className="mb-8 overflow-hidden rounded-2xl border border-[#e5e5e7] bg-white">
+        <div className="mb-8 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
           {pickHistory.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-[#8e8e93]">完成一次AI分析后，评分会出现在这里</p>
+            <p className="px-5 py-8 text-center text-sm text-[var(--text-muted)]">完成一次AI分析后，评分会出现在这里</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-[720px] w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[#e5e5e7] bg-[#f7f7f8] text-xs text-[#8e8e93]">
+                  <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)] text-xs text-[var(--text-muted)]">
                     <th className="px-4 py-3 text-left font-medium">代码</th>
                     <th className="px-4 py-3 text-left font-medium">名称</th>
                     <th className="px-4 py-3 text-left font-medium">日期</th>
@@ -467,17 +468,17 @@ export default function PickPage() {
                     .sort((a, b) => (b.totalScore ?? -1) - (a.totalScore ?? -1))
                     .map((record) => {
                       const totalTone = record.totalScore == null
-                        ? "bg-[#f2f2f3] text-[#8e8e93]"
+                        ? "bg-[var(--surface-muted)] text-[var(--text-muted)]"
                         : record.totalScore >= 7
-                          ? "bg-[#f0fdf4] text-[#16a34a]"
+                          ? "bg-[var(--positive-bg)] text-[var(--positive)]"
                           : record.totalScore >= 4
-                            ? "bg-[#fffbeb] text-[#d97706]"
-                            : "bg-[#fef2f2] text-[#dc2626]";
+                            ? "bg-[var(--warning-bg)] text-[var(--warning)]"
+                            : "bg-[var(--negative-bg)] text-[var(--negative)]";
                       return (
-                        <tr key={record.id} className="border-b border-[#f2f2f3] last:border-0">
+                        <tr key={record.id} className="border-b border-[var(--border)] last:border-0">
                           <td className="px-4 py-3 font-semibold">{record.code}</td>
-                          <td className="max-w-40 truncate px-4 py-3 text-[#6e6e73]">{record.name}</td>
-                          <td className="px-4 py-3 text-xs text-[#8e8e93]">{new Date(record.date).toLocaleDateString("zh-CN")}</td>
+                          <td className="max-w-40 truncate px-4 py-3 text-[var(--text-secondary)]">{record.name}</td>
+                          <td className="px-4 py-3 text-xs text-[var(--text-muted)]">{new Date(record.date).toLocaleDateString("zh-CN")}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{record.fundamentalScore ?? "—"}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{record.technicalScore ?? "—"}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{record.valuationScore ?? "—"}</td>
@@ -489,7 +490,7 @@ export default function PickPage() {
                           <td className="px-4 py-3 text-right">
                             <button
                               onClick={() => deleteHistoryRecord(record.id)}
-                              className="text-xs text-[#8e8e93] transition-colors hover:text-[#dc2626]"
+                              className="text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--negative)]"
                             >
                               删除
                             </button>
@@ -515,7 +516,7 @@ export default function PickPage() {
               onFocus={() => { if (suggestions.length > 0) setShowSuggest(true); }}
               onBlur={() => { blurTimer.current = setTimeout(() => setShowSuggest(false), 150); }}
               placeholder="代码或公司名，如 AAPL / 苹果 / Apple / Tesla"
-              className="w-full rounded-xl border border-[#d1d1d6] px-4 py-3 text-sm outline-none transition-colors focus:border-[#1a1a1a]"
+              className="w-full rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none transition-colors focus:border-[var(--text)]"
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
@@ -523,7 +524,7 @@ export default function PickPage() {
             />
             {loadingSuggest ? (
               <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#8e8e93]" />
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text-muted)]" />
               </span>
             ) : null}
           </div>
@@ -533,7 +534,7 @@ export default function PickPage() {
               if (/^[A-Z]{1,6}$/.test(c)) fetchStock(c);
             }}
             disabled={loadingData || !query.trim()}
-            className="shrink-0 rounded-xl bg-[#1a1a1a] px-5 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="shrink-0 rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {loadingData ? "拉取中…" : "拉取行情"}
           </button>
@@ -541,19 +542,21 @@ export default function PickPage() {
 
         {/* 联想下拉 */}
         {showSuggest && suggestions.length > 0 ? (
-          <ul className="absolute z-20 mt-1 max-h-80 w-full overflow-auto rounded-xl border border-[#e5e5e7] bg-white py-1 shadow-lg">
+          <ul className="absolute z-20 mt-1 max-h-80 w-full overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg">
             {suggestions.map((s, i) => (
               <li key={s.code}>
                 <button
                   onMouseDown={(e) => { e.preventDefault(); handleSuggestionClick(s); }}
                   onMouseEnter={() => setHighlightIdx(i)}
                   className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                    i === highlightIdx ? "bg-[#f7f7f8]" : "bg-white"
+                    i === highlightIdx ? "bg-[var(--surface-subtle)]" : "bg-[var(--surface)]"
                   }`}
                 >
-                  <span className="shrink-0 rounded-md bg-[#f2f2f3] px-2 py-0.5 text-xs font-semibold text-[#1a1a1a]">{s.code}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-[#1a1a1a]">{s.name}</span>
-                  <span className="shrink-0 text-xs text-[#8e8e93]">{s.exchange}</span>
+                  <span className="shrink-0 rounded-md bg-[var(--surface-muted)] px-2 py-0.5 text-xs font-semibold text-[var(--text)]">{s.code}</span>
+                  <span className="text-xs text-[var(--text-muted)]">|</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-[var(--text)]">{s.name}</span>
+                  <span className="text-xs text-[var(--text-muted)]">|</span>
+                  <span className="max-w-32 shrink-0 truncate text-xs text-[var(--text-muted)]">{s.industry}</span>
                 </button>
               </li>
             ))}
@@ -567,26 +570,26 @@ export default function PickPage() {
           <button
             key={t}
             onClick={() => fetchStock(t)}
-            className="rounded-md bg-[#f2f2f3] px-2.5 py-1 text-xs font-medium text-[#6e6e73] transition-colors hover:bg-[#e5e5e7]"
+            className="rounded-md bg-[var(--surface-muted)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--border)]"
           >
             {t}
           </button>
         ))}
       </div>
 
-      {error ? <p className="mt-4 rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="mt-4 rounded-lg bg-[var(--negative-bg)] px-4 py-2.5 text-sm text-[var(--negative)]">{error}</p> : null}
 
       {/* 骨架屏 */}
       {loadingData && !stockData ? (
         <div className="mt-8 animate-pulse space-y-4">
-          <div className="h-32 rounded-2xl bg-[#f2f2f3]" />
-          <div className="h-48 rounded-2xl bg-[#f2f2f3]" />
+          <div className="h-32 rounded-2xl bg-[var(--surface-muted)]" />
+          <div className="h-48 rounded-2xl bg-[var(--surface-muted)]" />
         </div>
       ) : null}
 
       {loadingAI && !stockData ? (
-        <div className="mt-6 flex items-center gap-2 rounded-xl border border-[#e5e5e7] bg-white px-4 py-3 text-sm text-[#8e8e93]">
-          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#1a1a1a]" />
+        <div className="mt-6 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text-muted)]">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text)]" />
           分析中…切换页面不会中断
         </div>
       ) : null}
@@ -595,14 +598,14 @@ export default function PickPage() {
       {stockData ? (
         <div className="mt-8 space-y-4">
           {/* 价格卡片 */}
-          <div className="rounded-2xl border border-[#e5e5e7] bg-white p-5">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-baseline gap-2">
                   <h2 className="text-xl font-semibold">{stockData.name}</h2>
-                  <span className="text-sm text-[#8e8e93]">{stockData.code}</span>
+                  <span className="text-sm text-[var(--text-muted)]">{stockData.code}</span>
                 </div>
-                <p className="mt-0.5 text-xs text-[#8e8e93]">
+                <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                   {stockData.exchange} · {stockData.currency}
                   {stockData.financials?.sector ? ` · ${stockData.financials.sector}` : ""}
                 </p>
@@ -613,7 +616,7 @@ export default function PickPage() {
                 </p>
                 <p
                   className={`mt-0.5 text-sm font-medium tabular-nums ${
-                    stockData.change != null && stockData.change >= 0 ? "text-[#16a34a]" : "text-[#dc2626]"
+                    stockData.change != null && stockData.change >= 0 ? "text-[var(--positive)]" : "text-[var(--negative)]"
                   }`}
                 >
                   {stockData.change != null
@@ -627,19 +630,23 @@ export default function PickPage() {
           {/* K线迷你图 */}
           {stockData.candles.length > 0 ? (
             <MiniChart candles={stockData.candles} high52={stockData.fiftyTwoWeekHigh} low52={stockData.fiftyTwoWeekLow} />
-          ) : null}
+          ) : (
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-8 text-center text-sm text-[var(--text-muted)]">
+              K线数据暂时不可用，不影响AI分析
+            </div>
+          )}
 
           {/* 52周价格位置 */}
           {pricePosition != null ? (
-            <div className="rounded-2xl border border-[#e5e5e7] bg-white p-5">
-              <div className="flex items-center justify-between text-xs text-[#8e8e93]">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
                 <span>52周低 ${stockData.fiftyTwoWeekLow?.toFixed(2)}</span>
-                <span className="font-medium text-[#1a1a1a]">当前位置 {pricePosition.toFixed(0)}%</span>
+                <span className="font-medium text-[var(--text)]">当前位置 {pricePosition.toFixed(0)}%</span>
                 <span>52周高 ${stockData.fiftyTwoWeekHigh?.toFixed(2)}</span>
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#f2f2f3]">
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#dc2626] via-[#d97706] to-[#16a34a]"
+                  className="h-full rounded-full bg-gradient-to-r from-[var(--negative)] via-[var(--warning)] to-[var(--positive)]"
                   style={{ width: `${Math.min(100, Math.max(0, pricePosition))}%` }}
                 />
               </div>
@@ -648,9 +655,9 @@ export default function PickPage() {
 
           {/* 指标网格 */}
           {stockData.isETF ? (
-            <div className="rounded-2xl border border-[#e5e5e7] bg-[#f7f7f8] p-5 text-center">
-              <p className="text-sm text-[#6e6e73]">ETF不适用个股财务指标（PE/PB/ROE等）</p>
-              <p className="mt-1 text-xs text-[#8e8e93]">点击下方AI分析查看ETF专属分析报告</p>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-5 text-center">
+              <p className="text-sm text-[var(--text-secondary)]">ETF不适用个股财务指标（PE/PB/ROE等）</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">点击下方AI分析查看ETF专属分析报告</p>
             </div>
           ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -695,14 +702,14 @@ export default function PickPage() {
 
           {/* 公司简介 */}
           {stockData.financials?.longBusinessSummary ? (
-            <div className="rounded-2xl border border-[#e5e5e7] bg-white p-5">
-              <h3 className="mb-2 text-sm font-semibold text-[#8e8e93]">公司简介</h3>
-              <p className="text-sm leading-7 text-[#1a1a1a]">{stockData.financials.longBusinessSummary}</p>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <h3 className="mb-2 text-sm font-semibold text-[var(--text-muted)]">公司简介</h3>
+              <p className="text-sm leading-7 text-[var(--text)]">{stockData.financials.longBusinessSummary}</p>
             </div>
           ) : null}
 
           {/* AI分析 */}
-          <div className="rounded-2xl border border-[#e5e5e7] bg-white p-5">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
             <h3 className="mb-3 text-base font-semibold">AI选股分析</h3>
             <textarea
               value={userNotes}
@@ -710,20 +717,20 @@ export default function PickPage() {
               maxLength={2000}
               rows={2}
               placeholder="补充说明（可选）：如关注的指标、对比公司、特殊问题等"
-              className="mb-3 w-full resize-none rounded-xl border border-[#d1d1d6] px-4 py-3 text-sm outline-none focus:border-[#1a1a1a]"
+              className="mb-3 w-full resize-none rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none focus:border-[var(--text)]"
             />
             <button
               onClick={runAnalysis}
               disabled={loadingAI}
-              className="rounded-xl bg-[#1a1a1a] px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              className="rounded-xl bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
             >
               {loadingAI ? "AI分析中…" : analysis ? "重新分析" : "开始AI分析"}
             </button>
 
             {loadingAI ? (
               <div className="mt-4 space-y-2">
-                <div className="flex items-center gap-2 text-sm text-[#8e8e93]">
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#1a1a1a]" />
+                <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text)]" />
                   {loadingStep}
                 </div>
               </div>
@@ -734,28 +741,28 @@ export default function PickPage() {
                 <div className="mb-2 flex items-center justify-end gap-2">
                   <button
                     onClick={copyAnalysis}
-                    className="rounded-md border border-[#d1d1d6] px-2.5 py-1.5 text-xs font-medium text-[#6e6e73] transition-colors hover:border-[#1a1a1a] hover:text-[#1a1a1a]"
+                    className="rounded-md border border-[var(--border-strong)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
                   >
                     {copyLabel}
                   </button>
                   <button
                     onClick={exportAnalysisImage}
                     disabled={exporting}
-                    className="rounded-md border border-[#d1d1d6] px-2.5 py-1.5 text-xs font-medium text-[#6e6e73] transition-colors hover:border-[#1a1a1a] hover:text-[#1a1a1a] disabled:opacity-40"
+                    className="rounded-md border border-[var(--border-strong)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] disabled:opacity-40"
                   >
                     {exporting ? "导出中…" : "导出图片"}
                   </button>
                 </div>
-                <div ref={reportRef} className="rounded-xl bg-[#f7f7f8] p-5">
-                  <div className="mb-4 border-b border-[#e5e5e7] pb-3">
-                    <p className="text-xs font-medium text-[#8e8e93]">费曼星 · AI选股分析</p>
+                <div ref={reportRef} className="rounded-xl bg-[var(--surface-subtle)] p-5">
+                  <div className="mb-4 border-b border-[var(--border)] pb-3">
+                    <p className="text-xs font-medium text-[var(--text-muted)]">费曼星 · AI选股分析</p>
                     <div className="mt-1 flex items-baseline justify-between gap-3">
-                      <p className="text-base font-semibold text-[#1a1a1a]">{stockData.name}</p>
-                      <p className="text-xs font-medium text-[#6e6e73]">{stockData.code}</p>
+                      <p className="text-base font-semibold text-[var(--text)]">{stockData.name}</p>
+                      <p className="text-xs font-medium text-[var(--text-secondary)]">{stockData.code}</p>
                     </div>
                   </div>
-                  <div className="whitespace-pre-wrap text-sm leading-7 text-[#1a1a1a]">{analysis}</div>
-                  <p className="mt-5 border-t border-[#e5e5e7] pt-3 text-[11px] text-[#8e8e93]">
+                  <div className="whitespace-pre-wrap text-sm leading-7 text-[var(--text)]">{analysis}</div>
+                  <p className="mt-5 border-t border-[var(--border)] pt-3 text-[11px] text-[var(--text-muted)]">
                     由费曼星生成，仅供研究参考，不构成投资建议。
                   </p>
                 </div>
@@ -765,7 +772,7 @@ export default function PickPage() {
         </div>
       ) : null}
 
-      <p className="mt-10 text-xs text-[#8e8e93]">
+      <p className="mt-10 text-xs text-[var(--text-muted)]">
         行情数据来自 Yahoo Finance，可能存在 15 分钟延迟。本工具仅供研究参考，不构成投资建议。
       </p>
     </div>
@@ -776,8 +783,8 @@ export default function PickPage() {
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[#e5e5e7] bg-white px-4 py-3">
-      <p className="text-xs text-[#8e8e93]">{label}</p>
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+      <p className="text-xs text-[var(--text-muted)]">{label}</p>
       <p className="mt-0.5 text-sm font-medium tabular-nums">{value}</p>
     </div>
   );
@@ -825,29 +832,29 @@ function IndustryBenchmark({
   ];
 
   return (
-    <div className="rounded-2xl border border-[#e5e5e7] bg-white p-5">
-      <h3 className="mb-3 text-sm font-semibold text-[#8e8e93]">行业基准对比 · {sector}</h3>
-      <div className="overflow-hidden rounded-lg border border-[#e5e5e7]">
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+      <h3 className="mb-3 text-sm font-semibold text-[var(--text-muted)]">行业基准对比 · {sector}</h3>
+      <div className="overflow-hidden rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#e5e5e7] bg-[#f7f7f8]">
-              <th className="px-4 py-2 text-left text-xs font-medium text-[#8e8e93]">指标</th>
-              <th className="px-4 py-2 text-right text-xs font-medium text-[#8e8e93]">当前值</th>
-              <th className="px-4 py-2 text-right text-xs font-medium text-[#8e8e93]">行业常见区间</th>
+            <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)]">
+              <th className="px-4 py-2 text-left text-xs font-medium text-[var(--text-muted)]">指标</th>
+              <th className="px-4 py-2 text-right text-xs font-medium text-[var(--text-muted)]">当前值</th>
+              <th className="px-4 py-2 text-right text-xs font-medium text-[var(--text-muted)]">行业常见区间</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.label} className="border-b border-[#f2f2f3] last:border-0">
-                <td className="px-4 py-2 text-[#1a1a1a]">{r.label}</td>
-                <td className="px-4 py-2 text-right font-medium tabular-nums text-[#1a1a1a]">{r.value}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-[#6e6e73]">{r.range}</td>
+              <tr key={r.label} className="border-b border-[var(--border)] last:border-0">
+                <td className="px-4 py-2 text-[var(--text)]">{r.label}</td>
+                <td className="px-4 py-2 text-right font-medium tabular-nums text-[var(--text)]">{r.value}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-[var(--text-secondary)]">{r.range}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-xs text-[#8e8e93]">行业区间为硬编码经验值，仅供参考。建议与同行业个股实际数据交叉验证。</p>
+      <p className="mt-2 text-xs text-[var(--text-muted)]">行业区间为硬编码经验值，仅供参考。建议与同行业个股实际数据交叉验证。</p>
     </div>
   );
 }
@@ -884,7 +891,7 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
   const firstPrice = valid[0].close;
   const lastPrice = valid[valid.length - 1].close;
   const isUp = lastPrice >= firstPrice;
-  const lineColor = isUp ? "#16a34a" : "#dc2626";
+  const lineColor = isUp ? "var(--positive)" : "var(--negative)";
 
   function handleMove(e: React.MouseEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -900,10 +907,10 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
   const hovered = hoverIdx != null ? points[hoverIdx] : null;
 
   return (
-    <div className="rounded-2xl border border-[#e5e5e7] bg-white p-5">
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#8e8e93]">120日走势</h3>
-        <span className={`text-xs font-medium ${isUp ? "text-[#16a34a]" : "text-[#dc2626]"}`}>
+        <h3 className="text-sm font-semibold text-[var(--text-muted)]">120日走势</h3>
+        <span className={`text-xs font-medium ${isUp ? "text-[var(--positive)]" : "text-[var(--negative)]"}`}>
           {isUp ? "▲" : "▼"} {(((lastPrice - firstPrice) / firstPrice) * 100).toFixed(2)}%
         </span>
       </div>
@@ -917,8 +924,8 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
         {/* Y轴标签 */}
         {yLabels.map((yl, i) => (
           <g key={i}>
-            <line x1={padding.left} y1={yl.y} x2={W - padding.right} y2={yl.y} stroke="#f2f2f3" strokeWidth="1" />
-            <text x={padding.left - 8} y={yl.y + 3} textAnchor="end" fontSize="10" fill="#8e8e93">
+            <line x1={padding.left} y1={yl.y} x2={W - padding.right} y2={yl.y} stroke="var(--border)" strokeWidth="1" />
+            <text x={padding.left - 8} y={yl.y + 3} textAnchor="end" fontSize="10" fill="var(--text-muted)">
               ${yl.val.toFixed(2)}
             </text>
           </g>
@@ -935,19 +942,19 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
         {/* hover十字线 */}
         {hovered ? (
           <g>
-            <line x1={hovered.x} y1={padding.top} x2={hovered.x} y2={H - padding.bottom} stroke="#8e8e93" strokeWidth="1" strokeDasharray="3 3" />
-            <circle cx={hovered.x} cy={hovered.y} r="4" fill={lineColor} stroke="white" strokeWidth="2" />
-            <rect x={hovered.x - 45} y={padding.top - 16} width="90" height="20" rx="4" fill="#1a1a1a" />
-            <text x={hovered.x} y={padding.top - 2} textAnchor="middle" fontSize="10" fill="white" fontWeight="600">
+            <line x1={hovered.x} y1={padding.top} x2={hovered.x} y2={H - padding.bottom} stroke="var(--text-muted)" strokeWidth="1" strokeDasharray="3 3" />
+            <circle cx={hovered.x} cy={hovered.y} r="4" fill={lineColor} stroke="var(--surface)" strokeWidth="2" />
+            <rect x={hovered.x - 45} y={padding.top - 16} width="90" height="20" rx="4" fill="var(--primary)" />
+            <text x={hovered.x} y={padding.top - 2} textAnchor="middle" fontSize="10" fill="var(--primary-foreground)" fontWeight="600">
               ${hovered.close.toFixed(2)} {hovered.date.slice(5)}
             </text>
           </g>
         ) : null}
         {/* X轴日期 */}
-        <text x={padding.left} y={H - 8} fontSize="10" fill="#8e8e93">
+        <text x={padding.left} y={H - 8} fontSize="10" fill="var(--text-muted)">
           {valid[0].date.slice(5)}
         </text>
-        <text x={W - padding.right} y={H - 8} fontSize="10" fill="#8e8e93" textAnchor="end">
+        <text x={W - padding.right} y={H - 8} fontSize="10" fill="var(--text-muted)" textAnchor="end">
           {valid[valid.length - 1].date.slice(5)}
         </text>
       </svg>

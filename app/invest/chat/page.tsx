@@ -8,7 +8,7 @@ type AnalysisStyle = "balanced" | "value" | "growth" | "quant";
 type ChatItem = {
   role: "user" | "assistant";
   text: string;
-  imagePreview?: string;
+  imagePreviews?: string[];
 };
 
 type ChatHistoryRecord = {
@@ -86,8 +86,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [image, setImage] = useState<string | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [style, setStyle] = useState<AnalysisStyle>("balanced");
   const [history, setHistory] = useState<ChatHistoryRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -168,45 +167,58 @@ export default function ChatPage() {
     });
   }
 
-  function handleImageChange(e: FormEvent<HTMLInputElement>) {
-    const file = e.currentTarget.files?.[0];
-    if (!file) return;
+  async function handleImageChange(e: FormEvent<HTMLInputElement>) {
+    const input = e.currentTarget;
+    const files = Array.from(input.files ?? []);
+    if (files.length === 0) return;
 
-    if (file.size > 4 * 1024 * 1024) {
-      setError("图片不能超过4MB");
+    if (images.length + files.length > 3) {
+      setError("一次最多上传3张图片");
+      input.value = "";
       return;
     }
-
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    if (files.some((file) => file.size > 4 * 1024 * 1024)) {
+      setError("单张图片不能超过4MB");
+      input.value = "";
+      return;
+    }
+    if (files.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type))) {
       setError("仅支持 JPG / PNG / WebP 格式");
+      input.value = "";
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setImage(result);
-      setImagePreview(result);
+    try {
+      const previews = await Promise.all(files.map((file) => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("图片读取失败"));
+        reader.readAsDataURL(file);
+      })));
+      setImages((previous) => [...previous, ...previews].slice(0, 3));
       setError("");
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setError("图片读取失败，请重新选择");
+    } finally {
+      input.value = "";
+    }
   }
 
-  function removeImage() {
-    setImage(null);
-    setImagePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  function removeImage(index: number) {
+    setImages((previous) => previous.filter((_, imageIndex) => imageIndex !== index));
   }
 
   function submit(e: FormEvent) {
     e.preventDefault();
     const text = question.trim();
-    if ((!text && !image) || loading) return;
+    if ((!text && images.length === 0) || loading) return;
+
+    const currentImages = images;
 
     const userItem: ChatItem = {
       role: "user",
-      text: text || "（图片）",
-      imagePreview: image ?? undefined,
+      text: text || `（${currentImages.length}张图片）`,
+      imagePreviews: currentImages.length > 0 ? currentImages : undefined,
     };
     const currentMessages = messages;
     const currentStyle = style;
@@ -218,27 +230,27 @@ export default function ChatPage() {
     let imageCount = 0;
     const apiMessages = [
       ...currentMessages.map((m) => {
-        const hasImage = !!m.imagePreview;
+        const previews = m.imagePreviews ?? [];
+        const hasImage = previews.length > 0;
         const includeImage = hasImage && imageCount < recentImageCount;
         if (hasImage) imageCount++;
         return {
           role: m.role,
-          content: includeImage && m.imagePreview
-            ? { type: "image" as const, dataUrl: m.imagePreview, text: m.text !== "（图片）" ? m.text : undefined }
-            : { type: "text" as const, text: m.imagePreview ? `${m.text}（之前上传的图片省略）` : m.text }
+          content: includeImage
+            ? { type: "image" as const, dataUrls: previews, text: !m.text.startsWith("（") ? m.text : undefined }
+            : { type: "text" as const, text: hasImage ? `${m.text}（之前上传的图片省略）` : m.text }
         };
       }),
       {
         role: "user" as const,
-        content: image
-          ? { type: "image" as const, dataUrl: image, text: text || undefined }
+        content: currentImages.length > 0
+          ? { type: "image" as const, dataUrls: currentImages, text: text || undefined }
           : { type: "text" as const, text },
       },
     ];
 
     setQuestion("");
-    setImage(null);
-    setImagePreview(null);
+    setImages([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
     setMessages([...currentMessages, userItem, { role: "assistant", text: "" }]);
     setLoading(true);
@@ -318,19 +330,19 @@ export default function ChatPage() {
   return (
     <div className="flex h-[calc(100dvh-3rem)] flex-col md:h-screen">
       {/* Header */}
-      <header className="border-b border-[#e5e5e7] px-5 py-4">
+      <header className="border-b border-[var(--border)] px-5 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-lg font-semibold">投资对话 · 支持截图分析</h1>
-            <p className="mt-0.5 text-xs text-[#8e8e93]">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek。</p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowHistory((visible) => !visible)}
               className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
                 showHistory
-                  ? "border-[#1a1a1a] bg-[#1a1a1a] text-white"
-                  : "border-[#d1d1d6] text-[#6e6e73] hover:border-[#1a1a1a]"
+                  ? "border-[var(--text)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                  : "border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
               }`}
             >
               历史记录{history.length > 0 ? ` ${history.length}` : ""}
@@ -347,8 +359,8 @@ export default function ChatPage() {
                   onClick={() => setStyle(s.key as typeof style)}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     style === s.key
-                      ? "bg-[#1a1a1a] text-white"
-                      : "bg-[#f2f2f3] text-[#6e6e73] hover:bg-[#e5e5e7]"
+                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
                   }`}
                 >
                   {s.label}
@@ -359,22 +371,22 @@ export default function ChatPage() {
         </div>
 
         {showHistory ? (
-          <div className="mx-auto mt-4 max-h-64 max-w-3xl overflow-y-auto rounded-xl border border-[#e5e5e7] bg-white">
+          <div className="mx-auto mt-4 max-h-64 max-w-3xl overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
             {history.length === 0 ? (
-              <p className="px-4 py-5 text-center text-sm text-[#8e8e93]">还没有历史对话</p>
+              <p className="px-4 py-5 text-center text-sm text-[var(--text-muted)]">还没有历史对话</p>
             ) : (
               history.map((record) => (
-                <div key={record.id} className="flex items-center gap-3 border-b border-[#f2f2f3] px-4 py-3 last:border-0">
+                <div key={record.id} className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-0">
                   <button onClick={() => loadConversation(record)} className="min-w-0 flex-1 text-left">
-                    <p className="truncate text-sm font-medium text-[#1a1a1a]">{record.title}</p>
-                    <p className="mt-0.5 text-xs text-[#8e8e93]">
+                    <p className="truncate text-sm font-medium text-[var(--text)]">{record.title}</p>
+                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                       {new Date(record.date).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })}
                       {` · ${Math.ceil(record.messages.length / 2)}轮`}
                     </p>
                   </button>
                   <button
                     onClick={() => deleteConversation(record.id)}
-                    className="shrink-0 text-xs text-[#8e8e93] transition-colors hover:text-red-600"
+                    className="shrink-0 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--negative)]"
                     aria-label={`删除历史对话：${record.title}`}
                   >
                     删除
@@ -391,24 +403,24 @@ export default function ChatPage() {
         {messages.length === 0 ? (
           <div className="mx-auto max-w-2xl">
             {loading ? (
-              <div className="mb-6 flex items-center justify-center gap-2 rounded-xl border border-[#e5e5e7] bg-white px-4 py-3 text-sm text-[#8e8e93]">
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#1a1a1a]" />
+              <div className="mb-6 flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text-muted)]">
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text)]" />
                 AI回复中…
               </div>
             ) : null}
             <div className="mb-6 text-center">
-              <h2 className="text-xl font-semibold text-[#1a1a1a]">投资分析对话</h2>
-              <p className="mt-2 text-sm text-[#6e6e73]">支持K线图、财报、持仓截图分析，也支持纯文字问答</p>
+              <h2 className="text-xl font-semibold text-[var(--text)]">投资分析对话</h2>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">支持K线图、财报、持仓截图分析，也支持纯文字问答</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {suggestions.map((s) => (
                 <button
                   key={s.title}
                   onClick={() => setQuestion(s.title)}
-                  className="rounded-xl border border-[#e5e5e7] p-4 text-left transition-colors hover:border-[#1a1a1a] hover:bg-[#f7f7f8]"
+                  className="rounded-xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--text)] hover:bg-[var(--surface-subtle)]"
                 >
                   <p className="text-sm font-medium">{s.title}</p>
-                  <p className="mt-1 text-xs text-[#8e8e93]">{s.desc}</p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">{s.desc}</p>
                 </button>
               ))}
             </div>
@@ -420,12 +432,16 @@ export default function ChatPage() {
                 <div
                   className={
                     m.role === "user"
-                      ? "max-w-[85%] rounded-2xl bg-[#1a1a1a] px-4 py-2.5 text-sm text-white"
-                      : "max-w-[85%] rounded-2xl border border-[#e5e5e7] bg-white px-4 py-2.5 text-sm text-[#1a1a1a]"
+                      ? "max-w-[85%] rounded-2xl bg-[var(--primary)] px-4 py-2.5 text-sm text-[var(--primary-foreground)]"
+                      : "max-w-[85%] rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--text)]"
                   }
                 >
-                  {m.imagePreview ? (
-                    <img src={m.imagePreview} alt="用户上传" className="mb-2 max-h-48 rounded-lg object-cover" />
+                  {m.imagePreviews?.length ? (
+                    <div className="mb-2 grid grid-cols-3 gap-2">
+                      {m.imagePreviews.map((preview, imageIndex) => (
+                        <img key={imageIndex} src={preview} alt={`用户上传 ${imageIndex + 1}`} className="max-h-48 rounded-lg object-cover" />
+                      ))}
+                    </div>
                   ) : null}
                   {m.text || (loading && i === messages.length - 1) ? (
                     <div className="whitespace-pre-wrap leading-6">{m.text || (loading && i === messages.length - 1 ? "思考中…" : "")}</div>
@@ -438,21 +454,33 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-[#e5e5e7] bg-white px-5 py-4">
-        {error ? <p className="mb-2 text-xs text-red-600">{error}</p> : null}
+      <div className="border-t border-[var(--border)] bg-[var(--surface)] px-5 py-4">
+        {error ? <p className="mb-2 text-xs text-[var(--negative)]">{error}</p> : null}
         <div className="mx-auto max-w-3xl">
           {/* 图片预览 */}
-          {imagePreview ? (
-            <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-[#e5e5e7] bg-[#f7f7f8] p-2">
-              <img src={imagePreview} alt="待发送" className="h-12 w-12 rounded object-cover" />
-              <button onClick={removeImage} className="text-xs text-[#8e8e93] hover:text-red-600">移除</button>
+          {images.length > 0 ? (
+            <div className="mb-2 flex flex-wrap gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-2">
+              {images.map((preview, imageIndex) => (
+                <div key={imageIndex} className="relative">
+                  <img src={preview} alt={`待发送 ${imageIndex + 1}`} className="h-14 w-14 rounded object-cover" />
+                  <button
+                    onClick={() => removeImage(imageIndex)}
+                    className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--primary)] text-xs text-[var(--primary-foreground)]"
+                    aria-label={`移除第${imageIndex + 1}张图片`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <span className="self-center px-1 text-xs text-[var(--text-muted)]">{images.length}/3</span>
             </div>
           ) : null}
           <div className="flex gap-2.5">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#d1d1d6] transition-colors hover:border-[#1a1a1a]"
-              title="上传截图"
+              disabled={images.length >= 3}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[var(--border-strong)] transition-colors hover:border-[var(--text)]"
+              title={images.length >= 3 ? "最多上传3张图片" : "上传截图（最多3张）"}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -464,6 +492,7 @@ export default function ChatPage() {
               ref={fileInputRef}
               type="file"
               accept="image/jpeg,image/png,image/webp"
+              multiple
               onChange={handleImageChange}
               className="hidden"
             />
@@ -474,16 +503,16 @@ export default function ChatPage() {
               rows={1}
               maxLength={4000}
               placeholder="输入问题，或上传截图让AI分析…（Enter发送，Shift+Enter换行）"
-              className="min-h-12 flex-1 resize-none rounded-xl border border-[#d1d1d6] px-4 py-3 text-sm outline-none transition-colors focus:border-[#1a1a1a]"
+              className="min-h-12 flex-1 resize-none rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none transition-colors focus:border-[var(--text)]"
             />
             <button
               onClick={submit}
-              disabled={loading || (!question.trim() && !image)}
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#1a1a1a] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              disabled={loading || (!question.trim() && images.length === 0)}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
               title="发送"
             >
               {loading ? (
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--primary-foreground)]" />
               ) : (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13" />

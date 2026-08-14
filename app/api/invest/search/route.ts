@@ -4,6 +4,27 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const PROFILE_CACHE_TTL = 6 * 60 * 60 * 1000;
+const profileCache = new Map<string, { industry: string; expiresAt: number }>();
+
+async function getIndustry(symbol: string, token: string): Promise<string> {
+  const cached = profileCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.industry;
+
+  try {
+    const response = await fetch(
+      `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${token}`,
+      { signal: AbortSignal.timeout(3500) },
+    );
+    if (!response.ok) return "行业未知";
+    const profile = (await response.json()) as { finnhubIndustry?: string };
+    const industry = profile.finnhubIndustry?.trim() || "行业未知";
+    profileCache.set(symbol, { industry, expiresAt: Date.now() + PROFILE_CACHE_TTL });
+    return industry;
+  } catch {
+    return "行业未知";
+  }
+}
 
 /**
  * 美股搜索代理（Yahoo Finance search）
@@ -43,9 +64,16 @@ export async function GET(request: NextRequest) {
         exchange: null,
         type: "EQUITY",
       }))
-      .slice(0, 8);
+      .slice(0, 12);
 
-    return NextResponse.json({ data: filtered });
+    const enriched = await Promise.all(
+      filtered.map(async (result) => ({
+        ...result,
+        industry: await getIndustry(result.code, FINNHUB_KEY),
+      })),
+    );
+
+    return NextResponse.json({ data: enriched });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     console.error(`[invest/search] ${message}`);
