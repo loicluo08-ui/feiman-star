@@ -195,6 +195,12 @@ export async function GET(request: NextRequest) {
       }))
       .filter((candle) => candle.close != null);
 
+    // 检测是否为ETF（有价格指标但没有PE/PB/ROE等个股指标）
+    const isETF = metrics != null && 
+      metrics.peNormalizedAnnual == null && 
+      metrics.roeRfy == null &&
+      (metrics.beta != null || metrics["52WeekHigh"] != null);
+
     const financials: Record<string, unknown> | null = metrics
       ? {
           pe: metrics.peNormalizedAnnual ?? metrics.peTTM ?? null,
@@ -228,7 +234,9 @@ export async function GET(request: NextRequest) {
           industry: profile?.finnhubIndustry ?? null,
           fullTimeEmployees: profile?.employeeTotal ?? null,
           longBusinessSummary: profile?.name
-            ? `${profile.name} (${code}) — ${profile.finnhubIndustry || ""}`
+            ? isETF
+              ? `${profile.name} 是一只ETF（交易所交易基金），不适用个股财务指标（PE/PB/ROE等）。`
+              : `${profile.name} (${code}) — ${profile.finnhubIndustry || ""}`
             : null,
         }
       : null;
@@ -250,6 +258,7 @@ export async function GET(request: NextRequest) {
         candles,
         financials,
         realtime: Boolean(quote),
+        isETF,
       },
     });
   } catch (error) {
