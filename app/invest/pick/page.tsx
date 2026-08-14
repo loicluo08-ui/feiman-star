@@ -74,6 +74,7 @@ export default function PickPage() {
   const [analysis, setAnalysis] = useState("");
   const [loadingData, setLoadingData] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
+  const [loadingStep, setLoadingStep] = useState("正在拉取数据…");
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [error, setError] = useState("");
   const [copyLabel, setCopyLabel] = useState("复制");
@@ -185,6 +186,7 @@ export default function PickPage() {
       const marketDataStr = JSON.stringify(stockData, null, 2);
 
       // 并行拉取新闻+市场快报
+      setLoadingStep("正在拉取新闻和市场快报…");
       const [newsRes, pulseRes] = await Promise.all([
         fetch(`/api/invest/news?code=${encodeURIComponent(stockData.code)}`).catch(() => null),
         fetch("/api/invest/market-pulse").catch(() => null),
@@ -192,6 +194,7 @@ export default function PickPage() {
       const newsData = newsRes?.ok ? await newsRes.json() : null;
       const pulseData = pulseRes?.ok ? await pulseRes.json() : null;
 
+      setLoadingStep("AI正在生成深度分析报告，约15-30秒…");
       const res = await fetch("/api/invest/pick", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -477,9 +480,11 @@ export default function PickPage() {
             </button>
 
             {loadingAI ? (
-              <div className="mt-4 flex items-center gap-2 text-sm text-[#8e8e93]">
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#1a1a1a]" />
-                正在生成分析报告，约15-30秒…
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm text-[#8e8e93]">
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#1a1a1a]" />
+                  {loadingStep}
+                </div>
               </div>
             ) : null}
 

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 const navItems = [
   { href: "/", label: "首页", icon: "M3 12L12 3l9 9M5 10v10h14V10" },
+  { href: "/invest/market", label: "市场快报", icon: "M3 3v18h18M7 14l4-4 4 4 5-5" },
   { href: "/invest/pick", label: "AI选股", icon: "M3 3v18h18M7 14l4-4 4 4 5-5" },
   { href: "/invest/review", label: "交易复盘", icon: "M9 17v-6h4v6M7 7h10v10H7zM5 5h14v14H5z" },
   { href: "/invest/chat", label: "投资对话", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" },

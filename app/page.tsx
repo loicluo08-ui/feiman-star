@@ -7,20 +7,27 @@ export const metadata = {
 const tools = [
   {
     number: "01",
+    title: "市场快报",
+    description: "实时大盘指数+11个板块涨跌+市场情绪判断，30秒自动刷新。",
+    href: "/invest/market",
+    tags: ["实时", "大盘", "板块轮动"],
+  },
+  {
+    number: "02",
     title: "AI选股助手",
     description: "输入美股代码或公司名，拉取行情+24个财务指标，AI生成6维度分析报告。",
     href: "/invest/pick",
     tags: ["财务指标", "AI分析", "6维度评分"],
   },
   {
-    number: "02",
+    number: "03",
     title: "交易复盘",
     description: "输入交易记录，AI做归因分析——盈亏来源、策略有效性、行为偏差、改进建议。",
     href: "/invest/review",
     tags: ["归因分析", "策略评估", "行为偏差"],
   },
   {
-    number: "03",
+    number: "04",
     title: "投资对话",
     description: "发文字或截图，AI帮你分析。K线图/财报/持仓截图都能读，支持多轮对话。",
     href: "/invest/chat",
