@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
 /**
- * 美股实时行情代理（Yahoo Finance）
+ * 美股完整行情+财务数据代理（Yahoo Finance）
  * GET /api/invest/stock?code=AAPL
  */
 export async function GET(request: NextRequest) {
@@ -18,54 +20,104 @@ export async function GET(request: NextRequest) {
   const code = rawCode;
 
   try {
-    // 实时行情 + 日K
-    const quoteUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${code}?interval=1d&range=5d`;
-    const quoteRes = await fetch(quoteUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-      },
+    // === 1. 主行情+日K（30天）===
+    const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${code}?interval=1d&range=1mo`;
+    const chartRes = await fetch(chartUrl, {
+      headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(10000),
     });
 
-    if (!quoteRes.ok) {
-      if (quoteRes.status === 404) {
+    if (!chartRes.ok) {
+      if (chartRes.status === 404) {
         return NextResponse.json({ error: `未找到股票代码 ${code}` }, { status: 404 });
       }
-      throw new Error(`yahoo_status=${quoteRes.status}`);
+      throw new Error(`chart_status=${chartRes.status}`);
     }
 
-    const quoteJson = await quoteRes.json();
-    const result = quoteJson?.chart?.result?.[0];
-    if (!result) throw new Error("yahoo_empty_response");
+    const chartJson = await chartRes.json();
+    const result = chartJson?.chart?.result?.[0];
+    if (!result) throw new Error("chart_no_result");
 
     const meta = result.meta ?? {};
-    const indicators = result.indicators?.quote?.[0] ?? {};
-    const timestamps = result.timestamp ?? [];
-    const closes = indicators.close ?? [];
-    const volumes = indicators.volume ?? [];
+    const timestamps: number[] = result.timestamp ?? [];
+    const closes: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
+    const volumes: (number | null)[] = result.indicators?.quote?.[0]?.volume ?? [];
 
-    // 最近一个交易日数据
-    const lastIdx = closes.length - 1;
-    const lastClose = closes[lastIdx];
-    const prevClose = lastIdx > 0 ? closes[lastIdx - 1] : meta.chartPreviousClose;
-    const change = lastClose && prevClose ? lastClose - prevClose : null;
-    const changePct = lastClose && prevClose ? (change / prevClose) * 100 : null;
+    const lastClose = closes.length > 0 ? closes[closes.length - 1] : null;
+    const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
+    const change = lastClose != null && prevClose != null ? lastClose - prevClose : null;
+    const changePct = change != null && prevClose ? (change / prevClose) * 100 : null;
 
-    // 5日量价
-    const candles = timestamps.map((t: number, i: number) => ({
-      date: new Date(t * 1000).toISOString().slice(0, 10),
-      close: closes[i] ?? null,
-      volume: volumes[i] ?? null,
-    })).filter((c: { close: number | null }) => c.close != null);
+    const candles = timestamps
+      .map((ts, i) => ({
+        date: new Date(ts * 1000).toISOString().slice(0, 10),
+        close: closes[i] ?? null,
+        volume: volumes[i] ?? null,
+      }))
+      .filter((c) => c.close != null);
 
+    // === 2. 财务指标（quoteSummary，失败不影响主流程）===
+    let financials: Record<string, unknown> | null = null;
+    try {
+      const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${code}?modules=summaryDetail,financialData,defaultKeyStatistics,assetProfile`;
+      const summaryRes = await fetch(summaryUrl, {
+        headers: { "User-Agent": UA },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (summaryRes.ok) {
+        const summaryJson = await summaryRes.json();
+        const sd = summaryJson?.quoteSummary?.result?.[0]?.summaryDetail ?? {};
+        const fd = summaryJson?.quoteSummary?.result?.[0]?.financialData ?? {};
+        const ks = summaryJson?.quoteSummary?.result?.[0]?.defaultKeyStatistics ?? {};
+        const ap = summaryJson?.quoteSummary?.result?.[0]?.assetProfile ?? {};
+
+        financials = {
+          pe: sd.trailingPE?.raw ?? null,
+          forwardPe: sd.forwardPE?.raw ?? null,
+          pb: sd.priceToBook?.raw ?? null,
+          ps: sd.priceToSalesTrailing12Months?.raw ?? null,
+          evToEbitda: sd.enterpriseToEbitda?.raw ?? null,
+          dividendYield: sd.dividendYield?.raw ?? null,
+          payoutRatio: sd.payoutRatio?.raw ?? null,
+          beta: sd.beta?.raw ?? null,
+          roe: fd.returnOnEquity?.raw ?? null,
+          roa: fd.returnOnAssets?.raw ?? null,
+          grossMargin: fd.grossMargins?.raw ?? null,
+          operatingMargin: fd.operatingMargins?.raw ?? null,
+          profitMargin: fd.profitMargins?.raw ?? null,
+          debtToEquity: fd.debtToEquity?.raw ?? null,
+          currentRatio: fd.currentRatio?.raw ?? null,
+          quickRatio: fd.quickRatio?.raw ?? null,
+          revenueGrowth: fd.revenueGrowth?.raw ?? null,
+          earningsGrowth: fd.earningsGrowth?.raw ?? null,
+          totalCash: fd.totalCash?.raw ?? null,
+          totalDebt: fd.totalDebt?.raw ?? null,
+          freeCashflow: fd.freeCashflow?.raw ?? null,
+          operatingCashflow: fd.operatingCashflow?.raw ?? null,
+          eps: ks.trailingEps?.raw ?? null,
+          forwardEps: ks.forwardEps?.raw ?? null,
+          pegRatio: ks.pegRatio?.raw ?? null,
+          enterpriseValue: ks.enterpriseValue?.raw ?? null,
+          profitMargins: ks.profitMargins?.raw ?? null,
+          sector: ap.sector ?? null,
+          industry: ap.industry ?? null,
+          fullTimeEmployees: ap.fullTimeEmployees ?? null,
+          longBusinessSummary: ap.longBusinessSummary ?? null,
+        };
+      }
+    } catch {
+      // quoteSummary失败不影响主行情
+    }
+
+    // === 3. 组装响应 ===
     return NextResponse.json({
       data: {
         code,
         name: meta.longName || meta.shortName || code,
         currency: meta.currency || "USD",
         exchange: meta.exchangeName || meta.fullExchangeName || "",
-        price: lastClose ?? null,
-        previousClose: prevClose ?? null,
+        price: lastClose ? Number(lastClose.toFixed(2)) : null,
+        previousClose: prevClose ? Number(prevClose.toFixed(2)) : null,
         change: change ? Number(change.toFixed(2)) : null,
         changePct: changePct ? Number(changePct.toFixed(2)) : null,
         volume: meta.regularMarketVolume ?? null,
@@ -73,6 +125,7 @@ export async function GET(request: NextRequest) {
         fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? null,
         fiftyTwoWeekLow: meta.fiftyTwoWeekLow ?? null,
         candles,
+        financials,
       },
     });
   } catch (error) {
