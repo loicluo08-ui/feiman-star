@@ -7,80 +7,231 @@ export const dynamic = "force-dynamic";
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "d9ve1m9r01qv408k7rf0d9ve1m9r01qv408k7rfg";
 
-// Finnhub实时行情
-async function getFinnhubQuote(code: string) {
+interface FinnhubQuote {
+  c?: number;
+  d?: number;
+  dp?: number;
+  pc?: number;
+  t?: number;
+}
+
+type FinnhubMetrics = Record<string, number | null | undefined>;
+
+interface FinnhubProfile {
+  name?: string;
+  exchange?: string;
+  marketCapitalization?: number;
+  finnhubIndustry?: string;
+  employeeTotal?: number;
+}
+
+interface YahooChartResult {
+  meta?: {
+    longName?: string;
+    shortName?: string;
+    exchangeName?: string;
+    regularMarketPrice?: number;
+    regularMarketVolume?: number;
+    chartPreviousClose?: number;
+    fiftyTwoWeekHigh?: number;
+    fiftyTwoWeekLow?: number;
+  };
+  timestamp?: number[];
+  indicators?: {
+    quote?: Array<{
+      close?: Array<number | null>;
+      volume?: Array<number | null>;
+    }>;
+  };
+}
+
+async function getFinnhubQuote(code: string): Promise<FinnhubQuote | null> {
   if (!FINNHUB_KEY) return null;
+
   try {
-    // === 1. Finnhub实时行情 ===
-    const [quote, metrics, profile] = await Promise.all([
+    const response = await fetch(
+      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(code)}&token=${FINNHUB_KEY}`,
+      { signal: AbortSignal.timeout(6000) },
+    );
+    if (!response.ok) return null;
+
+    const quote = (await response.json()) as FinnhubQuote;
+    return typeof quote.c === "number" && quote.c > 0 ? quote : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getFinnhubMetrics(code: string): Promise<FinnhubMetrics | null> {
+  if (!FINNHUB_KEY) return null;
+
+  try {
+    const response = await fetch(
+      `https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(code)}&metric=all&token=${FINNHUB_KEY}`,
+      { signal: AbortSignal.timeout(6000) },
+    );
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as { metric?: FinnhubMetrics };
+    return payload.metric && Object.keys(payload.metric).length > 0 ? payload.metric : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getFinnhubProfile(code: string): Promise<FinnhubProfile | null> {
+  if (!FINNHUB_KEY) return null;
+
+  try {
+    const response = await fetch(
+      `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(code)}&token=${FINNHUB_KEY}`,
+      { signal: AbortSignal.timeout(6000) },
+    );
+    if (!response.ok) return null;
+
+    const profile = (await response.json()) as FinnhubProfile;
+    return profile.name ? profile : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getYahooChart(code: string): Promise<YahooChartResult | null> {
+  try {
+    let cookie = "";
+    let crumb = "";
+
+    try {
+      const cookieResponse = await fetch("https://fc.yahoo.com/", {
+        headers: { "User-Agent": UA },
+        redirect: "manual",
+        signal: AbortSignal.timeout(5000),
+      });
+      const match = (cookieResponse.headers.get("set-cookie") || "").match(/A3=([^;]+)/);
+      if (match) cookie = match[1];
+
+      if (cookie) {
+        const crumbResponse = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+          headers: { "User-Agent": UA, Cookie: `A3=${cookie}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (crumbResponse.ok) crumb = (await crumbResponse.text()).trim();
+      }
+    } catch {
+      // Cookie认证失败时继续尝试公开行情接口。
+    }
+
+    const params = new URLSearchParams({
+      interval: "1d",
+      range: "3mo",
+      ...(crumb ? { crumb } : {}),
+    });
+    const response = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?${params}`,
+      {
+        headers: {
+          "User-Agent": UA,
+          ...(cookie ? { Cookie: `A3=${cookie}` } : {}),
+        },
+        signal: AbortSignal.timeout(10000),
+      },
+    );
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as {
+      chart?: { result?: YahooChartResult[] };
+    };
+    return payload.chart?.result?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 美股实时行情、历史K线与财务指标。
+ * GET /api/invest/stock?code=AAPL
+ */
+export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, "chat", RATE_LIMITS.chat);
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
+
+  const rawCode = new URL(request.url).searchParams.get("code")?.trim().toUpperCase();
+  if (!rawCode || !/^[A-Z]{1,6}$/.test(rawCode)) {
+    return NextResponse.json({ error: "请输入有效的美股代码（如 AAPL）" }, { status: 400 });
+  }
+
+  const code = rawCode;
+
+  try {
+    const [quote, metrics, profile, yahooResult] = await Promise.all([
       getFinnhubQuote(code),
       getFinnhubMetrics(code),
       getFinnhubProfile(code),
+      getYahooChart(code),
     ]);
-
-    // === 2. Yahoo Finance K线（3个月）===
-    const yahooResult = await getYahooChart(code);
 
     if (!quote && !yahooResult) {
       return NextResponse.json({ error: `未找到股票代码 ${code}` }, { status: 404 });
     }
 
-    // === 3. 组装响应 ===
-    // 实时价格用Finnhub（实时），K线用Yahoo（延迟15分钟但只看历史走势）
     const price = quote?.c ?? yahooResult?.meta?.regularMarketPrice ?? null;
-    const prevClose = quote?.pc ?? yahooResult?.meta?.chartPreviousClose ?? null;
-    const change = quote?.d ?? (price != null && prevClose != null ? price - prevClose : null);
-    const changePct = quote?.dp ?? (change != null && prevClose ? (change / prevClose) * 100 : null);
+    const previousClose = quote?.pc ?? yahooResult?.meta?.chartPreviousClose ?? null;
+    const change = quote?.d ?? (price != null && previousClose != null ? price - previousClose : null);
+    const changePct = quote?.dp ?? (change != null && previousClose ? (change / previousClose) * 100 : null);
 
-    // K线数据
-    const timestamps: number[] = yahooResult?.timestamp ?? [];
-    const closes: (number | null)[] = yahooResult?.indicators?.quote?.[0]?.close ?? [];
-    const volumes: (number | null)[] = yahooResult?.indicators?.quote?.[0]?.volume ?? [];
+    const timestamps = yahooResult?.timestamp ?? [];
+    const closes = yahooResult?.indicators?.quote?.[0]?.close ?? [];
+    const volumes = yahooResult?.indicators?.quote?.[0]?.volume ?? [];
     const candles = timestamps
-      .map((ts, i) => ({
-        date: new Date(ts * 1000).toISOString().slice(0, 10),
-        close: closes[i] ?? null,
-        volume: volumes[i] ?? null,
+      .map((timestamp, index) => ({
+        date: new Date(timestamp * 1000).toISOString().slice(0, 10),
+        close: closes[index] ?? null,
+        volume: volumes[index] ?? null,
       }))
-      .filter((c) => c.close != null);
+      .filter((candle) => candle.close != null);
 
-    // 财务指标（Finnhub优先，Yahoo quoteSummary fallback）
-    let financials: Record<string, unknown> | null = null;
-    if (metrics) {
-      financials = {
-        pe: metrics.peNormalizedAnnual ?? metrics.peTTM ?? null,
-        forwardPe: metrics.forwardPEAnnual ?? null,
-        pb: metrics.pbAnnual ?? metrics.pbQuarterly ?? null,
-        ps: metrics.psAnnual ?? null,
-        evToEbitda: metrics.enterpriseValueToEbitdaTTM ?? null,
-        dividendYield: metrics.dividendYieldIndicated ?? null,
-        payoutRatio: metrics.payoutRatioTTM ?? null,
-        beta: metrics.beta5YearAnnualized ?? null,
-        roe: metrics.roeRfy ?? metrics.roeTTM ?? null,
-        roa: metrics.roaTTM ?? null,
-        grossMargin: metrics.grossMarginAnnual ?? metrics.grossMarginTTM ?? null,
-        operatingMargin: metrics.operatingMarginAnnual ?? metrics.operatingMarginTTM ?? null,
-        profitMargin: metrics.netProfitMarginAnnual ?? metrics.netMarginTTM ?? null,
-        debtToEquity: metrics["totalDebt/totalEquityAnnual"] ?? null,
-        currentRatio: metrics.currentRatioAnnual ?? null,
-        quickRatio: metrics.quickRatioAnnual ?? null,
-        revenueGrowth: metrics.revenueGrowth5Y ?? metrics.revenueGrowthQuarterlyYoy ?? null,
-        earningsGrowth: metrics.epsGrowth5Y ?? metrics.epsGrowthQuarterlyYoy ?? null,
-        totalCash: metrics.cashAndEquivalentsAnnual ?? null,
-        totalDebt: metrics.totalDebtAnnual ?? null,
-        freeCashflow: metrics.freeCashFlowTTM ?? null,
-        operatingCashflow: metrics.cashFlowOperatingTTM ?? null,
-        eps: metrics.epsNormalizedAnnual ?? metrics.epsTTM ?? null,
-        forwardEps: metrics.epsForward ?? null,
-        pegRatio: metrics.pegRatio ?? null,
-        enterpriseValue: metrics.enterpriseValueAnnual ?? null,
-        profitMargins: metrics.netProfitMarginAnnual ?? null,
-        sector: profile?.finnhubIndustry ?? null,
-        industry: profile?.finnhubIndustry ?? null,
-        fullTimeEmployees: profile?.employeeTotal ?? null,
-        longBusinessSummary: profile?.name ? `${profile.name} (${code}) — ${profile.finnhubIndustry || ""}` : null,
-      };
-    }
+    const financials: Record<string, unknown> | null = metrics
+      ? {
+          pe: metrics.peNormalizedAnnual ?? metrics.peTTM ?? null,
+          forwardPe: metrics.forwardPEAnnual ?? null,
+          pb: metrics.pbAnnual ?? metrics.pbQuarterly ?? null,
+          ps: metrics.psAnnual ?? null,
+          evToEbitda: metrics.enterpriseValueToEbitdaTTM ?? null,
+          dividendYield: metrics.dividendYieldIndicated ?? null,
+          payoutRatio: metrics.payoutRatioTTM ?? null,
+          beta: metrics.beta5YearAnnualized ?? null,
+          roe: metrics.roeRfy ?? metrics.roeTTM ?? null,
+          roa: metrics.roaTTM ?? null,
+          grossMargin: metrics.grossMarginAnnual ?? metrics.grossMarginTTM ?? null,
+          operatingMargin: metrics.operatingMarginAnnual ?? metrics.operatingMarginTTM ?? null,
+          profitMargin: metrics.netProfitMarginAnnual ?? metrics.netMarginTTM ?? null,
+          debtToEquity: metrics["totalDebt/totalEquityAnnual"] ?? null,
+          currentRatio: metrics.currentRatioAnnual ?? null,
+          quickRatio: metrics.quickRatioAnnual ?? null,
+          revenueGrowth: metrics.revenueGrowth5Y ?? metrics.revenueGrowthQuarterlyYoy ?? null,
+          earningsGrowth: metrics.epsGrowth5Y ?? metrics.epsGrowthQuarterlyYoy ?? null,
+          totalCash: metrics.cashAndEquivalentsAnnual ?? null,
+          totalDebt: metrics.totalDebtAnnual ?? null,
+          freeCashflow: metrics.freeCashFlowTTM ?? null,
+          operatingCashflow: metrics.cashFlowOperatingTTM ?? null,
+          eps: metrics.epsNormalizedAnnual ?? metrics.epsTTM ?? null,
+          forwardEps: metrics.epsForward ?? null,
+          pegRatio: metrics.pegRatio ?? null,
+          enterpriseValue: metrics.enterpriseValueAnnual ?? null,
+          profitMargins: metrics.netProfitMarginAnnual ?? null,
+          sector: profile?.finnhubIndustry ?? null,
+          industry: profile?.finnhubIndustry ?? null,
+          fullTimeEmployees: profile?.employeeTotal ?? null,
+          longBusinessSummary: profile?.name
+            ? `${profile.name} (${code}) — ${profile.finnhubIndustry || ""}`
+            : null,
+        }
+      : null;
 
     return NextResponse.json({
       data: {
@@ -88,17 +239,17 @@ async function getFinnhubQuote(code: string) {
         name: profile?.name || yahooResult?.meta?.longName || yahooResult?.meta?.shortName || code,
         currency: "USD",
         exchange: profile?.exchange || yahooResult?.meta?.exchangeName || "",
-        price: price ? Number(price.toFixed(2)) : null,
-        previousClose: prevClose ? Number(prevClose.toFixed(2)) : null,
-        change: change ? Number(change.toFixed(2)) : null,
-        changePct: changePct ? Number(changePct.toFixed(2)) : null,
-        volume: quote?.t ? (yahooResult?.meta?.regularMarketVolume ?? null) : null,
-        marketCap: profile?.marketCapitalization ? profile.marketCapitalization * 1000000 : null,
+        price: price != null ? Number(price.toFixed(2)) : null,
+        previousClose: previousClose != null ? Number(previousClose.toFixed(2)) : null,
+        change: change != null ? Number(change.toFixed(2)) : null,
+        changePct: changePct != null ? Number(changePct.toFixed(2)) : null,
+        volume: yahooResult?.meta?.regularMarketVolume ?? null,
+        marketCap: profile?.marketCapitalization ? profile.marketCapitalization * 1_000_000 : null,
         fiftyTwoWeekHigh: yahooResult?.meta?.fiftyTwoWeekHigh ?? null,
         fiftyTwoWeekLow: yahooResult?.meta?.fiftyTwoWeekLow ?? null,
         candles,
         financials,
-        realtime: !!quote,
+        realtime: Boolean(quote),
       },
     });
   } catch (error) {
