@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { callAI, callVisionAI, sanitizeInput, type VisionMessage } from "@/lib/ai";
+import { callAI, callVisionAI, type VisionMessage } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

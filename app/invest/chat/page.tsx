@@ -75,13 +75,21 @@ export default function ChatPage() {
       imagePreview: image ?? undefined,
     };
 
+    // 历史消息：只保留最近2轮的图片，更早的图片转为文字描述（避免payload过大）
+    const recentImageCount = 2;
+    let imageCount = 0;
     const apiMessages = [
-      ...messages.map((m) => ({
-        role: m.role,
-        content: m.role === "user"
-          ? { type: "text" as const, text: m.text }
-          : { type: "text" as const, text: m.text }
-      })),
+      ...messages.map((m) => {
+        const hasImage = !!m.imagePreview;
+        const includeImage = hasImage && imageCount < recentImageCount;
+        if (hasImage) imageCount++;
+        return {
+          role: m.role,
+          content: includeImage && m.imagePreview
+            ? { type: "image" as const, dataUrl: m.imagePreview }
+            : { type: "text" as const, text: m.imagePreview ? `${m.text}（之前上传的图片省略）` : m.text }
+        };
+      }),
       {
         role: "user" as const,
         content: image
