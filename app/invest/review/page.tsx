@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
 type ReviewRecord = {
   id: string;
@@ -13,6 +13,154 @@ type ReviewRecord = {
 
 const STORAGE_KEY = "feimanstar_reviews";
 
+type ParsedTrade = {
+  symbol: string;
+  side: "buy" | "sell";
+  quantity: number;
+  price: number;
+};
+
+type TradeStats = {
+  totalTrades: number;
+  winRate: number | null;
+  totalPnl: number;
+  profitLossRatio: number | null;
+};
+
+function toPositiveNumber(value: string | undefined): number | null {
+  if (!value) return null;
+  const number = Number(value.replace(/[$,\s]/g, ""));
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function parseTradeEntry(raw: string): ParsedTrade | null {
+  const text = raw.trim();
+  if (!text) return null;
+
+  const csv = text.split(",").map((part) => part.trim());
+  if (csv.length >= 5 && /^(BUY|SELL)$/i.test(csv[2])) {
+    const quantity = toPositiveNumber(csv[3]);
+    const price = toPositiveNumber(csv[4]);
+    if (quantity && price && /^[A-Z]{1,6}$/i.test(csv[1])) {
+      return {
+        symbol: csv[1].toUpperCase(),
+        side: csv[2].toUpperCase() === "BUY" ? "buy" : "sell",
+        quantity,
+        price,
+      };
+    }
+  }
+
+  const sideMatch = text.match(/方向\s*[:：]\s*(买入|卖出|BUY|SELL)/i)
+    ?? text.match(/(?:^|\s)(买入|卖出|BUY|SELL)(?:\s|$)/i);
+  if (!sideMatch) return null;
+
+  const side = /^(买入|BUY)$/i.test(sideMatch[1]) ? "buy" : "sell";
+  const symbolMatch = text.match(/代码\s*[:：]\s*([A-Z]{1,6})/i)
+    ?? text.match(/(?:买入|卖出|BUY|SELL)\s+([A-Z]{1,6})/i);
+  const quantityMatch = text.match(/(?:数量|QTY)\s*[:：]?\s*([\d,.]+)/i)
+    ?? text.match(/([\d,.]+)\s*(?:股|SHARES?)/i);
+  const priceMatch = text.match(/(?:价格|PRICE)\s*[:：]?\s*\$?\s*([\d,.]+)/i)
+    ?? text.match(/@\s*\$?\s*([\d,.]+)/);
+
+  const quantity = toPositiveNumber(quantityMatch?.[1]);
+  const price = toPositiveNumber(priceMatch?.[1]);
+  if (!symbolMatch || !quantity || !price) return null;
+
+  return {
+    symbol: symbolMatch[1].toUpperCase(),
+    side,
+    quantity,
+    price,
+  };
+}
+
+function parseTrades(text: string): ParsedTrade[] {
+  const entries: ParsedTrade[] = [];
+  const blocks = text.split(/\n\s*-{3,}\s*\n/);
+
+  for (const block of blocks) {
+    const isFieldBlock = /(?:方向|代码|数量|价格)\s*[:：]/.test(block);
+    if (isFieldBlock) {
+      const entry = parseTradeEntry(block);
+      if (entry) entries.push(entry);
+      continue;
+    }
+
+    for (const line of block.split(/\r?\n/)) {
+      const entry = parseTradeEntry(line);
+      if (entry) entries.push(entry);
+    }
+  }
+
+  return entries;
+}
+
+function calculateTradeStats(text: string): TradeStats {
+  const entries = parseTrades(text);
+  const openLots = new Map<string, Array<{ quantity: number; price: number }>>();
+  const closedPnls: number[] = [];
+
+  for (const entry of entries) {
+    if (entry.side === "buy") {
+      const lots = openLots.get(entry.symbol) ?? [];
+      lots.push({ quantity: entry.quantity, price: entry.price });
+      openLots.set(entry.symbol, lots);
+      continue;
+    }
+
+    const lots = openLots.get(entry.symbol) ?? [];
+    let remaining = entry.quantity;
+    let tradePnl = 0;
+    let matchedQuantity = 0;
+
+    while (remaining > 0 && lots.length > 0) {
+      const lot = lots[0];
+      const matched = Math.min(remaining, lot.quantity);
+      tradePnl += (entry.price - lot.price) * matched;
+      matchedQuantity += matched;
+      remaining -= matched;
+      lot.quantity -= matched;
+      if (lot.quantity <= 0) lots.shift();
+    }
+
+    if (matchedQuantity > 0) closedPnls.push(tradePnl);
+    openLots.set(entry.symbol, lots);
+  }
+
+  if (closedPnls.length === 0) {
+    const explicitPnls = Array.from(
+      text.matchAll(/(?:盈亏|P\/?L|PNL)\s*[:：]?\s*([+-]?\s*\$?\s*[\d,.]+)/gi),
+      (match) => Number(match[1].replace(/[$,\s]/g, "")),
+    ).filter(Number.isFinite);
+    closedPnls.push(...explicitPnls);
+  }
+
+  const wins = closedPnls.filter((pnl) => pnl > 0);
+  const losses = closedPnls.filter((pnl) => pnl < 0);
+  const averageWin = wins.length > 0 ? wins.reduce((sum, pnl) => sum + pnl, 0) / wins.length : null;
+  const averageLoss = losses.length > 0
+    ? Math.abs(losses.reduce((sum, pnl) => sum + pnl, 0) / losses.length)
+    : null;
+
+  return {
+    totalTrades: closedPnls.length,
+    winRate: closedPnls.length > 0 ? (wins.length / closedPnls.length) * 100 : null,
+    totalPnl: closedPnls.reduce((sum, pnl) => sum + pnl, 0),
+    profitLossRatio: averageWin != null && averageLoss != null
+      ? averageWin / averageLoss
+      : averageWin != null
+        ? Number.POSITIVE_INFINITY
+        : null,
+  };
+}
+
+function formatPnl(value: number, hasTrades: boolean): string {
+  if (!hasTrades) return "—";
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  return `${sign}$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
 export default function ReviewPage() {
   const [trades, setTrades] = useState("");
   const [strategy, setStrategy] = useState("");
@@ -22,6 +170,7 @@ export default function ReviewPage() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState<ReviewRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const tradeStats = useMemo(() => calculateTradeStats(trades), [trades]);
 
   // 加载历史
   function loadHistory() {
@@ -208,6 +357,35 @@ export default function ReviewPage() {
           </div>
         </div>
 
+        {trades.trim() ? (
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-medium">交易统计</p>
+              <p className="text-xs text-[#8e8e93]">按已识别的平仓交易自动计算</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatCard label="总笔数" value={String(tradeStats.totalTrades)} />
+              <StatCard
+                label="胜率"
+                value={tradeStats.winRate != null ? `${tradeStats.winRate.toFixed(1)}%` : "—"}
+              />
+              <StatCard
+                label="总盈亏"
+                value={formatPnl(tradeStats.totalPnl, tradeStats.totalTrades > 0)}
+                tone={tradeStats.totalPnl > 0 ? "positive" : tradeStats.totalPnl < 0 ? "negative" : "neutral"}
+              />
+              <StatCard
+                label="盈亏比"
+                value={tradeStats.profitLossRatio === Number.POSITIVE_INFINITY
+                  ? "∞"
+                  : tradeStats.profitLossRatio != null
+                    ? tradeStats.profitLossRatio.toFixed(2)
+                    : "—"}
+              />
+            </div>
+          </div>
+        ) : null}
+
         <button
           type="submit"
           disabled={loading || !trades.trim()}
@@ -288,6 +466,29 @@ export default function ReviewPage() {
       ) : null}
 
       <p className="mt-10 text-xs text-[#8e8e93]">本工具仅供研究参考，不构成投资建议。历史记录保存在本地浏览器。</p>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "positive" | "negative";
+}) {
+  const valueColor = tone === "positive"
+    ? "text-[#16a34a]"
+    : tone === "negative"
+      ? "text-[#dc2626]"
+      : "text-[#1a1a1a]";
+
+  return (
+    <div className="rounded-xl border border-[#e5e5e7] bg-white px-4 py-3">
+      <p className="text-xs text-[#8e8e93]">{label}</p>
+      <p className={`mt-1 text-lg font-semibold tabular-nums ${valueColor}`}>{value}</p>
     </div>
   );
 }

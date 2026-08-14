@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { toPng } from "html-to-image";
 
 type SearchResult = {
   code: string;
@@ -75,8 +76,11 @@ export default function PickPage() {
   const [loadingAI, setLoadingAI] = useState(false);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [error, setError] = useState("");
+  const [copyLabel, setCopyLabel] = useState("复制");
+  const [exporting, setExporting] = useState(false);
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   // 搜索联想（防抖300ms）
   useEffect(() => {
@@ -208,6 +212,47 @@ export default function PickPage() {
       setError("AI分析暂时不可用");
     } finally {
       setLoadingAI(false);
+    }
+  }
+
+  async function copyAnalysis() {
+    if (!analysis) return;
+    try {
+      await navigator.clipboard.writeText(analysis);
+      setCopyLabel("已复制");
+      window.setTimeout(() => setCopyLabel("复制"), 1600);
+    } catch {
+      setError("复制失败，请手动选择报告内容复制");
+    }
+  }
+
+  async function exportAnalysisImage() {
+    if (!analysis || !stockData || !reportRef.current || exporting) return;
+    setExporting(true);
+    setError("");
+
+    try {
+      const dataUrl = await toPng(reportRef.current, {
+        backgroundColor: "#ffffff",
+        cacheBust: true,
+        pixelRatio: 2,
+      });
+      const now = new Date();
+      const date = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+      ].join("-");
+      const link = document.createElement("a");
+      link.download = `费曼星分析_${stockData.code}_${date}.png`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch {
+      setError("图片导出失败，请稍后重试");
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -439,8 +484,35 @@ export default function PickPage() {
             ) : null}
 
             {analysis ? (
-              <div className="mt-4 rounded-xl bg-[#f7f7f8] p-4">
-                <div className="whitespace-pre-wrap text-sm leading-7 text-[#1a1a1a]">{analysis}</div>
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-end gap-2">
+                  <button
+                    onClick={copyAnalysis}
+                    className="rounded-md border border-[#d1d1d6] px-2.5 py-1.5 text-xs font-medium text-[#6e6e73] transition-colors hover:border-[#1a1a1a] hover:text-[#1a1a1a]"
+                  >
+                    {copyLabel}
+                  </button>
+                  <button
+                    onClick={exportAnalysisImage}
+                    disabled={exporting}
+                    className="rounded-md border border-[#d1d1d6] px-2.5 py-1.5 text-xs font-medium text-[#6e6e73] transition-colors hover:border-[#1a1a1a] hover:text-[#1a1a1a] disabled:opacity-40"
+                  >
+                    {exporting ? "导出中…" : "导出图片"}
+                  </button>
+                </div>
+                <div ref={reportRef} className="rounded-xl bg-[#f7f7f8] p-5">
+                  <div className="mb-4 border-b border-[#e5e5e7] pb-3">
+                    <p className="text-xs font-medium text-[#8e8e93]">费曼星 · AI选股分析</p>
+                    <div className="mt-1 flex items-baseline justify-between gap-3">
+                      <p className="text-base font-semibold text-[#1a1a1a]">{stockData.name}</p>
+                      <p className="text-xs font-medium text-[#6e6e73]">{stockData.code}</p>
+                    </div>
+                  </div>
+                  <div className="whitespace-pre-wrap text-sm leading-7 text-[#1a1a1a]">{analysis}</div>
+                  <p className="mt-5 border-t border-[#e5e5e7] pt-3 text-[11px] text-[#8e8e93]">
+                    由费曼星生成，仅供研究参考，不构成投资建议。
+                  </p>
+                </div>
               </div>
             ) : null}
           </div>

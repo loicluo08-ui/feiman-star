@@ -1,12 +1,22 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
 type ChatItem = {
   role: "user" | "assistant";
   text: string;
   imagePreview?: string;
 };
+
+type ChatHistoryRecord = {
+  id: string;
+  date: string;
+  title: string;
+  style: "balanced" | "value" | "growth" | "quant";
+  messages: ChatItem[];
+};
+
+const CHAT_HISTORY_KEY = "feimanstar_chat_history";
 
 const suggestions = [
   { title: "帮我分析这张K线图", desc: "上传截图，AI解读走势" },
@@ -23,8 +33,72 @@ export default function ChatPage() {
   const [image, setImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [style, setStyle] = useState<"balanced" | "value" | "growth" | "quant">("balanced");
+  const [history, setHistory] = useState<ChatHistoryRecord[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeHistoryId = useRef("");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CHAT_HISTORY_KEY);
+      if (saved) {
+        const records = JSON.parse(saved) as ChatHistoryRecord[];
+        setHistory(records.slice(0, 20));
+      }
+    } catch {
+      // 本地历史损坏时忽略，不影响正常对话。
+    }
+  }, []);
+
+  function persistConversation(nextMessages: ChatItem[]) {
+    try {
+      const id = activeHistoryId.current || `${Date.now()}`;
+      activeHistoryId.current = id;
+      const textOnlyMessages = nextMessages.map((message) => ({
+        role: message.role,
+        text: message.text,
+      }));
+      const firstQuestion = textOnlyMessages.find((message) => message.role === "user")?.text ?? "投资对话";
+      const record: ChatHistoryRecord = {
+        id,
+        date: new Date().toISOString(),
+        title: firstQuestion.replace(/\s+/g, " ").slice(0, 48),
+        style,
+        messages: textOnlyMessages,
+      };
+
+      setHistory((previous) => {
+        const next = [record, ...previous.filter((item) => item.id !== id)].slice(0, 20);
+        localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(next));
+        return next;
+      });
+    } catch {
+      // localStorage不可用时不阻断对话。
+    }
+  }
+
+  function loadConversation(record: ChatHistoryRecord) {
+    activeHistoryId.current = record.id;
+    setMessages(record.messages);
+    setStyle(record.style);
+    setShowHistory(false);
+    setError("");
+    scrollToBottom();
+  }
+
+  function deleteConversation(id: string) {
+    setHistory((previous) => {
+      const next = previous.filter((item) => item.id !== id);
+      try {
+        localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+    if (activeHistoryId.current === id) activeHistoryId.current = "";
+  }
 
   function scrollToBottom() {
     requestAnimationFrame(() => {
@@ -122,20 +196,20 @@ export default function ChatPage() {
       const json = await res.json();
       const answer = json.data?.answer ?? "";
 
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: "assistant", text: answer };
-        return updated;
-      });
+      const completedMessages = [...messages, userItem, { role: "assistant" as const, text: answer }];
+      setMessages(completedMessages);
+      persistConversation(completedMessages);
     } catch (err) {
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          role: "assistant",
+      const failedMessages = [
+        ...messages,
+        userItem,
+        {
+          role: "assistant" as const,
           text: `⚠️ ${err instanceof Error ? err.message : "AI暂时不可用"}`,
-        };
-        return updated;
-      });
+        },
+      ];
+      setMessages(failedMessages);
+      persistConversation(failedMessages);
     } finally {
       setLoading(false);
       scrollToBottom();
@@ -150,35 +224,74 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-[calc(100dvh-3rem)] flex-col md:h-screen">
       {/* Header */}
       <header className="border-b border-[#e5e5e7] px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-lg font-semibold">投资对话 · 支持截图分析</h1>
             <p className="mt-0.5 text-xs text-[#8e8e93]">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek。</p>
           </div>
-          <div className="flex gap-1">
-            {[
-              { key: "balanced", label: "均衡" },
-              { key: "value", label: "价值" },
-              { key: "growth", label: "成长" },
-              { key: "quant", label: "量化" },
-            ].map((s) => (
-              <button
-                key={s.key}
-                onClick={() => setStyle(s.key as typeof style)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  style === s.key
-                    ? "bg-[#1a1a1a] text-white"
-                    : "bg-[#f2f2f3] text-[#6e6e73] hover:bg-[#e5e5e7]"
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowHistory((visible) => !visible)}
+              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                showHistory
+                  ? "border-[#1a1a1a] bg-[#1a1a1a] text-white"
+                  : "border-[#d1d1d6] text-[#6e6e73] hover:border-[#1a1a1a]"
+              }`}
+            >
+              历史记录{history.length > 0 ? ` ${history.length}` : ""}
+            </button>
+            <div className="flex gap-1">
+              {[
+                { key: "balanced", label: "均衡" },
+                { key: "value", label: "价值" },
+                { key: "growth", label: "成长" },
+                { key: "quant", label: "量化" },
+              ].map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setStyle(s.key as typeof style)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    style === s.key
+                      ? "bg-[#1a1a1a] text-white"
+                      : "bg-[#f2f2f3] text-[#6e6e73] hover:bg-[#e5e5e7]"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+
+        {showHistory ? (
+          <div className="mx-auto mt-4 max-h-64 max-w-3xl overflow-y-auto rounded-xl border border-[#e5e5e7] bg-white">
+            {history.length === 0 ? (
+              <p className="px-4 py-5 text-center text-sm text-[#8e8e93]">还没有历史对话</p>
+            ) : (
+              history.map((record) => (
+                <div key={record.id} className="flex items-center gap-3 border-b border-[#f2f2f3] px-4 py-3 last:border-0">
+                  <button onClick={() => loadConversation(record)} className="min-w-0 flex-1 text-left">
+                    <p className="truncate text-sm font-medium text-[#1a1a1a]">{record.title}</p>
+                    <p className="mt-0.5 text-xs text-[#8e8e93]">
+                      {new Date(record.date).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })}
+                      {` · ${Math.ceil(record.messages.length / 2)}轮`}
+                    </p>
+                  </button>
+                  <button
+                    onClick={() => deleteConversation(record.id)}
+                    className="shrink-0 text-xs text-[#8e8e93] transition-colors hover:text-red-600"
+                    aria-label={`删除历史对话：${record.title}`}
+                  >
+                    删除
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
       </header>
 
       {/* Messages */}
