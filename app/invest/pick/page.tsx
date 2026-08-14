@@ -69,9 +69,62 @@ type PickAnalysisResult = {
   analysis: string;
   stockData: StockData;
   userNotes: string;
+  history: PickHistoryRecord[];
+};
+
+type PickHistoryRecord = {
+  id: string;
+  code: string;
+  name: string;
+  date: string;
+  fundamentalScore: number | null;
+  technicalScore: number | null;
+  valuationScore: number | null;
+  totalScore: number | null;
 };
 
 const PICK_TASK_KEY = "pick-analysis";
+const PICK_HISTORY_KEY = "feimanstar_pick_history";
+
+function readPickHistory(): PickHistoryRecord[] {
+  try {
+    const saved = localStorage.getItem(PICK_HISTORY_KEY);
+    return saved ? (JSON.parse(saved) as PickHistoryRecord[]).slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
+function extractScore(analysis: string, labels: string[]): number | null {
+  const normalized = analysis.replace(/\*\*/g, "");
+  for (const label of labels) {
+    const tableMatch = normalized.match(new RegExp(`\\|\\s*${label}\\s*\\|\\s*(\\d+(?:\\.\\d+)?)\\s*\\/\\s*10`, "i"));
+    const textMatch = normalized.match(new RegExp(`${label}[^\\n\\d]{0,20}(\\d+(?:\\.\\d+)?)\\s*\\/\\s*10`, "i"));
+    const value = Number(tableMatch?.[1] ?? textMatch?.[1]);
+    if (Number.isFinite(value)) return Math.min(10, Math.max(0, value));
+  }
+  return null;
+}
+
+function storePickAnalysis(stockData: StockData, analysis: string): PickHistoryRecord[] {
+  const record: PickHistoryRecord = {
+    id: `${Date.now()}-${stockData.code}`,
+    code: stockData.code,
+    name: stockData.name,
+    date: new Date().toISOString(),
+    fundamentalScore: extractScore(analysis, ["基本面"]),
+    technicalScore: extractScore(analysis, ["技术面"]),
+    valuationScore: extractScore(analysis, ["估值"]),
+    totalScore: extractScore(analysis, ["加权总分", "总分"]),
+  };
+  const next = [record, ...readPickHistory()].slice(0, 20);
+  try {
+    localStorage.setItem(PICK_HISTORY_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage不可用时不影响分析结果。
+  }
+  return next;
+}
 
 export default function PickPage() {
   const [query, setQuery] = useState("");
@@ -88,6 +141,8 @@ export default function PickPage() {
   const [error, setError] = useState("");
   const [copyLabel, setCopyLabel] = useState("复制");
   const [exporting, setExporting] = useState(false);
+  const [pickHistory, setPickHistory] = useState<PickHistoryRecord[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
@@ -95,6 +150,7 @@ export default function PickPage() {
 
   useEffect(() => {
     mountedRef.current = true;
+    setPickHistory(readPickHistory());
     const task = getTask<PickAnalysisResult>(PICK_TASK_KEY);
 
     const applyResult = (result: PickAnalysisResult) => {
@@ -103,6 +159,7 @@ export default function PickPage() {
       setQuery(result.stockData.code);
       setUserNotes(result.userNotes);
       setAnalysis(result.analysis);
+      setPickHistory(result.history);
       setLoadingAI(false);
       setError("");
     };
@@ -256,16 +313,19 @@ export default function PickPage() {
       });
       if (!res.ok) throw new Error("分析失败");
       const json = await res.json();
+      const analysis = json.data?.analysis ?? "";
       return {
-        analysis: json.data?.analysis ?? "",
+        analysis,
         stockData: currentStockData,
         userNotes: currentUserNotes,
+        history: storePickAnalysis(currentStockData, analysis),
       };
     });
 
     void task.promise.then((result) => {
       if (!mountedRef.current) return;
       setAnalysis(result.analysis);
+      setPickHistory(result.history);
       setLoadingAI(false);
     }).catch(() => {
       if (!mountedRef.current) return;
@@ -315,16 +375,99 @@ export default function PickPage() {
     }
   }
 
+  function deleteHistoryRecord(id: string) {
+    const next = pickHistory.filter((record) => record.id !== id);
+    setPickHistory(next);
+    try {
+      localStorage.setItem(PICK_HISTORY_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  }
+
   const pricePosition = stockData?.fiftyTwoWeekHigh && stockData?.fiftyTwoWeekLow && stockData?.price
     ? ((stockData.price - stockData.fiftyTwoWeekLow) / (stockData.fiftyTwoWeekHigh - stockData.fiftyTwoWeekLow)) * 100
     : null;
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">AI选股助手</h1>
-        <p className="mt-2 text-sm text-[#6e6e73]">输入美股代码或公司名称，拉取行情+财务数据，AI生成分析报告</p>
+      <header className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">AI选股助手</h1>
+          <p className="mt-2 text-sm text-[#6e6e73]">输入美股代码或公司名称，拉取行情+财务数据，AI生成分析报告</p>
+        </div>
+        <button
+          onClick={() => setShowHistory((visible) => !visible)}
+          className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+            showHistory
+              ? "border-[#1a1a1a] bg-[#1a1a1a] text-white"
+              : "border-[#e5e5e7] text-[#6e6e73] hover:border-[#1a1a1a]"
+          }`}
+        >
+          历史对比{pickHistory.length > 0 ? ` ${pickHistory.length}` : ""}
+        </button>
       </header>
+
+      {showHistory ? (
+        <div className="mb-8 overflow-hidden rounded-2xl border border-[#e5e5e7] bg-white">
+          {pickHistory.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-[#8e8e93]">完成一次AI分析后，评分会出现在这里</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-[720px] w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#e5e5e7] bg-[#f7f7f8] text-xs text-[#8e8e93]">
+                    <th className="px-4 py-3 text-left font-medium">代码</th>
+                    <th className="px-4 py-3 text-left font-medium">名称</th>
+                    <th className="px-4 py-3 text-left font-medium">日期</th>
+                    <th className="px-4 py-3 text-right font-medium">基本面</th>
+                    <th className="px-4 py-3 text-right font-medium">技术面</th>
+                    <th className="px-4 py-3 text-right font-medium">估值</th>
+                    <th className="px-4 py-3 text-right font-medium">总分</th>
+                    <th className="px-4 py-3 text-right font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...pickHistory]
+                    .sort((a, b) => (b.totalScore ?? -1) - (a.totalScore ?? -1))
+                    .map((record) => {
+                      const totalTone = record.totalScore == null
+                        ? "bg-[#f2f2f3] text-[#8e8e93]"
+                        : record.totalScore >= 7
+                          ? "bg-[#f0fdf4] text-[#16a34a]"
+                          : record.totalScore >= 4
+                            ? "bg-[#fffbeb] text-[#d97706]"
+                            : "bg-[#fef2f2] text-[#dc2626]";
+                      return (
+                        <tr key={record.id} className="border-b border-[#f2f2f3] last:border-0">
+                          <td className="px-4 py-3 font-semibold">{record.code}</td>
+                          <td className="max-w-40 truncate px-4 py-3 text-[#6e6e73]">{record.name}</td>
+                          <td className="px-4 py-3 text-xs text-[#8e8e93]">{new Date(record.date).toLocaleDateString("zh-CN")}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{record.fundamentalScore ?? "—"}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{record.technicalScore ?? "—"}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{record.valuationScore ?? "—"}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`inline-flex min-w-10 justify-center rounded-md px-2 py-1 font-semibold tabular-nums ${totalTone}`}>
+                              {record.totalScore ?? "—"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => deleteHistoryRecord(record.id)}
+                              className="text-xs text-[#8e8e93] transition-colors hover:text-[#dc2626]"
+                            >
+                              删除
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {/* 搜索框 */}
       <div className="relative">

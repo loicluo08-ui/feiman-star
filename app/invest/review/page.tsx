@@ -18,12 +18,15 @@ type ReviewAnalysisResult = {
   strategy: string;
   questions: string;
   record: ReviewRecord;
+  tradeStats: TradeStats;
+  parseMode: "ai" | "fallback";
 };
 
 const STORAGE_KEY = "feimanstar_reviews";
 const REVIEW_TASK_KEY = "review-analysis";
 
 type ParsedTrade = {
+  date?: string;
   symbol: string;
   side: "buy" | "sell";
   quantity: number;
@@ -106,8 +109,7 @@ function parseTrades(text: string): ParsedTrade[] {
   return entries;
 }
 
-function calculateTradeStats(text: string): TradeStats {
-  const entries = parseTrades(text);
+function calculateTradeStatsFromEntries(entries: ParsedTrade[], explicitPnlText = ""): TradeStats {
   const openLots = new Map<string, Array<{ quantity: number; price: number }>>();
   const closedPnls: number[] = [];
 
@@ -138,9 +140,9 @@ function calculateTradeStats(text: string): TradeStats {
     openLots.set(entry.symbol, lots);
   }
 
-  if (closedPnls.length === 0) {
+  if (closedPnls.length === 0 && explicitPnlText) {
     const explicitPnls = Array.from(
-      text.matchAll(/(?:盈亏|P\/?L|PNL)\s*[:：]?\s*([+-]?\s*\$?\s*[\d,.]+)/gi),
+      explicitPnlText.matchAll(/(?:盈亏|P\/?L|PNL)\s*[:：]?\s*([+-]?\s*\$?\s*[\d,.]+)/gi),
       (match) => Number(match[1].replace(/[$,\s]/g, "")),
     ).filter(Number.isFinite);
     closedPnls.push(...explicitPnls);
@@ -165,6 +167,32 @@ function calculateTradeStats(text: string): TradeStats {
   };
 }
 
+function calculateTradeStats(text: string): TradeStats {
+  return calculateTradeStatsFromEntries(parseTrades(text), text);
+}
+
+function normalizeAITrades(value: unknown): ParsedTrade[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const trade = item as Record<string, unknown>;
+    const side = trade.side === "buy" || trade.side === "sell" ? trade.side : null;
+    const quantity = Number(trade.quantity);
+    const price = Number(trade.price);
+    const symbol = typeof trade.code === "string" ? trade.code.trim().toUpperCase() : "";
+    if (!side || !symbol || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price <= 0) {
+      return [];
+    }
+    return [{
+      date: typeof trade.date === "string" ? trade.date : "",
+      symbol,
+      side,
+      quantity,
+      price,
+    }];
+  });
+}
+
 function formatPnl(value: number, hasTrades: boolean): string {
   if (!hasTrades) return "—";
   const sign = value > 0 ? "+" : value < 0 ? "−" : "";
@@ -180,8 +208,12 @@ export default function ReviewPage() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState<ReviewRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [resolvedTradeStats, setResolvedTradeStats] = useState<TradeStats | null>(null);
+  const [statsSource, setStatsSource] = useState<"local" | "ai" | "fallback">("local");
+  const [progressStep, setProgressStep] = useState("正在解析交易记录…");
   const mountedRef = useRef(false);
-  const tradeStats = useMemo(() => calculateTradeStats(trades), [trades]);
+  const localTradeStats = useMemo(() => calculateTradeStats(trades), [trades]);
+  const tradeStats = resolvedTradeStats ?? localTradeStats;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -193,6 +225,8 @@ export default function ReviewPage() {
       setStrategy(result.strategy);
       setQuestions(result.questions);
       setAnalysis(result.analysis);
+      setResolvedTradeStats(result.tradeStats);
+      setStatsSource(result.parseMode);
       setHistory((previous) => [
         result.record,
         ...previous.filter((record) => record.id !== result.record.id),
@@ -208,6 +242,7 @@ export default function ReviewPage() {
       setError("AI分析暂时不可用，请稍后重试");
     } else if (task?.status === "running") {
       setLoading(true);
+      setProgressStep("AI处理中…");
       void task.promise.then(applyResult).catch(() => {
         if (!mountedRef.current) return;
         setLoading(false);
@@ -266,10 +301,42 @@ export default function ReviewPage() {
     const currentStrategy = strategy;
     const currentQuestions = questions;
     setLoading(true);
+    setProgressStep("正在用AI解析交易记录…");
     setError("");
     setAnalysis("");
+    setResolvedTradeStats(null);
+    setStatsSource("local");
 
     const task: BackgroundTask<ReviewAnalysisResult> = startTask(REVIEW_TASK_KEY, async () => {
+      let parsedStats: TradeStats;
+      let parseMode: "ai" | "fallback" = "fallback";
+
+      try {
+        const parseResponse = await fetch("/api/invest/parse-trades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trades: currentTrades }),
+        });
+        if (!parseResponse.ok) throw new Error("parse_failed");
+        const parseJson = await parseResponse.json();
+        const parsedTrades = normalizeAITrades(parseJson.data?.trades);
+        if (parsedTrades.length === 0) throw new Error("empty_trades");
+        parsedStats = calculateTradeStatsFromEntries(parsedTrades);
+        parseMode = "ai";
+        if (mountedRef.current) {
+          setResolvedTradeStats(parsedStats);
+          setStatsSource("ai");
+          setProgressStep("交易解析完成，正在生成复盘报告…");
+        }
+      } catch {
+        parsedStats = calculateTradeStats(currentTrades);
+        if (mountedRef.current) {
+          setResolvedTradeStats(parsedStats);
+          setStatsSource("fallback");
+          setProgressStep("AI解析失败，已用本地规则解析；正在生成复盘报告…");
+        }
+      }
+
       const res = await fetch("/api/invest/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -298,12 +365,16 @@ export default function ReviewPage() {
         strategy: currentStrategy,
         questions: currentQuestions,
         record,
+        tradeStats: parsedStats,
+        parseMode,
       };
     });
 
     void task.promise.then((result) => {
       if (!mountedRef.current) return;
       setAnalysis(result.analysis);
+      setResolvedTradeStats(result.tradeStats);
+      setStatsSource(result.parseMode);
       setHistory((previous) => [
         result.record,
         ...previous.filter((record) => record.id !== result.record.id),
@@ -377,7 +448,11 @@ export default function ReviewPage() {
                 <button
                   key={t.name}
                   type="button"
-                  onClick={() => setTrades(t.content)}
+                  onClick={() => {
+                    setTrades(t.content);
+                    setResolvedTradeStats(null);
+                    setStatsSource("local");
+                  }}
                   className="rounded-md bg-[#f2f2f3] px-2 py-1 text-xs text-[#6e6e73] transition-colors hover:bg-[#e5e5e7]"
                 >
                   {t.name}
@@ -388,7 +463,11 @@ export default function ReviewPage() {
           <p className="mt-1 text-xs text-[#8e8e93]">支持任意格式，只要AI能读懂。每笔交易一行：日期、方向、代码、数量、价格</p>
           <textarea
             value={trades}
-            onChange={(e) => setTrades(e.target.value)}
+            onChange={(e) => {
+              setTrades(e.target.value);
+              setResolvedTradeStats(null);
+              setStatsSource("local");
+            }}
             rows={8}
             maxLength={8000}
             placeholder="点击上方模板按钮快速填充，或直接粘贴你的交易记录"
@@ -429,7 +508,13 @@ export default function ReviewPage() {
           <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-medium">交易统计</p>
-              <p className="text-xs text-[#8e8e93]">按已识别的平仓交易自动计算</p>
+              <p className="text-xs text-[#8e8e93]">
+                {statsSource === "ai"
+                  ? "AI结构化解析结果"
+                  : statsSource === "fallback"
+                    ? "AI解析失败，已回退本地规则"
+                    : "提交后将先由AI结构化解析"}
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatCard label="总笔数" value={String(tradeStats.totalTrades)} />
@@ -459,7 +544,7 @@ export default function ReviewPage() {
           disabled={loading || !trades.trim()}
           className="rounded-xl bg-[#1a1a1a] px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          {loading ? "AI分析中，约15-30秒…" : "开始复盘分析"}
+          {loading ? progressStep : "开始复盘分析"}
         </button>
       </form>
 
@@ -468,7 +553,7 @@ export default function ReviewPage() {
       {loading ? (
         <div className="mt-6 flex items-center gap-2 text-sm text-[#8e8e93]">
           <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#1a1a1a]" />
-          正在分析交易记录…
+          {progressStep}
         </div>
       ) : null}
 
