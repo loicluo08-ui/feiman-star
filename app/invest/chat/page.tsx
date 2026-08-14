@@ -22,6 +22,7 @@ export default function ChatPage() {
   const [error, setError] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [style, setStyle] = useState<"balanced" | "value" | "growth" | "quant">("balanced");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -102,7 +103,7 @@ export default function ChatPage() {
       const res = await fetch("/api/invest/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages }),
+        body: JSON.stringify({ messages: apiMessages, style }),
       });
 
       if (!res.ok) {
@@ -144,8 +145,32 @@ export default function ChatPage() {
     <div className="flex h-screen flex-col">
       {/* Header */}
       <header className="border-b border-[#e5e5e7] px-5 py-4">
-        <h1 className="text-lg font-semibold">投资对话 · 支持截图分析</h1>
-        <p className="mt-0.5 text-xs text-[#8e8e93]">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek。</p>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold">投资对话 · 支持截图分析</h1>
+            <p className="mt-0.5 text-xs text-[#8e8e93]">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek。</p>
+          </div>
+          <div className="flex gap-1">
+            {[
+              { key: "balanced", label: "均衡" },
+              { key: "value", label: "价值" },
+              { key: "growth", label: "成长" },
+              { key: "quant", label: "量化" },
+            ].map((s) => (
+              <button
+                key={s.key}
+                onClick={() => setStyle(s.key as typeof style)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  style === s.key
+                    ? "bg-[#1a1a1a] text-white"
+                    : "bg-[#f2f2f3] text-[#6e6e73] hover:bg-[#e5e5e7]"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </header>
 
       {/* Messages */}

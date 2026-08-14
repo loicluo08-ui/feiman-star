@@ -99,12 +99,42 @@ export default function ReviewPage() {
     }
   }
 
-  const exampleTrades = `示例格式（直接粘贴你的交易记录即可）：
-
-2024-07-15 买入 AAPL 100股 @ $185.00
+  const templates = [
+    {
+      name: "简洁版",
+      content: `2024-07-15 买入 AAPL 100股 @ $185.00
 2024-07-22 卖出 AAPL 100股 @ $187.50
 2024-07-20 买入 TSLA 50股 @ $248.00
-2024-08-01 卖出 TSLA 50股 @ $235.00  止损出局`;
+2024-08-01 卖出 TSLA 50股 @ $235.00 止损`,
+    },
+    {
+      name: "详细版",
+      content: `日期：2024-07-15
+代码：AAPL
+方向：买入
+数量：100股
+价格：$185.00
+理由：突破20日均线，放量
+仓位：占总资金15%
+
+---
+日期：2024-07-22
+代码：AAPL
+方向：卖出
+数量：100股
+价格：$187.50
+理由：到目标价，止盈
+盈亏：+$250 (+1.35%)`,
+    },
+    {
+      name: "CSV版",
+      content: `date,symbol,side,qty,price,note
+2024-07-15,AAPL,BUY,100,185.00,breakout
+2024-07-22,AAPL,SELL,100,187.50,target hit
+2024-07-20,TSLA,BUY,50,248.00,earnings play
+2024-08-01,TSLA,SELL,50,235.00,stop loss`,
+    },
+  ];
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
@@ -123,14 +153,28 @@ export default function ReviewPage() {
 
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium">交易记录 <span className="text-red-500">*</span></label>
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium">交易记录 <span className="text-red-500">*</span></label>
+            <div className="flex gap-1.5">
+              {templates.map((t) => (
+                <button
+                  key={t.name}
+                  type="button"
+                  onClick={() => setTrades(t.content)}
+                  className="rounded-md bg-[#f2f2f3] px-2 py-1 text-xs text-[#6e6e73] transition-colors hover:bg-[#e5e5e7]"
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
           <p className="mt-1 text-xs text-[#8e8e93]">支持任意格式，只要AI能读懂。每笔交易一行：日期、方向、代码、数量、价格</p>
           <textarea
             value={trades}
             onChange={(e) => setTrades(e.target.value)}
             rows={8}
             maxLength={8000}
-            placeholder={exampleTrades}
+            placeholder="点击上方模板按钮快速填充，或直接粘贴你的交易记录"
             className="mt-2 w-full resize-none rounded-xl border border-[#d1d1d6] px-4 py-3 font-mono text-xs leading-6 outline-none focus:border-[#1a1a1a]"
           />
           <div className="mt-1 flex justify-between text-xs text-[#8e8e93]">

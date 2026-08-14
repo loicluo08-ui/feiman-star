@@ -30,8 +30,8 @@ export async function GET(request: NextRequest) {
   const code = rawCode;
 
   try {
-    // === 1. 主行情+日K（30天）===
-    const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${code}?interval=1d&range=1mo`;
+    // === 1. 主行情+日K（3个月≈120日）===
+    const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${code}?interval=1d&range=3mo`;
     const chartRes = await fetch(chartUrl, {
       headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(10000),
@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
       .filter((c) => c.close != null);
 
     // === 2. 财务指标（quoteSummary，失败不影响主流程）===
+    // fallback链：quoteSummary(v10) → chart meta里的52周数据 → null
     let financials: Record<string, unknown> | null = null;
     try {
       const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${code}?modules=summaryDetail,financialData,defaultKeyStatistics,assetProfile`;
@@ -117,6 +118,22 @@ export async function GET(request: NextRequest) {
       }
     } catch {
       // quoteSummary失败不影响主行情
+    }
+
+    // 如果quoteSummary失败，从chart meta补全52周数据
+    if (!financials) {
+      financials = {
+        pe: null, forwardPe: null, pb: null, ps: null,
+        evToEbitda: null, dividendYield: null, payoutRatio: null,
+        beta: null, roe: null, roa: null, grossMargin: null,
+        operatingMargin: null, profitMargin: null, debtToEquity: null,
+        currentRatio: null, quickRatio: null, revenueGrowth: null,
+        earningsGrowth: null, totalCash: null, totalDebt: null,
+        freeCashflow: null, operatingCashflow: null, eps: null,
+        forwardEps: null, pegRatio: null, enterpriseValue: null,
+        profitMargins: null, sector: null, industry: null,
+        fullTimeEmployees: null, longBusinessSummary: null,
+      };
     }
 
     // === 3. 组装响应 ===

@@ -372,6 +372,18 @@ export default function PickPage() {
             <MetricCard label="自由现金流" value={fmtAmt(stockData.financials?.freeCashflow)} />
           </div>
 
+          {/* 行业基准对比 */}
+          {stockData.financials?.sector ? (
+            <IndustryBenchmark
+              sector={stockData.financials.sector}
+              pe={stockData.financials.pe}
+              pb={stockData.financials.pb}
+              roe={stockData.financials.roe}
+              grossMargin={stockData.financials.grossMargin}
+              debtToEquity={stockData.financials.debtToEquity}
+            />
+          ) : null}
+
           {/* 公司简介 */}
           {stockData.financials?.longBusinessSummary ? (
             <div className="rounded-2xl border border-[#e5e5e7] bg-white p-5">
@@ -433,7 +445,77 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+// 行业基准数据（硬编码，基于常见美股行业经验值）
+const SECTOR_BENCHMARKS: Record<string, { pe: string; pb: string; roe: string; grossMargin: string; debtToEquity: string }> = {
+  Technology: { pe: "25-35", pb: "5-15", roe: "15-25%", grossMargin: "50-70%", debtToEquity: "0.3-0.8" },
+  "Consumer Cyclical": { pe: "15-25", pb: "3-8", roe: "10-20%", grossMargin: "30-50%", debtToEquity: "0.5-1.5" },
+  "Financial Services": { pe: "8-15", pb: "1-3", roe: "8-15%", grossMargin: "—", debtToEquity: "1.5-3.0" },
+  "Healthcare": { pe: "15-25", pb: "3-8", roe: "10-20%", grossMargin: "60-80%", debtToEquity: "0.3-0.8" },
+  "Communication Services": { pe: "15-25", pb: "3-8", roe: "10-20%", grossMargin: "40-60%", debtToEquity: "0.5-1.2" },
+  "Industrials": { pe: "15-22", pb: "2-5", roe: "10-18%", grossMargin: "25-40%", debtToEquity: "0.8-1.8" },
+  "Consumer Defensive": { pe: "18-25", pb: "3-8", roe: "15-25%", grossMargin: "30-50%", debtToEquity: "0.5-1.2" },
+  "Energy": { pe: "8-15", pb: "1-3", roe: "8-15%", grossMargin: "20-40%", debtToEquity: "0.3-0.8" },
+  "Utilities": { pe: "15-20", pb: "1.5-3", roe: "8-12%", grossMargin: "40-60%", debtToEquity: "1.0-2.0" },
+  "Real Estate": { pe: "25-40", pb: "1.5-3", roe: "8-12%", grossMargin: "—", debtToEquity: "0.5-1.5" },
+  "Materials": { pe: "12-20", pb: "1.5-4", roe: "10-18%", grossMargin: "20-35%", debtToEquity: "0.5-1.2" },
+};
+
+function IndustryBenchmark({
+  sector,
+  pe,
+  pb,
+  roe,
+  grossMargin,
+  debtToEquity,
+}: {
+  sector: string;
+  pe: number | null;
+  pb: number | null;
+  roe: number | null;
+  grossMargin: number | null;
+  debtToEquity: number | null;
+}) {
+  const bench = SECTOR_BENCHMARKS[sector] ?? null;
+  if (!bench) return null;
+
+  const rows = [
+    { label: "P/E", value: pe != null ? pe.toFixed(1) : "—", range: bench.pe },
+    { label: "P/B", value: pb != null ? pb.toFixed(2) : "—", range: bench.pb },
+    { label: "ROE", value: roe != null ? `${(roe * 100).toFixed(1)}%` : "—", range: bench.roe },
+    { label: "毛利率", value: grossMargin != null ? `${(grossMargin * 100).toFixed(1)}%` : "—", range: bench.grossMargin },
+    { label: "负债/权益", value: debtToEquity != null ? debtToEquity.toFixed(2) : "—", range: bench.debtToEquity },
+  ];
+
+  return (
+    <div className="rounded-2xl border border-[#e5e5e7] bg-white p-5">
+      <h3 className="mb-3 text-sm font-semibold text-[#8e8e93]">行业基准对比 · {sector}</h3>
+      <div className="overflow-hidden rounded-lg border border-[#e5e5e7]">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-[#e5e5e7] bg-[#f7f7f8]">
+              <th className="px-4 py-2 text-left text-xs font-medium text-[#8e8e93]">指标</th>
+              <th className="px-4 py-2 text-right text-xs font-medium text-[#8e8e93]">当前值</th>
+              <th className="px-4 py-2 text-right text-xs font-medium text-[#8e8e93]">行业常见区间</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label} className="border-b border-[#f2f2f3] last:border-0">
+                <td className="px-4 py-2 text-[#1a1a1a]">{r.label}</td>
+                <td className="px-4 py-2 text-right font-medium tabular-nums text-[#1a1a1a]">{r.value}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-[#6e6e73]">{r.range}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs text-[#8e8e93]">行业区间为硬编码经验值，仅供参考。建议与同行业个股实际数据交叉验证。</p>
+    </div>
+  );
+}
+
 function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: number | null; low52: number | null }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const valid = candles.filter((c) => c.close != null) as Array<{ date: string; close: number }>;
   if (valid.length < 2) return null;
 
@@ -442,8 +524,8 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
   const max = Math.max(...prices, high52 ?? -Infinity);
   const range = max - min || 1;
   const W = 800;
-  const H = 180;
-  const padding = { top: 20, right: 40, bottom: 30, left: 50 };
+  const H = 200;
+  const padding = { top: 20, right: 50, bottom: 30, left: 50 };
   const chartW = W - padding.left - padding.right;
   const chartH = H - padding.top - padding.bottom;
 
@@ -455,7 +537,6 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
 
   const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
 
-  // Y轴标签 (5档)
   const yLabels = Array.from({ length: 5 }, (_, i) => {
     const val = max - (range * i) / 4;
     const y = padding.top + (chartH * i) / 4;
@@ -467,15 +548,34 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
   const isUp = lastPrice >= firstPrice;
   const lineColor = isUp ? "#16a34a" : "#dc2626";
 
+  function handleMove(e: React.MouseEvent<SVGSVGElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * W;
+    if (x < padding.left || x > W - padding.right) {
+      setHoverIdx(null);
+      return;
+    }
+    const idx = Math.round(((x - padding.left) / chartW) * (valid.length - 1));
+    setHoverIdx(Math.max(0, Math.min(idx, valid.length - 1)));
+  }
+
+  const hovered = hoverIdx != null ? points[hoverIdx] : null;
+
   return (
     <div className="rounded-2xl border border-[#e5e5e7] bg-white p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#8e8e93]">30日走势</h3>
+        <h3 className="text-sm font-semibold text-[#8e8e93]">120日走势</h3>
         <span className={`text-xs font-medium ${isUp ? "text-[#16a34a]" : "text-[#dc2626]"}`}>
           {isUp ? "▲" : "▼"} {(((lastPrice - firstPrice) / firstPrice) * 100).toFixed(2)}%
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: "auto" }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        style={{ height: "auto" }}
+        onMouseMove={handleMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
         {/* Y轴标签 */}
         {yLabels.map((yl, i) => (
           <g key={i}>
@@ -494,6 +594,17 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
         <text x={W - padding.right + 4} y={points[points.length - 1].y + 3} fontSize="10" fill={lineColor} fontWeight="600">
           ${lastPrice.toFixed(2)}
         </text>
+        {/* hover十字线 */}
+        {hovered ? (
+          <g>
+            <line x1={hovered.x} y1={padding.top} x2={hovered.x} y2={H - padding.bottom} stroke="#8e8e93" strokeWidth="1" strokeDasharray="3 3" />
+            <circle cx={hovered.x} cy={hovered.y} r="4" fill={lineColor} stroke="white" strokeWidth="2" />
+            <rect x={hovered.x - 45} y={padding.top - 16} width="90" height="20" rx="4" fill="#1a1a1a" />
+            <text x={hovered.x} y={padding.top - 2} textAnchor="middle" fontSize="10" fill="white" fontWeight="600">
+              ${hovered.close.toFixed(2)} {hovered.date.slice(5)}
+            </text>
+          </g>
+        ) : null}
         {/* X轴日期 */}
         <text x={padding.left} y={H - 8} fontSize="10" fill="#8e8e93">
           {valid[0].date.slice(5)}

@@ -23,6 +23,7 @@ const messageSchema = z.object({
 
 const requestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(20),
+  style: z.enum(["balanced", "value", "growth", "quant"]).optional().default("balanced"),
 });
 
 const MAX_IMAGE_SIZE = 4 * 1024 * 1024; // 4MB
@@ -47,8 +48,16 @@ export async function POST(request: NextRequest) {
   // 构建历史对话上下文（最多取最近6轮）
   const recentMessages = messages.slice(-12);
 
+  const stylePrompts: Record<string, string> = {
+    balanced: "你是费曼星投资分析助手，专注于美股投资领域。分析风格：均衡，兼顾基本面和技术面。",
+    value: "你是费曼星投资分析助手，以价值投资视角分析。参考本杰明·格雷厄姆和沃伦·巴菲特的框架：关注安全边际、内在价值、护城河。对高估值成长股持审慎态度。",
+    growth: "你是费曼星投资分析助手，以成长投资视角分析。参考菲利普·费雪和凯瑟琳·伍德的框架：关注TAM、增速、创新壁垒。对传统价值股不过度排斥但强调增长潜力。",
+    quant: "你是费曼星投资分析助手，以量化分析视角分析。所有判断必须有数据支撑，禁止模糊表述。关注统计显著性、回撤、夏普比率、相关性。对无法量化的因素明确标注'定性判断'。",
+  };
+
   const systemPrompt = [
-    "你是费曼星投资分析助手，专注于美股投资领域。",
+    stylePrompts[input.data.style] ?? stylePrompts.balanced,
+    "",
     "你可以帮助用户分析股票、解读财报、评估策略、回答投资相关问题。",
     "",
     "当用户发送截图时（K线图、财报数据、持仓截图、交易记录等），你需要：",
