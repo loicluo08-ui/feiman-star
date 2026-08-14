@@ -85,6 +85,8 @@ type PositionCheck = {
   violations: PositionViolation[];
 };
 
+type SummaryPeriod = "week" | "month";
+
 function toPositiveNumber(value: string | undefined): number | null {
   if (!value) return null;
   const number = Number(value.replace(/[$,\s]/g, ""));
@@ -283,6 +285,10 @@ export default function ReviewPage() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState<ReviewRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [summary, setSummary] = useState("");
+  const [summaryPeriod, setSummaryPeriod] = useState<SummaryPeriod | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
   const [resolvedTradeStats, setResolvedTradeStats] = useState<TradeStats | null>(null);
   const [resolvedPositionCheck, setResolvedPositionCheck] = useState<PositionCheck | null>(null);
   const [statsSource, setStatsSource] = useState<"local" | "ai" | "fallback">("local");
@@ -370,6 +376,82 @@ export default function ReviewPage() {
       // ignore
     }
     setShowHistory(true);
+  }
+
+  function getStoredReviews(): ReviewRecord[] {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? (JSON.parse(saved) as ReviewRecord[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function generateSummary(period: SummaryPeriod) {
+    if (summaryLoading) return;
+    const now = new Date();
+    const start = period === "month"
+      ? new Date(now.getFullYear(), now.getMonth(), 1)
+      : (() => {
+          const value = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const dayOffset = value.getDay() === 0 ? 6 : value.getDay() - 1;
+          value.setDate(value.getDate() - dayOffset);
+          return value;
+        })();
+    const records = getStoredReviews()
+      .filter((record) => {
+        const date = new Date(record.date);
+        return !Number.isNaN(date.getTime()) && date >= start && date <= now;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    setShowHistory(true);
+    setHistory(getStoredReviews().sort((a, b) => b.date.localeCompare(a.date)));
+    setSummaryPeriod(period);
+    setSummary("");
+    setSummaryError("");
+    if (records.length === 0) {
+      setSummaryError(period === "week" ? "本周还没有复盘记录" : "本月还没有复盘记录");
+      return;
+    }
+
+    setSummaryLoading(true);
+    try {
+      const response = await fetch("/api/invest/review-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          period,
+          records: records.map((record) => ({
+            date: record.date,
+            trades: record.trades,
+            analysis: record.analysis,
+          })),
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.error || "摘要生成失败");
+      setSummary(json.data?.summary || "");
+    } catch (summaryLoadError) {
+      setSummaryError(summaryLoadError instanceof Error ? summaryLoadError.message : "摘要生成失败");
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
+  function exportSummaryMarkdown() {
+    if (!summary || !summaryPeriod) return;
+    const date = new Date().toISOString().slice(0, 10);
+    const title = summaryPeriod === "week" ? "费曼星投资周报" : "费曼星投资月报";
+    const blob = new Blob([`# ${title}\n\n${summary}\n`], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title}_${date}.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
   function saveReview(record: ReviewRecord) {
@@ -748,7 +830,35 @@ export default function ReviewPage() {
       {/* 历史复盘 */}
       {showHistory ? (
         <div className="mt-8">
-          <h3 className="mb-3 text-base font-semibold">历史复盘 ({history.length})</h3>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-base font-semibold">历史复盘 ({history.length})</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => void generateSummary("week")}
+                disabled={summaryLoading}
+                className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] disabled:opacity-40"
+              >
+                {summaryLoading && summaryPeriod === "week" ? "生成中…" : "本周摘要"}
+              </button>
+              <button
+                onClick={() => void generateSummary("month")}
+                disabled={summaryLoading}
+                className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] disabled:opacity-40"
+              >
+                {summaryLoading && summaryPeriod === "month" ? "生成中…" : "本月摘要"}
+              </button>
+            </div>
+          </div>
+          {summaryError ? <p className="mb-3 rounded-lg bg-[var(--negative-bg)] px-4 py-2.5 text-sm text-[var(--negative)]">{summaryError}</p> : null}
+          {summary ? (
+            <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold">{summaryPeriod === "week" ? "本周复盘摘要" : "本月复盘摘要"}</p>
+                <button onClick={exportSummaryMarkdown} className="text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)]">导出Markdown</button>
+              </div>
+              <div className="whitespace-pre-wrap text-sm leading-7 text-[var(--text)]">{summary}</div>
+            </div>
+          ) : null}
           {history.length === 0 ? (
             <p className="text-sm text-[var(--text-muted)]">还没有历史记录</p>
           ) : (

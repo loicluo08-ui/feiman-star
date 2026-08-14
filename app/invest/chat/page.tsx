@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, type BackgroundTask } from "@/lib/background-task";
 
 type AnalysisStyle = "balanced" | "value" | "growth" | "quant";
@@ -39,6 +39,8 @@ class ChatTaskError extends Error {
 const CHAT_HISTORY_KEY = "feimanstar_chat_history";
 const CHAT_TASK_KEY = "chat-response";
 
+type HistoryRange = "7" | "30" | "all";
+
 function readChatHistory(): ChatHistoryRecord[] {
   try {
     const saved = localStorage.getItem(CHAT_HISTORY_KEY);
@@ -74,6 +76,46 @@ function storeConversation(
   return next;
 }
 
+function getMatchedSnippet(record: ChatHistoryRecord, query: string) {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return "";
+  const matched = record.messages.find((message) => message.text.toLocaleLowerCase().includes(normalizedQuery));
+  if (!matched) return "";
+  const text = matched.text.replace(/\s+/g, " ");
+  const index = text.toLocaleLowerCase().indexOf(normalizedQuery);
+  const start = Math.max(0, index - 32);
+  const end = Math.min(text.length, index + query.trim().length + 56);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+}
+
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  const keyword = query.trim();
+  if (!keyword) return <>{text}</>;
+  const lowerText = text.toLocaleLowerCase();
+  const lowerKeyword = keyword.toLocaleLowerCase();
+  const parts: Array<{ text: string; matched: boolean }> = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const index = lowerText.indexOf(lowerKeyword, cursor);
+    if (index === -1) {
+      parts.push({ text: text.slice(cursor), matched: false });
+      break;
+    }
+    if (index > cursor) parts.push({ text: text.slice(cursor, index), matched: false });
+    parts.push({ text: text.slice(index, index + keyword.length), matched: true });
+    cursor = index + keyword.length;
+  }
+
+  return (
+    <>
+      {parts.map((part, index) => part.matched ? (
+        <mark key={index} className="rounded-sm bg-[var(--warning-bg)] px-0.5 text-[var(--warning)]">{part.text}</mark>
+      ) : <span key={index}>{part.text}</span>)}
+    </>
+  );
+}
+
 const suggestions = [
   { title: "帮我分析这张K线图", desc: "上传截图，AI解读走势" },
   { title: "这份财报的关键数据", desc: "上传财报截图，提取核心指标" },
@@ -97,10 +139,27 @@ export default function ChatPage() {
   const [style, setStyle] = useState<AnalysisStyle>("balanced");
   const [history, setHistory] = useState<ChatHistoryRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [historyRange, setHistoryRange] = useState<HistoryRange>("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeHistoryId = useRef("");
   const mountedRef = useRef(false);
+
+  const filteredHistory = useMemo(() => {
+    const keyword = historyQuery.trim().toLocaleLowerCase();
+    const cutoff = historyRange === "all"
+      ? 0
+      : Date.now() - Number(historyRange) * 24 * 60 * 60 * 1000;
+
+    return history.filter((record) => {
+      const recordTime = new Date(record.date).getTime();
+      if (cutoff > 0 && (!Number.isFinite(recordTime) || recordTime < cutoff)) return false;
+      if (!keyword) return true;
+      return record.title.toLocaleLowerCase().includes(keyword)
+        || record.messages.some((message) => message.text.toLocaleLowerCase().includes(keyword));
+    });
+  }, [history, historyQuery, historyRange]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -387,13 +446,43 @@ export default function ChatPage() {
 
         {showHistory ? (
           <div className="mx-auto mt-4 max-h-64 max-w-3xl overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+            <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-[var(--border)] bg-[var(--surface)] p-3 sm:flex-row">
+              <input
+                value={historyQuery}
+                onChange={(event) => setHistoryQuery(event.target.value)}
+                placeholder="搜索历史对话…"
+                aria-label="搜索历史对话"
+                className="min-w-0 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-xs outline-none transition-colors focus:border-[var(--text)]"
+              />
+              <select
+                value={historyRange}
+                onChange={(event) => setHistoryRange(event.target.value as HistoryRange)}
+                aria-label="按日期筛选历史对话"
+                className="rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--text)]"
+              >
+                <option value="7">最近7天</option>
+                <option value="30">最近30天</option>
+                <option value="all">全部</option>
+              </select>
+            </div>
             {history.length === 0 ? (
               <p className="px-4 py-5 text-center text-sm text-[var(--text-muted)]">还没有历史对话</p>
+            ) : filteredHistory.length === 0 ? (
+              <p className="px-4 py-5 text-center text-sm text-[var(--text-muted)]">没有匹配的历史对话</p>
             ) : (
-              history.map((record) => (
+              filteredHistory.map((record) => {
+                const snippet = getMatchedSnippet(record, historyQuery);
+                return (
                 <div key={record.id} className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-0">
                   <button onClick={() => loadConversation(record)} className="min-w-0 flex-1 text-left">
-                    <p className="truncate text-sm font-medium text-[var(--text)]">{record.title}</p>
+                    <p className="truncate text-sm font-medium text-[var(--text)]">
+                      <HighlightedText text={record.title} query={historyQuery} />
+                    </p>
+                    {snippet && snippet !== record.title ? (
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">
+                        <HighlightedText text={snippet} query={historyQuery} />
+                      </p>
+                    ) : null}
                     <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                       {new Date(record.date).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })}
                       {` · ${Math.ceil(record.messages.length / 2)}轮`}
@@ -407,7 +496,8 @@ export default function ChatPage() {
                     删除
                   </button>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         ) : null}

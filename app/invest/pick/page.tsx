@@ -83,6 +83,8 @@ type PickHistoryRecord = {
   fundamentalScore: number | null;
   technicalScore: number | null;
   valuationScore: number | null;
+  liquidityScore?: number | null;
+  sentimentScore?: number | null;
   totalScore: number | null;
   generatedAt?: string;
   stockData?: StockData;
@@ -180,6 +182,8 @@ function storePickAnalysis(
     fundamentalScore: extractScore(analysis, ["基本面"]),
     technicalScore: extractScore(analysis, ["技术面"]),
     valuationScore: extractScore(analysis, ["估值"]),
+    liquidityScore: extractScore(analysis, ["流动性"]),
+    sentimentScore: extractScore(analysis, ["市场情绪", "情绪"]),
     totalScore: extractScore(analysis, ["加权总分", "总分"]),
     generatedAt,
     stockData,
@@ -560,6 +564,13 @@ export default function PickPage() {
     : reportAgeHours >= 24
       ? { text: "数据可能已过期，建议重新分析", tone: "bg-[var(--warning-bg)] text-[var(--warning)]" }
       : null;
+  const radarScores = [
+    { label: "基本面", value: extractScore(analysis, ["基本面"]) },
+    { label: "技术面", value: extractScore(analysis, ["技术面"]) },
+    { label: "估值", value: extractScore(analysis, ["估值"]) },
+    { label: "流动性", value: extractScore(analysis, ["流动性"]) },
+    { label: "情绪", value: extractScore(analysis, ["市场情绪", "情绪"]) },
+  ];
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
@@ -586,7 +597,7 @@ export default function PickPage() {
             <p className="px-5 py-8 text-center text-sm text-[var(--text-muted)]">完成一次AI分析后，评分会出现在这里</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[720px] w-full text-sm">
+              <table className="min-w-[820px] w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)] text-xs text-[var(--text-muted)]">
                     <th className="px-4 py-3 text-left font-medium">代码</th>
@@ -596,6 +607,7 @@ export default function PickPage() {
                     <th className="px-4 py-3 text-right font-medium">技术面</th>
                     <th className="px-4 py-3 text-right font-medium">估值</th>
                     <th className="px-4 py-3 text-right font-medium">总分</th>
+                    <th className="px-4 py-3 text-center font-medium">趋势</th>
                     <th className="px-4 py-3 text-right font-medium">操作</th>
                   </tr>
                 </thead>
@@ -634,6 +646,9 @@ export default function PickPage() {
                             <span className={`inline-flex min-w-10 justify-center rounded-md px-2 py-1 font-semibold tabular-nums ${totalTone}`}>
                               {record.totalScore ?? "—"}
                             </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <ScoreTrend current={record} history={pickHistory} />
                           </td>
                           <td className="px-4 py-3 text-right">
                             <button
@@ -934,6 +949,29 @@ export default function PickPage() {
                       {reportFreshness.text}
                     </p>
                   ) : null}
+                  {radarScores.some((item) => item.value != null) ? (
+                    <div className="mb-5 grid items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:grid-cols-[220px_1fr]">
+                      <ScoreRadar scores={radarScores} />
+                      <div className="overflow-hidden rounded-lg border border-[var(--border)]">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)]">
+                              <th className="px-3 py-2 text-left text-xs font-medium text-[var(--text-muted)]">评分维度</th>
+                              <th className="px-3 py-2 text-right text-xs font-medium text-[var(--text-muted)]">得分</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {radarScores.map((score) => (
+                              <tr key={score.label} className="border-b border-[var(--border)] last:border-0">
+                                <td className="px-3 py-2 text-[var(--text-secondary)]">{score.label}</td>
+                                <td className="px-3 py-2 text-right font-semibold tabular-nums">{score.value == null ? "—" : `${score.value}/10`}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="whitespace-pre-wrap text-sm leading-7 text-[var(--text)]">{analysis}</div>
                   <p className="mt-5 border-t border-[var(--border)] pt-3 text-[11px] text-[var(--text-muted)]">
                     由费曼星生成，仅供研究参考，不构成投资建议。
@@ -953,6 +991,126 @@ export default function PickPage() {
 }
 
 /* === 组件 === */
+
+type RadarScore = { label: string; value: number | null };
+
+function ScoreRadar({ scores }: { scores: RadarScore[] }) {
+  const center = 100;
+  const radius = 62;
+  const labelRadius = 85;
+  const angleFor = (index: number) => -Math.PI / 2 + (index * Math.PI * 2) / scores.length;
+  const pointAt = (index: number, scale: number, targetRadius = radius) => ({
+    x: center + Math.cos(angleFor(index)) * targetRadius * scale,
+    y: center + Math.sin(angleFor(index)) * targetRadius * scale,
+  });
+  const polygon = (scale: number) => scores
+    .map((_, index) => {
+      const point = pointAt(index, scale);
+      return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+    })
+    .join(" ");
+  const valuePolygon = scores
+    .map((score, index) => {
+      const value = score.value == null ? 0 : Math.min(10, Math.max(0, score.value));
+      const point = pointAt(index, value / 10);
+      return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+    })
+    .join(" ");
+
+  return (
+    <div>
+      <p className="mb-1 text-center text-xs font-medium text-[var(--text-muted)]">五维评分雷达</p>
+      <svg viewBox="0 0 200 200" className="mx-auto h-48 w-48" role="img" aria-label="五维评分雷达图">
+        {[0.2, 0.4, 0.6, 0.8, 1].map((scale) => (
+          <polygon
+            key={scale}
+            points={polygon(scale)}
+            fill="none"
+            stroke="var(--border)"
+            strokeWidth={scale === 1 ? 1.5 : 1}
+          />
+        ))}
+        {scores.map((score, index) => {
+          const edge = pointAt(index, 1);
+          const label = pointAt(index, 1, labelRadius);
+          return (
+            <g key={score.label}>
+              <line x1={center} y1={center} x2={edge.x} y2={edge.y} stroke="var(--border)" strokeWidth="1" />
+              <text
+                x={label.x}
+                y={label.y + 3}
+                textAnchor="middle"
+                fontSize="10"
+                fontWeight="500"
+                fill="var(--text-secondary)"
+              >
+                {score.label}
+              </text>
+            </g>
+          );
+        })}
+        <polygon
+          points={valuePolygon}
+          fill="var(--positive)"
+          fillOpacity="0.18"
+          stroke="var(--positive)"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        {scores.map((score, index) => {
+          const value = score.value == null ? 0 : Math.min(10, Math.max(0, score.value));
+          const point = pointAt(index, value / 10);
+          return <circle key={score.label} cx={point.x} cy={point.y} r="3" fill="var(--positive)" />;
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function ScoreTrend({ current, history }: { current: PickHistoryRecord; history: PickHistoryRecord[] }) {
+  const currentTime = new Date(current.date).getTime();
+  const records = history
+    .filter((record) => (
+      record.code === current.code
+      && record.totalScore != null
+      && new Date(record.date).getTime() <= currentTime
+    ))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(-3);
+
+  if (records.length < 2) {
+    return <span className="block text-center text-[var(--text-muted)]">—</span>;
+  }
+
+  const scores = records.map((record) => record.totalScore as number);
+  const first = scores[0];
+  const last = scores[scores.length - 1];
+  const change = last - first;
+  const direction = change > 0.05 ? "up" : change < -0.05 ? "down" : "flat";
+  const color = direction === "up" ? "var(--positive)" : direction === "down" ? "var(--negative)" : "var(--text-muted)";
+  const arrow = direction === "up" ? "↑" : direction === "down" ? "↓" : "—";
+  const min = Math.min(...scores);
+  const max = Math.max(...scores);
+  const range = max - min || 1;
+  const points = scores.map((score, index) => {
+    const x = scores.length === 1 ? 32 : 3 + (index / (scores.length - 1)) * 58;
+    const y = 20 - ((score - min) / range) * 16;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+
+  return (
+    <div className="flex items-center justify-center gap-1" title={`最近${records.length}次：${scores.join(" → ")}`}>
+      <svg viewBox="0 0 64 24" className="h-6 w-16" role="img" aria-label={`${current.code}评分趋势${arrow}`}>
+        <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {points.split(" ").map((point, index) => {
+          const [cx, cy] = point.split(",");
+          return <circle key={`${point}-${index}`} cx={cx} cy={cy} r="2" fill={color} />;
+        })}
+      </svg>
+      <span className="text-xs font-semibold" style={{ color }}>{arrow}</span>
+    </div>
+  );
+}
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
