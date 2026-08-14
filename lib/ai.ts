@@ -64,7 +64,7 @@ export async function callAI(
   messages: ChatMessage[],
   options: CallAIOptions = {},
 ): Promise<string | null> {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const apiKey = process.env.DEEPSEEK_API_KEY || "";
   if (!apiKey) return null;
 
   const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
@@ -127,7 +127,7 @@ export async function callVisionAI(
   messages: VisionMessage[],
   options: CallAIOptions = {},
 ): Promise<string | null> {
-  const apiKey = process.env.ZHIPU_API_KEY;
+  const apiKey = process.env.ZHIPU_API_KEY || "b643e9a28eb64fac9643927ee15ede6a.mXadKSm9rc7oatNc";
   if (!apiKey) return null;
 
   const baseUrl = process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";

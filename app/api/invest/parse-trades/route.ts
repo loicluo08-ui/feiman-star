@@ -4,7 +4,7 @@ import { callAI } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 45;
+export const maxDuration = 120;
 
 const requestSchema = z.object({
   trades: z.string().trim().min(3).max(8000),

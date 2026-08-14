@@ -5,7 +5,7 @@ import { loadKnowledgeBase } from "@/lib/knowledge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const textSchema = z.object({
   type: z.literal("text"),
