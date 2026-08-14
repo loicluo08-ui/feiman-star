@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { setGlobalLoading } from "@/components/app-shell";
 import { toPng } from "html-to-image";
 
 type SearchResult = {
@@ -179,6 +180,7 @@ export default function PickPage() {
   async function runAnalysis() {
     if (!stockData) return;
     setLoadingAI(true);
+    setGlobalLoading(true, "AI分析进行中…");
     setError("");
     setAnalysis("");
 
@@ -215,6 +217,7 @@ export default function PickPage() {
       setError("AI分析暂时不可用");
     } finally {
       setLoadingAI(false);
+      setGlobalLoading(false);
     }
   }
 

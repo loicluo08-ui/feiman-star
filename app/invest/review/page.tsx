@@ -215,6 +215,7 @@ export default function ReviewPage() {
     e.preventDefault();
     if (!trades.trim() || loading) return;
     setLoading(true);
+    setGlobalLoading(true, "AI复盘分析中…");
     setError("");
     setAnalysis("");
 
@@ -245,6 +246,7 @@ export default function ReviewPage() {
       setError("AI分析暂时不可用，请稍后重试");
     } finally {
       setLoading(false);
+      setGlobalLoading(false);
     }
   }
 

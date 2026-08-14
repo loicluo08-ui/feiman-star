@@ -178,6 +178,7 @@ export default function ChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
     setMessages((prev) => [...prev, userItem, { role: "assistant", text: "" }]);
     setLoading(true);
+    setGlobalLoading(true, "AI回复中…");
     setError("");
     scrollToBottom();
 

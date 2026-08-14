@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const navItems = [
   { href: "/", label: "首页", icon: "M3 12L12 3l9 9M5 10v10h14V10" },
@@ -72,8 +73,49 @@ function SidebarContent({
   );
 }
 
+// 全局加载状态：任意页面在进行AI请求时设置，阻止导航
+let globalLoading = false;
+let globalLoadingMsg = "";
+const loadingListeners: Set<() => void> = new Set();
+
+export function setGlobalLoading(loading: boolean, msg = "") {
+  globalLoading = loading;
+  globalLoadingMsg = msg;
+  loadingListeners.forEach((fn) => fn());
+}
+
+export function useGlobalLoading() {
+  const [, forceUpdate] = useState({});
+  useEffect(() => {
+    const fn = () => forceUpdate({});
+    loadingListeners.add(fn);
+    return () => { loadingListeners.delete(fn); };
+  }, []);
+  return { loading: globalLoading, msg: globalLoadingMsg };
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { loading, msg } = useGlobalLoading();
+  const router = useRouter();
+  const [showNavConfirm, setShowNavConfirm] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  function confirmNavigate() {
+    setShowNavConfirm(false);
+    if (pendingHref) {
+      setGlobalLoading(false);
+      router.push(pendingHref);
+    }
+  }
+
+  function handleNavClick(e: React.MouseEvent, href: string) {
+    if (loading) {
+      e.preventDefault();
+      setPendingHref(href);
+      setShowNavConfirm(true);
+    }
+  }
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
