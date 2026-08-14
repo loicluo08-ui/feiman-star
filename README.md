@@ -11,7 +11,7 @@ AI驱动的美股选股、复盘、对话工具。免费使用，无需登录。
 ## 技术栈
 
 - Next.js 14 + TypeScript + Tailwind CSS
-- Yahoo Finance API（行情数据，无需API key）
+- Finnhub（实时行情）+ Yahoo Finance（K线）
 - DeepSeek API（AI分析）
 
 ## 环境变量
@@ -33,4 +33,4 @@ yarn dev
 
 ## 声明
 
-行情数据来自Yahoo Finance，可能存在15-20分钟延迟。所有数据和分析由AI生成，仅供研究参考，不构成任何投资建议。
+实时行情来自Finnhub，K线数据来自Yahoo Finance。所有数据和分析由AI生成，仅供研究参考，不构成任何投资建议。
