@@ -1,6 +1,9 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { getTask, startTask, type BackgroundTask } from "@/lib/background-task";
+
+type AnalysisStyle = "balanced" | "value" | "growth" | "quant";
 
 type ChatItem = {
   role: "user" | "assistant";
@@ -12,11 +15,64 @@ type ChatHistoryRecord = {
   id: string;
   date: string;
   title: string;
-  style: "balanced" | "value" | "growth" | "quant";
+  style: AnalysisStyle;
   messages: ChatItem[];
 };
 
+type ChatTaskResult = {
+  messages: ChatItem[];
+  history: ChatHistoryRecord[];
+  historyId: string;
+  style: AnalysisStyle;
+};
+
+class ChatTaskError extends Error {
+  result: ChatTaskResult;
+
+  constructor(message: string, result: ChatTaskResult) {
+    super(message);
+    this.name = "ChatTaskError";
+    this.result = result;
+  }
+}
+
 const CHAT_HISTORY_KEY = "feimanstar_chat_history";
+const CHAT_TASK_KEY = "chat-response";
+
+function readChatHistory(): ChatHistoryRecord[] {
+  try {
+    const saved = localStorage.getItem(CHAT_HISTORY_KEY);
+    return saved ? (JSON.parse(saved) as ChatHistoryRecord[]).slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
+function storeConversation(
+  messages: ChatItem[],
+  style: AnalysisStyle,
+  historyId: string,
+): ChatHistoryRecord[] {
+  const textOnlyMessages = messages.map((message) => ({
+    role: message.role,
+    text: message.text,
+  }));
+  const firstQuestion = textOnlyMessages.find((message) => message.role === "user")?.text ?? "投资对话";
+  const record: ChatHistoryRecord = {
+    id: historyId,
+    date: new Date().toISOString(),
+    title: firstQuestion.replace(/\s+/g, " ").slice(0, 48),
+    style,
+    messages: textOnlyMessages,
+  };
+  const next = [record, ...readChatHistory().filter((item) => item.id !== historyId)].slice(0, 20);
+  try {
+    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(next));
+  } catch {
+    // 存储不可用时仍返回结果，不影响AI回复。
+  }
+  return next;
+}
 
 const suggestions = [
   { title: "帮我分析这张K线图", desc: "上传截图，AI解读走势" },
@@ -32,51 +88,55 @@ export default function ChatPage() {
   const [error, setError] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [style, setStyle] = useState<"balanced" | "value" | "growth" | "quant">("balanced");
+  const [style, setStyle] = useState<AnalysisStyle>("balanced");
   const [history, setHistory] = useState<ChatHistoryRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeHistoryId = useRef("");
+  const mountedRef = useRef(false);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(CHAT_HISTORY_KEY);
-      if (saved) {
-        const records = JSON.parse(saved) as ChatHistoryRecord[];
-        setHistory(records.slice(0, 20));
+    mountedRef.current = true;
+    setHistory(readChatHistory());
+
+    const task = getTask<ChatTaskResult>(CHAT_TASK_KEY);
+    const applyResult = (result: ChatTaskResult) => {
+      if (!mountedRef.current) return;
+      activeHistoryId.current = result.historyId;
+      setMessages(result.messages);
+      setHistory(result.history);
+      setStyle(result.style);
+      setLoading(false);
+      setError("");
+      scrollToBottom();
+    };
+    const applyError = (taskError: unknown) => {
+      if (!mountedRef.current) return;
+      if (taskError instanceof ChatTaskError) {
+        activeHistoryId.current = taskError.result.historyId;
+        setMessages(taskError.result.messages);
+        setHistory(taskError.result.history);
+        setStyle(taskError.result.style);
       }
-    } catch {
-      // 本地历史损坏时忽略，不影响正常对话。
+      setLoading(false);
+      setError(taskError instanceof Error ? taskError.message : "AI暂时不可用");
+      scrollToBottom();
+    };
+
+    if (task?.status === "success" && task.result) {
+      applyResult(task.result);
+    } else if (task?.status === "error") {
+      applyError(task.error);
+    } else if (task?.status === "running") {
+      setLoading(true);
+      void task.promise.then(applyResult).catch(applyError);
     }
+
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
-
-  function persistConversation(nextMessages: ChatItem[]) {
-    try {
-      const id = activeHistoryId.current || `${Date.now()}`;
-      activeHistoryId.current = id;
-      const textOnlyMessages = nextMessages.map((message) => ({
-        role: message.role,
-        text: message.text,
-      }));
-      const firstQuestion = textOnlyMessages.find((message) => message.role === "user")?.text ?? "投资对话";
-      const record: ChatHistoryRecord = {
-        id,
-        date: new Date().toISOString(),
-        title: firstQuestion.replace(/\s+/g, " ").slice(0, 48),
-        style,
-        messages: textOnlyMessages,
-      };
-
-      setHistory((previous) => {
-        const next = [record, ...previous.filter((item) => item.id !== id)].slice(0, 20);
-        localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(next));
-        return next;
-      });
-    } catch {
-      // localStorage不可用时不阻断对话。
-    }
-  }
 
   function loadConversation(record: ChatHistoryRecord) {
     activeHistoryId.current = record.id;
@@ -138,7 +198,7 @@ export default function ChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  async function submit(e: FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
     const text = question.trim();
     if ((!text && !image) || loading) return;
@@ -148,12 +208,16 @@ export default function ChatPage() {
       text: text || "（图片）",
       imagePreview: image ?? undefined,
     };
+    const currentMessages = messages;
+    const currentStyle = style;
+    const historyId = activeHistoryId.current || `${Date.now()}`;
+    activeHistoryId.current = historyId;
 
     // 历史消息：只保留最近2轮的图片，更早的图片转为文字描述（避免payload过大）
     const recentImageCount = 2;
     let imageCount = 0;
     const apiMessages = [
-      ...messages.map((m) => {
+      ...currentMessages.map((m) => {
         const hasImage = !!m.imagePreview;
         const includeImage = hasImage && imageCount < recentImageCount;
         if (hasImage) imageCount++;
@@ -176,45 +240,72 @@ export default function ChatPage() {
     setImage(null);
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    setMessages((prev) => [...prev, userItem, { role: "assistant", text: "" }]);
+    setMessages([...currentMessages, userItem, { role: "assistant", text: "" }]);
     setLoading(true);
-    setGlobalLoading(true, "AI回复中…");
     setError("");
     scrollToBottom();
 
-    try {
-      const res = await fetch("/api/invest/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages, style }),
-      });
+    const task: BackgroundTask<ChatTaskResult> = startTask(CHAT_TASK_KEY, async () => {
+      try {
+        const res = await fetch("/api/invest/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: apiMessages, style: currentStyle }),
+        });
 
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || "请求失败");
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          throw new Error(json.error || "请求失败");
+        }
+
+        const json = await res.json();
+        const answer = json.data?.answer ?? "";
+        const completedMessages = [
+          ...currentMessages,
+          userItem,
+          { role: "assistant" as const, text: answer },
+        ];
+        const nextHistory = storeConversation(completedMessages, currentStyle, historyId);
+        return {
+          messages: completedMessages,
+          history: nextHistory,
+          historyId,
+          style: currentStyle,
+        };
+      } catch (taskError) {
+        const message = taskError instanceof Error ? taskError.message : "AI暂时不可用";
+        const failedMessages = [
+          ...currentMessages,
+          userItem,
+          { role: "assistant" as const, text: `⚠️ ${message}` },
+        ];
+        const nextHistory = storeConversation(failedMessages, currentStyle, historyId);
+        throw new ChatTaskError(message, {
+          messages: failedMessages,
+          history: nextHistory,
+          historyId,
+          style: currentStyle,
+        });
       }
+    });
 
-      const json = await res.json();
-      const answer = json.data?.answer ?? "";
-
-      const completedMessages = [...messages, userItem, { role: "assistant" as const, text: answer }];
-      setMessages(completedMessages);
-      persistConversation(completedMessages);
-    } catch (err) {
-      const failedMessages = [
-        ...messages,
-        userItem,
-        {
-          role: "assistant" as const,
-          text: `⚠️ ${err instanceof Error ? err.message : "AI暂时不可用"}`,
-        },
-      ];
-      setMessages(failedMessages);
-      persistConversation(failedMessages);
-    } finally {
+    void task.promise.then((result) => {
+      if (!mountedRef.current) return;
+      setMessages(result.messages);
+      setHistory(result.history);
       setLoading(false);
+      setError("");
       scrollToBottom();
-    }
+    }).catch((taskError: unknown) => {
+      if (!mountedRef.current) return;
+      if (taskError instanceof ChatTaskError) {
+        setMessages(taskError.result.messages);
+        setHistory(taskError.result.history);
+      }
+      setLoading(false);
+      setError(taskError instanceof Error ? taskError.message : "AI暂时不可用");
+      scrollToBottom();
+    });
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -299,6 +390,12 @@ export default function ChatPage() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-6">
         {messages.length === 0 ? (
           <div className="mx-auto max-w-2xl">
+            {loading ? (
+              <div className="mb-6 flex items-center justify-center gap-2 rounded-xl border border-[#e5e5e7] bg-white px-4 py-3 text-sm text-[#8e8e93]">
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#1a1a1a]" />
+                AI回复中…
+              </div>
+            ) : null}
             <div className="mb-6 text-center">
               <h2 className="text-xl font-semibold text-[#1a1a1a]">投资分析对话</h2>
               <p className="mt-2 text-sm text-[#6e6e73]">支持K线图、财报、持仓截图分析，也支持纯文字问答</p>
@@ -330,7 +427,7 @@ export default function ChatPage() {
                   {m.imagePreview ? (
                     <img src={m.imagePreview} alt="用户上传" className="mb-2 max-h-48 rounded-lg object-cover" />
                   ) : null}
-                  {m.text ? (
+                  {m.text || (loading && i === messages.length - 1) ? (
                     <div className="whitespace-pre-wrap leading-6">{m.text || (loading && i === messages.length - 1 ? "思考中…" : "")}</div>
                   ) : null}
                 </div>

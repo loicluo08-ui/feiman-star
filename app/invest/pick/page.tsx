@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { setGlobalLoading } from "@/components/app-shell";
 import { toPng } from "html-to-image";
+import { getTask, startTask, type BackgroundTask } from "@/lib/background-task";
 
 type SearchResult = {
   code: string;
@@ -65,6 +65,14 @@ type StockData = {
   isETF?: boolean;
 };
 
+type PickAnalysisResult = {
+  analysis: string;
+  stockData: StockData;
+  userNotes: string;
+};
+
+const PICK_TASK_KEY = "pick-analysis";
+
 export default function PickPage() {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
@@ -75,7 +83,7 @@ export default function PickPage() {
   const [analysis, setAnalysis] = useState("");
   const [loadingData, setLoadingData] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
-  const [loadingStep, setLoadingStep] = useState("正在拉取数据…");
+  const [loadingStep, setLoadingStep] = useState("AI分析进行中…");
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [error, setError] = useState("");
   const [copyLabel, setCopyLabel] = useState("复制");
@@ -83,6 +91,41 @@ export default function PickPage() {
   const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const task = getTask<PickAnalysisResult>(PICK_TASK_KEY);
+
+    const applyResult = (result: PickAnalysisResult) => {
+      if (!mountedRef.current) return;
+      setStockData(result.stockData);
+      setQuery(result.stockData.code);
+      setUserNotes(result.userNotes);
+      setAnalysis(result.analysis);
+      setLoadingAI(false);
+      setError("");
+    };
+
+    if (task?.status === "success" && task.result) {
+      applyResult(task.result);
+    } else if (task?.status === "error") {
+      setLoadingAI(false);
+      setError("AI分析暂时不可用");
+    } else if (task?.status === "running") {
+      setLoadingAI(true);
+      setLoadingStep("AI分析进行中…");
+      void task.promise.then(applyResult).catch(() => {
+        if (!mountedRef.current) return;
+        setLoadingAI(false);
+        setError("AI分析暂时不可用");
+      });
+    }
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // 搜索联想（防抖300ms）
   useEffect(() => {
@@ -179,46 +222,56 @@ export default function PickPage() {
 
   async function runAnalysis() {
     if (!stockData) return;
+    const currentStockData = stockData;
+    const currentUserNotes = userNotes;
     setLoadingAI(true);
-    setGlobalLoading(true, "AI分析进行中…");
+    setLoadingStep("正在拉取新闻和市场快报…");
     setError("");
     setAnalysis("");
 
-    try {
-      const marketDataStr = JSON.stringify(stockData, null, 2);
+    const task: BackgroundTask<PickAnalysisResult> = startTask(PICK_TASK_KEY, async () => {
+      const marketDataStr = JSON.stringify(currentStockData, null, 2);
 
       // 并行拉取新闻+市场快报
-      setLoadingStep("正在拉取新闻和市场快报…");
       const [newsRes, pulseRes] = await Promise.all([
-        fetch(`/api/invest/news?code=${encodeURIComponent(stockData.code)}`).catch(() => null),
+        fetch(`/api/invest/news?code=${encodeURIComponent(currentStockData.code)}`).catch(() => null),
         fetch("/api/invest/market-pulse").catch(() => null),
       ]);
       const newsData = newsRes?.ok ? await newsRes.json() : null;
       const pulseData = pulseRes?.ok ? await pulseRes.json() : null;
 
-      setLoadingStep("AI正在生成深度分析报告，约15-30秒…");
+      if (mountedRef.current) setLoadingStep("AI正在生成深度分析报告，约15-30秒…");
       const res = await fetch("/api/invest/pick", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          stockName: stockData.name,
-          stockCode: stockData.code,
+          stockName: currentStockData.name,
+          stockCode: currentStockData.code,
           marketData: marketDataStr,
           news: newsData?.data?.news ?? [],
           nextEarnings: newsData?.data?.nextEarnings ?? null,
           marketPulse: pulseData?.data ?? null,
-          userNotes,
+          userNotes: currentUserNotes,
         }),
       });
       if (!res.ok) throw new Error("分析失败");
       const json = await res.json();
-      setAnalysis(json.data?.analysis ?? "");
-    } catch {
-      setError("AI分析暂时不可用");
-    } finally {
+      return {
+        analysis: json.data?.analysis ?? "",
+        stockData: currentStockData,
+        userNotes: currentUserNotes,
+      };
+    });
+
+    void task.promise.then((result) => {
+      if (!mountedRef.current) return;
+      setAnalysis(result.analysis);
       setLoadingAI(false);
-      setGlobalLoading(false);
-    }
+    }).catch(() => {
+      if (!mountedRef.current) return;
+      setError("AI分析暂时不可用");
+      setLoadingAI(false);
+    });
   }
 
   async function copyAnalysis() {
@@ -350,6 +403,13 @@ export default function PickPage() {
         <div className="mt-8 animate-pulse space-y-4">
           <div className="h-32 rounded-2xl bg-[#f2f2f3]" />
           <div className="h-48 rounded-2xl bg-[#f2f2f3]" />
+        </div>
+      ) : null}
+
+      {loadingAI && !stockData ? (
+        <div className="mt-6 flex items-center gap-2 rounded-xl border border-[#e5e5e7] bg-white px-4 py-3 text-sm text-[#8e8e93]">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#1a1a1a]" />
+          分析中…切换页面不会中断
         </div>
       ) : null}
 

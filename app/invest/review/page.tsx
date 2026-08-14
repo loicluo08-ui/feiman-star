@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { getTask, startTask, type BackgroundTask } from "@/lib/background-task";
 
 type ReviewRecord = {
   id: string;
@@ -11,7 +12,16 @@ type ReviewRecord = {
   analysis: string;
 };
 
+type ReviewAnalysisResult = {
+  analysis: string;
+  trades: string;
+  strategy: string;
+  questions: string;
+  record: ReviewRecord;
+};
+
 const STORAGE_KEY = "feimanstar_reviews";
+const REVIEW_TASK_KEY = "review-analysis";
 
 type ParsedTrade = {
   symbol: string;
@@ -170,7 +180,45 @@ export default function ReviewPage() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState<ReviewRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const mountedRef = useRef(false);
   const tradeStats = useMemo(() => calculateTradeStats(trades), [trades]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const task = getTask<ReviewAnalysisResult>(REVIEW_TASK_KEY);
+
+    const applyResult = (result: ReviewAnalysisResult) => {
+      if (!mountedRef.current) return;
+      setTrades(result.trades);
+      setStrategy(result.strategy);
+      setQuestions(result.questions);
+      setAnalysis(result.analysis);
+      setHistory((previous) => [
+        result.record,
+        ...previous.filter((record) => record.id !== result.record.id),
+      ].slice(0, 20));
+      setLoading(false);
+      setError("");
+    };
+
+    if (task?.status === "success" && task.result) {
+      applyResult(task.result);
+    } else if (task?.status === "error") {
+      setLoading(false);
+      setError("AI分析暂时不可用，请稍后重试");
+    } else if (task?.status === "running") {
+      setLoading(true);
+      void task.promise.then(applyResult).catch(() => {
+        if (!mountedRef.current) return;
+        setLoading(false);
+        setError("AI分析暂时不可用，请稍后重试");
+      });
+    }
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // 加载历史
   function loadHistory() {
@@ -211,43 +259,61 @@ export default function ReviewPage() {
     }
   }
 
-  async function submit(e: FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
     if (!trades.trim() || loading) return;
+    const currentTrades = trades;
+    const currentStrategy = strategy;
+    const currentQuestions = questions;
     setLoading(true);
-    setGlobalLoading(true, "AI复盘分析中…");
     setError("");
     setAnalysis("");
 
-    try {
+    const task: BackgroundTask<ReviewAnalysisResult> = startTask(REVIEW_TASK_KEY, async () => {
       const res = await fetch("/api/invest/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trades, strategy, questions }),
+        body: JSON.stringify({
+          trades: currentTrades,
+          strategy: currentStrategy,
+          questions: currentQuestions,
+        }),
       });
       if (!res.ok) throw new Error("分析失败");
       const json = await res.json();
       const result = json.data?.analysis ?? "";
-      setAnalysis(result);
+      const record: ReviewRecord = {
+        id: `${Date.now()}`,
+        date: new Date().toISOString(),
+        trades: currentTrades,
+        strategy: currentStrategy,
+        questions: currentQuestions,
+        analysis: result,
+      };
+      if (result) saveReview(record);
 
-      // 保存到历史
-      if (result) {
-        const record: ReviewRecord = {
-          id: `${Date.now()}`,
-          date: new Date().toISOString(),
-          trades: trades,
-          strategy: strategy,
-          questions: questions,
-          analysis: result,
-        };
-        saveReview(record);
-      }
-    } catch {
-      setError("AI分析暂时不可用，请稍后重试");
-    } finally {
+      return {
+        analysis: result,
+        trades: currentTrades,
+        strategy: currentStrategy,
+        questions: currentQuestions,
+        record,
+      };
+    });
+
+    void task.promise.then((result) => {
+      if (!mountedRef.current) return;
+      setAnalysis(result.analysis);
+      setHistory((previous) => [
+        result.record,
+        ...previous.filter((record) => record.id !== result.record.id),
+      ].slice(0, 20));
       setLoading(false);
-      setGlobalLoading(false);
-    }
+    }).catch(() => {
+      if (!mountedRef.current) return;
+      setError("AI分析暂时不可用，请稍后重试");
+      setLoading(false);
+    });
   }
 
   const templates = [

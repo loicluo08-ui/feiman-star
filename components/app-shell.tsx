@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { getTasks, subscribeTasks } from "@/lib/background-task";
 
 const navItems = [
   { href: "/", label: "首页", icon: "M3 12L12 3l9 9M5 10v10h14V10" },
@@ -73,50 +73,20 @@ function SidebarContent({
   );
 }
 
-// 全局加载状态：任意页面在进行AI请求时设置，阻止导航
-let globalLoading = false;
-let globalLoadingMsg = "";
-const loadingListeners: Set<() => void> = new Set();
-
-export function setGlobalLoading(loading: boolean, msg = "") {
-  globalLoading = loading;
-  globalLoadingMsg = msg;
-  loadingListeners.forEach((fn) => fn());
-}
-
-export function useGlobalLoading() {
-  const [, forceUpdate] = useState({});
-  useEffect(() => {
-    const fn = () => forceUpdate({});
-    loadingListeners.add(fn);
-    return () => { loadingListeners.delete(fn); };
-  }, []);
-  return { loading: globalLoading, msg: globalLoadingMsg };
-}
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { loading, msg } = useGlobalLoading();
-  const router = useRouter();
-  const [showNavConfirm, setShowNavConfirm] = useState(false);
-  const [pendingHref, setPendingHref] = useState<string | null>(null);
-
-  function confirmNavigate() {
-    setShowNavConfirm(false);
-    if (pendingHref) {
-      setGlobalLoading(false);
-      router.push(pendingHref);
-    }
-  }
-
-  function handleNavClick(e: React.MouseEvent, href: string) {
-    if (loading) {
-      e.preventDefault();
-      setPendingHref(href);
-      setShowNavConfirm(true);
-    }
-  }
   const [menuOpen, setMenuOpen] = useState(false);
+  const [runningTaskKey, setRunningTaskKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    const updateRunningTask = () => {
+      const runningTask = getTasks().find(([, task]) => task.status === "running");
+      setRunningTaskKey(runningTask?.[0] ?? null);
+    };
+
+    updateRunningTask();
+    return subscribeTasks(updateRunningTask);
+  }, []);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -140,6 +110,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-[#fafafa] md:flex">
+      {runningTaskKey ? (
+        <div
+          className="fixed inset-x-0 top-0 z-[70] h-1 overflow-hidden bg-[#e5e5e7] md:left-56"
+          title={{
+            "pick-analysis": "AI选股分析中…",
+            "review-analysis": "AI复盘分析中…",
+            "chat-response": "AI回复中…",
+          }[runningTaskKey] ?? "AI任务处理中…"}
+        >
+          <div className="h-full w-full animate-pulse bg-[#1a1a1a]" />
+        </div>
+      ) : null}
+
       <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-[#e5e5e7] bg-white px-3 py-5 md:flex">
         <SidebarContent pathname={pathname} />
       </aside>
