@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+type SearchResult = {
+  code: string;
+  name: string;
+  exchange: string | null;
+  type: string;
+};
 
 type Financials = {
   pe: number | null;
@@ -56,22 +63,60 @@ type StockData = {
 };
 
 export default function PickPage() {
-  const [code, setCode] = useState("");
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
   const [stockData, setStockData] = useState<StockData | null>(null);
   const [userNotes, setUserNotes] = useState("");
   const [analysis, setAnalysis] = useState("");
   const [loadingData, setLoadingData] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
+  const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [error, setError] = useState("");
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function fetchStock(e: FormEvent) {
-    e.preventDefault();
+  // 搜索联想（防抖300ms）
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 1) {
+      setSuggestions([]);
+      return;
+    }
+
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    setLoadingSuggest(true);
+
+    suggestTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/invest/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const json = await res.json();
+          setSuggestions(json.data ?? []);
+          setShowSuggest(true);
+          setHighlightIdx(-1);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoadingSuggest(false);
+      }
+    }, 300);
+
+    return () => {
+      if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    };
+  }, [query]);
+
+  async function fetchStock(code: string) {
     const c = code.trim().toUpperCase();
     if (!c) return;
     setLoadingData(true);
     setError("");
     setStockData(null);
     setAnalysis("");
+    setShowSuggest(false);
 
     try {
       const res = await fetch(`/api/invest/stock?code=${encodeURIComponent(c)}`);
@@ -81,10 +126,47 @@ export default function PickPage() {
       }
       const json = await res.json();
       setStockData(json.data);
+      setQuery(json.data.code);
     } catch (err) {
       setError(err instanceof Error ? err.message : "获取行情失败");
     } finally {
       setLoadingData(false);
+    }
+  }
+
+  function handleSuggestionClick(s: SearchResult) {
+    setQuery(s.code);
+    setShowSuggest(false);
+    fetchStock(s.code);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!showSuggest || suggestions.length === 0) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        // 如果输入的是有效代码格式，直接拉取
+        if (/^[A-Z]{1,6}$/.test(query.trim().toUpperCase())) {
+          fetchStock(query.trim().toUpperCase());
+        }
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIdx((prev) => Math.min(prev + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIdx((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightIdx >= 0 && highlightIdx < suggestions.length) {
+        handleSuggestionClick(suggestions[highlightIdx]);
+      } else if (/^[A-Z]{1,6}$/.test(query.trim().toUpperCase())) {
+        fetchStock(query.trim().toUpperCase());
+      }
+    } else if (e.key === "Escape") {
+      setShowSuggest(false);
     }
   }
 
@@ -124,39 +206,72 @@ export default function PickPage() {
     <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">AI选股助手</h1>
-        <p className="mt-2 text-sm text-[#6e6e73]">输入美股代码，拉取实时行情+财务数据，AI生成分析报告</p>
+        <p className="mt-2 text-sm text-[#6e6e73]">输入美股代码或公司名称，拉取行情+财务数据，AI生成分析报告</p>
       </header>
 
       {/* 搜索框 */}
-      <form onSubmit={fetchStock} className="flex gap-2.5">
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="美股代码，如 AAPL / TSLA / NVDA"
-          className="min-w-0 flex-1 rounded-xl border border-[#d1d1d6] px-4 py-3 text-sm uppercase outline-none transition-colors focus:border-[#1a1a1a]"
-          maxLength={6}
-          autoCapitalize="characters"
-          autoCorrect="off"
-          spellCheck={false}
-        />
-        <button
-          type="submit"
-          disabled={loadingData || !code.trim()}
-          className="shrink-0 rounded-xl bg-[#1a1a1a] px-5 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-        >
-          {loadingData ? "拉取中…" : "拉取行情"}
-        </button>
-      </form>
+      <div className="relative">
+        <div className="flex gap-2.5">
+          <div className="relative min-w-0 flex-1">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => { if (suggestions.length > 0) setShowSuggest(true); }}
+              onBlur={() => { blurTimer.current = setTimeout(() => setShowSuggest(false), 150); }}
+              placeholder="代码或公司名，如 AAPL / 苹果 / Apple / Tesla"
+              className="w-full rounded-xl border border-[#d1d1d6] px-4 py-3 text-sm outline-none transition-colors focus:border-[#1a1a1a]"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            {loadingSuggest ? (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e7] border-t-[#8e8e93]" />
+              </span>
+            ) : null}
+          </div>
+          <button
+            onClick={() => {
+              const c = query.trim().toUpperCase();
+              if (/^[A-Z]{1,6}$/.test(c)) fetchStock(c);
+            }}
+            disabled={loadingData || !query.trim()}
+            className="shrink-0 rounded-xl bg-[#1a1a1a] px-5 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            {loadingData ? "拉取中…" : "拉取行情"}
+          </button>
+        </div>
+
+        {/* 联想下拉 */}
+        {showSuggest && suggestions.length > 0 ? (
+          <ul className="absolute z-20 mt-1 max-h-80 w-full overflow-auto rounded-xl border border-[#e5e5e7] bg-white py-1 shadow-lg">
+            {suggestions.map((s, i) => (
+              <li key={s.code}>
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); handleSuggestionClick(s); }}
+                  onMouseEnter={() => setHighlightIdx(i)}
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                    i === highlightIdx ? "bg-[#f7f7f8]" : "bg-white"
+                  }`}
+                >
+                  <span className="shrink-0 rounded-md bg-[#f2f2f3] px-2 py-0.5 text-xs font-semibold text-[#1a1a1a]">{s.code}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm text-[#1a1a1a]">{s.name}</span>
+                  <span className="shrink-0 text-xs text-[#8e8e93]">{s.exchange}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
 
       {/* 快捷代码 */}
       <div className="mt-3 flex flex-wrap gap-2">
         {["AAPL", "TSLA", "NVDA", "GOOGL", "MSFT", "AMZN", "META"].map((t) => (
           <button
             key={t}
-            onClick={() => {
-              setCode(t);
-              setTimeout(() => fetchStock({ preventDefault: () => {} } as FormEvent), 0);
-            }}
+            onClick={() => fetchStock(t)}
             className="rounded-md bg-[#f2f2f3] px-2.5 py-1 text-xs font-medium text-[#6e6e73] transition-colors hover:bg-[#e5e5e7]"
           >
             {t}
