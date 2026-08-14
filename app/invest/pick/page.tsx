@@ -60,6 +60,7 @@ type StockData = {
   fiftyTwoWeekLow: number | null;
   candles: Candle[];
   financials: Financials | null;
+  isETF?: boolean;
 };
 
 export default function PickPage() {
@@ -357,6 +358,12 @@ export default function PickPage() {
           ) : null}
 
           {/* 指标网格 */}
+          {stockData.isETF ? (
+            <div className="rounded-2xl border border-[#e5e5e7] bg-[#f7f7f8] p-5 text-center">
+              <p className="text-sm text-[#6e6e73]">ETF不适用个股财务指标（PE/PB/ROE等）</p>
+              <p className="mt-1 text-xs text-[#8e8e93]">点击下方AI分析查看ETF专属分析报告</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <MetricCard label="市值" value={fmtAmt(stockData.marketCap)} />
             <MetricCard label="成交量" value={fmtVol(stockData.volume)} />
@@ -383,6 +390,7 @@ export default function PickPage() {
             <MetricCard label="Beta" value={fmtNum(stockData.financials?.beta)} />
             <MetricCard label="自由现金流" value={fmtAmt(stockData.financials?.freeCashflow)} />
           </div>
+          )}
 
           {/* 行业基准对比 */}
           {stockData.financials?.sector ? (
