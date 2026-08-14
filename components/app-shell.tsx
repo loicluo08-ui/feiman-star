@@ -8,7 +8,6 @@ const navItems = [
   { href: "/invest/pick", label: "AI选股", icon: "M3 3v18h18M7 14l4-4 4 4 5-5" },
   { href: "/invest/review", label: "交易复盘", icon: "M9 17v-6h4v6M7 7h10v10H7zM5 5h14v14H5z" },
   { href: "/invest/dashboard", label: "自选看板", icon: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" },
-  { href: "/chat", label: "AI对话", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

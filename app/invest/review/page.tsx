@@ -85,9 +85,9 @@ export default function ReviewPage() {
         const record: ReviewRecord = {
           id: `${Date.now()}`,
           date: new Date().toISOString(),
-          trades: trades.slice(0, 200),
-          strategy: strategy.slice(0, 100),
-          questions: questions.slice(0, 100),
+          trades: trades,
+          strategy: strategy,
+          questions: questions,
           analysis: result,
         };
         saveReview(record);

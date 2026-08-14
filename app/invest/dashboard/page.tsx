@@ -44,7 +44,12 @@ export default function DashboardPage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   }, [list]);
 
-  async function refreshPrices(items: WatchItem[]) {
+  // 用 ref 持有最新 list，避免定时器引用过期快照
+  const listRef = useRef<WatchItem[]>([]);
+  listRef.current = list;
+
+  async function refreshPrices() {
+    const items = listRef.current;
     if (items.length === 0) return;
     const results = await Promise.allSettled(
       items.map(async (item) => {
@@ -70,7 +75,9 @@ export default function DashboardPage() {
 
     setList((prev) => {
       const updated = prev.map((item) => {
-        const result = results.find((r, i) => prev[i].code === item.code && r.status === "fulfilled");
+        const idx = prev.findIndex((p) => p.code === item.code);
+        if (idx === -1) return item;
+        const result = results[idx];
         if (result && result.status === "fulfilled") return result.value;
         return item;
       });
@@ -82,8 +89,8 @@ export default function DashboardPage() {
   // 初始加载+定时刷新
   useEffect(() => {
     if (list.length > 0) {
-      refreshPrices(list);
-      timerRef.current = setInterval(() => refreshPrices(list), 30000);
+      refreshPrices();
+      timerRef.current = setInterval(refreshPrices, 30000);
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);

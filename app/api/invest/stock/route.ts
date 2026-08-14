@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,15 @@ const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
  * GET /api/invest/stock?code=AAPL
  */
 export async function GET(request: NextRequest) {
+  // 限流：每IP每分钟最多20次请求（看板30秒刷新+多股票场景）
+  const limited = enforceRateLimit(request, "chat", RATE_LIMITS.chat);
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const rawCode = searchParams.get("code")?.trim().toUpperCase();
 

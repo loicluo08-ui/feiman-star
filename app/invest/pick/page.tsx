@@ -404,7 +404,7 @@ function fmtPct(v: unknown): string {
   if (v == null || v === "") return "—";
   const n = Number(v);
   if (Number.isNaN(n)) return "—";
-  // Yahoo Finance的比率类指标返回小数（0.15 = 15%）
+  // Yahoo Finance比率类指标返回小数（0.15 = 15%），乘100转百分比
   const pct = n > 1 ? n : n * 100;
   return `${pct.toFixed(2)}%`;
 }

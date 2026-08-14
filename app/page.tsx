@@ -22,9 +22,9 @@ const tools = [
   {
     number: "03",
     title: "自选看板",
-    description: "自选股实时监控+异动提醒+AI解读，一个页面看全局。",
+    description: "自选股实时监控+异动高亮+迷你走势图，一个页面看全局。",
     href: "/invest/dashboard",
-    tags: ["实时监控", "异动提醒", "AI解读"],
+    tags: ["实时监控", "异动高亮", "走势图"],
   },
 ];
 
@@ -38,7 +38,7 @@ export default function HomePage() {
           AI驱动的美股分析工具
         </h1>
         <p className="mt-4 max-w-2xl text-[15px] leading-7 text-[#6e6e73]">
-          选股、复盘、看板三件套。实时行情+财务数据+AI分析，一个站搞定。
+          选股、复盘、看板三件套。实时行情+财务数据+AI分析。
         </p>
       </section>
 
@@ -71,7 +71,7 @@ export default function HomePage() {
       {/* Disclaimer */}
       <section className="rounded-2xl border border-[#e5e5e7] bg-[#f7f7f8] p-5">
         <p className="text-xs leading-6 text-[#8e8e93]">
-          本站所有数据和分析由AI生成，仅供研究参考，不构成任何投资建议。投资有风险，决策需谨慎。
+          行情数据来自Yahoo Finance，可能存在15-20分钟延迟。所有数据和分析由AI生成，仅供研究参考，不构成任何投资建议。
         </p>
       </section>
     </div>
