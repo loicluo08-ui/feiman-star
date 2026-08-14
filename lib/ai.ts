@@ -1,11 +1,21 @@
 import "server-only";
 
-import { appendFinalPromptGuard, escapeXmlText } from "@/lib/prompt-security";
-
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
 };
+
+export type VisionMessage = {
+  role: "system" | "user" | "assistant";
+  content: VisionContent;
+};
+
+export type VisionContent =
+  | string
+  | Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    >;
 
 export type CallAIOptions = {
   temperature?: number;
@@ -15,72 +25,61 @@ export type CallAIOptions = {
   responseFormat?: "json" | "text";
 };
 
-export type SanitizeResult =
-  | { ok: true; text: string }
-  | { ok: false; text?: undefined };
-
-export function sanitizeInput(value: unknown, maxLength = 20_000): SanitizeResult {
-  if (typeof value !== "string") return { ok: false };
-
+export function sanitizeInput(value: unknown, maxLength = 20_000): string | null {
+  if (typeof value !== "string") return null;
   const text = value
     .replace(/\u0000/g, "")
     .replace(/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
     .trim();
-
-  if (!text || text.length > maxLength) return { ok: false };
-  return { ok: true, text: escapeXmlText(text) };
+  if (!text || text.length > maxLength) return null;
+  return text;
 }
 
-function extractMessageContent(payload: unknown) {
-  if (!payload || typeof payload !== "object") return null;
-  const choices = (payload as { choices?: unknown }).choices;
-  if (!Array.isArray(choices) || choices.length === 0) return null;
-  const first = choices[0];
-  if (!first || typeof first !== "object") return null;
-  const message = (first as { message?: unknown }).message;
-  if (!message || typeof message !== "object") return null;
-  const content = (message as { content?: unknown }).content;
-  return typeof content === "string" && content.trim() ? content.trim() : null;
+function extractMessageContent(json: unknown): string | null {
+  if (!json || typeof json !== "object") return null;
+  const data = json as Record<string, unknown>;
+  const choices = data.choices;
+  if (!Array.isArray(choices) || !choices[0]) return null;
+  const message = (choices[0] as Record<string, unknown>).message as Record<string, unknown> | undefined;
+  if (!message) return null;
+  const content = message.content;
+  return typeof content === "string" ? content : null;
 }
 
+/**
+ * 调用 DeepSeek（纯文字）
+ */
 export async function callAI(
   messages: ChatMessage[],
   options: CallAIOptions = {},
 ): Promise<string | null> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey || messages.length === 0) return null;
+  if (!apiKey) return null;
 
-  const attempts = Math.max(1, Math.min((options.retry ?? 0) + 1, 3));
-  const timeoutMs = Math.max(1_000, Math.min(options.timeout ?? 45_000, 90_000));
+  const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+  const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
+  const maxRetries = options.retry ?? 1;
 
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 30_000);
 
     try {
-      const response = await fetch(
-        `${process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com"}/chat/completions`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-flash",
-            messages: messages.map((message) => message.role === "system" ? { ...message, content: appendFinalPromptGuard(message.content) } : message),
-            ...(options.responseFormat === "text"
-              ? {}
-              : { response_format: { type: "json_object" } }),
-            thinking: { type: "disabled" },
-            stream: false,
-            temperature: options.temperature ?? 0.7,
-            max_tokens: options.max_tokens ?? 2_500,
-          }),
-          cache: "no-store",
-          signal: controller.signal,
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
         },
-      );
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: options.temperature ?? 0.7,
+          max_tokens: options.max_tokens ?? 2_500,
+        }),
+        cache: "no-store",
+        signal: controller.signal,
+      });
 
       if (response.ok) {
         const content = extractMessageContent(await response.json());
@@ -94,6 +93,60 @@ export async function callAI(
     } catch (error) {
       const reason = error instanceof Error && error.name === "AbortError" ? "timeout" : "request_failed";
       console.error(`[ai] ${reason} attempt=${attempt}`);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 调用智谱 GLM-4V（图片+文字）
+ */
+export async function callVisionAI(
+  messages: VisionMessage[],
+  options: CallAIOptions = {},
+): Promise<string | null> {
+  const apiKey = process.env.ZHIPU_API_KEY;
+  if (!apiKey) return null;
+
+  const baseUrl = process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";
+  const maxRetries = options.retry ?? 1;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 45_000);
+
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "glm-4v-plus-0111",
+          messages,
+          temperature: options.temperature ?? 0.4,
+          max_tokens: options.max_tokens ?? 3_000,
+        }),
+        cache: "no-store",
+        signal: controller.signal,
+      });
+
+      if (response.ok) {
+        const content = extractMessageContent(await response.json());
+        if (content) return content;
+      } else {
+        console.error(`[ai] zhipu_status=${response.status} attempt=${attempt}`);
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          return null;
+        }
+      }
+    } catch (error) {
+      const reason = error instanceof Error && error.name === "AbortError" ? "timeout" : "request_failed";
+      console.error(`[ai] zhipu_${reason} attempt=${attempt}`);
     } finally {
       clearTimeout(timeoutId);
     }

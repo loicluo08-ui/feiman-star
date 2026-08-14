@@ -8,7 +8,7 @@ const tools = [
   {
     number: "01",
     title: "AI选股助手",
-    description: "输入美股代码，拉取行情+24个财务指标，AI生成6维度分析报告。",
+    description: "输入美股代码或公司名，拉取行情+24个财务指标，AI生成6维度分析报告。",
     href: "/invest/pick",
     tags: ["财务指标", "AI分析", "6维度评分"],
   },
@@ -18,6 +18,13 @@ const tools = [
     description: "输入交易记录，AI做归因分析——盈亏来源、策略有效性、行为偏差、改进建议。",
     href: "/invest/review",
     tags: ["归因分析", "策略评估", "行为偏差"],
+  },
+  {
+    number: "03",
+    title: "投资对话",
+    description: "发文字或截图，AI帮你分析。K线图/财报/持仓截图都能读，支持多轮对话。",
+    href: "/invest/chat",
+    tags: ["截图分析", "多轮对话", "GLM-4V"],
   },
 ];
 
