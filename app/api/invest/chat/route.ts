@@ -14,6 +14,7 @@ const textSchema = z.object({
 const imageSchema = z.object({
   type: z.literal("image"),
   dataUrl: z.string().regex(/^data:image\/(jpeg|png|webp);base64,/),
+  text: z.string().trim().max(4000).optional(),
 });
 
 const messageSchema = z.object({
@@ -85,10 +86,12 @@ export async function POST(request: NextRequest) {
           if (m.content.type === "text") {
             return { role: m.role, content: m.content.text } as VisionMessage;
           }
+          // 图片消息：把用户文字（如有）和图片合并
+          const userText = m.content.text ?? "请分析这张图片";
           return {
             role: m.role,
             content: [
-              { type: "text", text: "请分析这张图片" },
+              { type: "text", text: userText },
               { type: "image_url", image_url: { url: m.content.dataUrl } },
             ],
           } as VisionMessage;

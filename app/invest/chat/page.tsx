@@ -86,14 +86,14 @@ export default function ChatPage() {
         return {
           role: m.role,
           content: includeImage && m.imagePreview
-            ? { type: "image" as const, dataUrl: m.imagePreview }
+            ? { type: "image" as const, dataUrl: m.imagePreview, text: m.text !== "（图片）" ? m.text : undefined }
             : { type: "text" as const, text: m.imagePreview ? `${m.text}（之前上传的图片省略）` : m.text }
         };
       }),
       {
         role: "user" as const,
         content: image
-          ? { type: "image" as const, dataUrl: image }
+          ? { type: "image" as const, dataUrl: image, text: text || undefined }
           : { type: "text" as const, text },
       },
     ];

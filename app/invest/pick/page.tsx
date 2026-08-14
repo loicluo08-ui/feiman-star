@@ -481,8 +481,8 @@ function IndustryBenchmark({
   const rows = [
     { label: "P/E", value: pe != null ? pe.toFixed(1) : "—", range: bench.pe },
     { label: "P/B", value: pb != null ? pb.toFixed(2) : "—", range: bench.pb },
-    { label: "ROE", value: roe != null ? `${(roe * 100).toFixed(1)}%` : "—", range: bench.roe },
-    { label: "毛利率", value: grossMargin != null ? `${(grossMargin * 100).toFixed(1)}%` : "—", range: bench.grossMargin },
+    { label: "ROE", value: fmtPct(roe), range: bench.roe },
+    { label: "毛利率", value: fmtPct(grossMargin), range: bench.grossMargin },
     { label: "负债/权益", value: debtToEquity != null ? debtToEquity.toFixed(2) : "—", range: bench.debtToEquity },
   ];
 
