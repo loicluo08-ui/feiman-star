@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { getSystemKnowledgeStats } from "@/lib/kb";
 
 export const metadata = {
   title: "AI工具平台 · 多行业通用",
 };
+
+export const dynamic = "force-dynamic";
 
 const tools = [
   {
@@ -28,15 +31,29 @@ const tools = [
   },
 ];
 
-const industries = [
-  { name: "宠物医院", docs: 98, color: "#f0fdf4", accent: "#16a34a" },
-  { name: "教培", docs: 128, color: "#fffbeb", accent: "#d97706" },
-  { name: "健身", docs: 136, color: "#eff6ff", accent: "#2563eb" },
-  { name: "美发", docs: 78, color: "#fdf4ff", accent: "#c026d3" },
-  { name: "通用方法论", docs: 271, color: "#f5f3ff", accent: "#7c3aed" },
+const industryColors: Record<string, { bg: string; accent: string }> = {
+  "宠物医院": { bg: "#f0fdf4", accent: "#16a34a" },
+  "教培": { bg: "#fffbeb", accent: "#d97706" },
+  "健身": { bg: "#eff6ff", accent: "#2563eb" },
+  "美发": { bg: "#fdf4ff", accent: "#c026d3" },
+  "通用": { bg: "#f5f3ff", accent: "#7c3aed" },
+  "通用方法论": { bg: "#f5f3ff", accent: "#7c3aed" },
+};
+
+const fallbackIndustries = [
+  { industry: "通用", chunks: 271, files: 4 },
+  { industry: "宠物医院", chunks: 98, files: 1 },
+  { industry: "教培", chunks: 128, files: 1 },
+  { industry: "健身", chunks: 136, files: 1 },
+  { industry: "美发", chunks: 78, files: 1 },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const stats = await getSystemKnowledgeStats().catch(() => null);
+  const industries = stats?.industries ?? fallbackIndustries;
+  const totalChunks = stats?.chunks ?? 711;
+  const totalFiles = stats?.files ?? 8;
+
   return (
     <div className="mx-auto max-w-5xl">
       <section className="px-6 pt-16 pb-12 text-center">
@@ -67,7 +84,7 @@ export default function HomePage() {
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>
             </div>
             <h3 className="text-base font-semibold">AI 对话</h3>
-            <p className="mt-1.5 text-sm leading-6 text-[#6e6e73]">基于711条行业知识库的智能客服</p>
+            <p className="mt-1.5 text-sm leading-6 text-[#6e6e73]">基于{totalChunks}条行业知识库的智能客服</p>
             <span className="mt-3 inline-block text-xs text-[#8e8e93] transition-transform group-hover:translate-x-0.5">开始对话 →</span>
           </Link>
           <Link href="/tools" className="group rounded-2xl border border-[#e5e5e7] bg-white p-6 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/[0.03]">
@@ -83,7 +100,7 @@ export default function HomePage() {
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" /></svg>
             </div>
             <h3 className="text-base font-semibold">知识库</h3>
-            <p className="mt-1.5 text-sm leading-6 text-[#6e6e73]">5个行业，711条真实数据，开箱即用</p>
+            <p className="mt-1.5 text-sm leading-6 text-[#6e6e73]">{industries.length}个行业，{totalChunks}条真实数据，开箱即用</p>
             <span className="mt-3 inline-block text-xs text-[#8e8e93] transition-transform group-hover:translate-x-0.5">查看详情 →</span>
           </Link>
         </div>
@@ -115,19 +132,22 @@ export default function HomePage() {
         <div className="rounded-2xl border border-[#e5e5e7] bg-white p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-lg font-semibold">5个行业 · 711条数据</p>
-              <p className="mt-1 text-sm text-[#8e8e93]">8个知识库文件，全部带来源URL交叉验证</p>
+              <p className="text-lg font-semibold">{industries.length}个行业 · {totalChunks}条数据</p>
+              <p className="mt-1 text-sm text-[#8e8e93]">{totalFiles}个知识库文件，全部带来源URL交叉验证</p>
             </div>
             <Link href="/knowledge" className="text-sm text-[#6e6e73] transition-colors hover:text-[#1a1a1a]">查看详情 →</Link>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-5">
-            {industries.map((ind) => (
-              <div key={ind.name} className="rounded-xl border border-[#e5e5e7] p-4" style={{ background: ind.color }}>
-                <div className="mb-2 h-1 w-8 rounded-full" style={{ background: ind.accent }} />
-                <p className="text-sm font-medium">{ind.name}</p>
-                <p className="mt-0.5 text-xs text-[#8e8e93]">{ind.docs} 条数据</p>
-              </div>
-            ))}
+            {industries.map((ind) => {
+              const colors = industryColors[ind.industry] ?? { bg: "#f5f3ff", accent: "#7c3aed" };
+              return (
+                <div key={ind.industry} className="rounded-xl border border-[#e5e5e7] p-4" style={{ background: colors.bg }}>
+                  <div className="mb-2 h-1 w-8 rounded-full" style={{ background: colors.accent }} />
+                  <p className="text-sm font-medium">{ind.industry}</p>
+                  <p className="mt-0.5 text-xs text-[#8e8e93]">{ind.chunks} 条数据</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

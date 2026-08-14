@@ -37,7 +37,7 @@ const plans = [
 
 const comparisons = [
   { label: "每日AI次数", values: ["15次", "50次", "200次", "不限"] },
-  { label: "系统知识库", values: ["12行业", "12行业", "12行业", "12行业"] },
+  { label: "系统知识库", values: ["5行业", "5行业", "5行业", "5行业"] },
   { label: "专属知识库", values: ["最多10个文档", "最多10个文档", "最多10个文档", "最多10个文档"] },
   { label: "场景工具", values: ["2个核心工具", "2个核心工具", "2个核心工具", "2个核心工具"] },
   { label: "行业模板", values: ["标准模板", "完整模板", "完整模板", "完整模板"] },
@@ -71,7 +71,7 @@ export default function PricingPage() {
       <section className="text-center">
         <p className="text-sm font-medium text-[#8e8e93]">简单透明</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">按需要选择，不为复杂功能买单</h1>
-        <p className="mx-auto mt-5 max-w-2xl text-[15px] leading-7 text-[#6e6e73]">所有套餐都可以使用费曼星核心工具与12行业系统知识库，差别主要是每日调用额度。</p>
+        <p className="mx-auto mt-5 max-w-2xl text-[15px] leading-7 text-[#6e6e73]">所有套餐都可以使用费曼星核心工具与5行业系统知识库，差别主要是每日调用额度。</p>
       </section>
 
       <section className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="套餐价格">
