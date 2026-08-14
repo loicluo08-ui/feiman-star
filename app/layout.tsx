@@ -4,10 +4,10 @@ import { AppShell } from "@/components/app-shell";
 
 export const metadata: Metadata = {
   title: {
-    default: "费曼星 · AI 工具平台",
+    default: "费曼星 · 投资分析工具",
     template: "%s · 费曼星",
   },
-  description: "面向真实业务场景的中文 AI 工具平台",
+  description: "AI驱动的A股选股、复盘、看板工具",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
