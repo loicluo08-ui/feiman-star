@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
-import { getTask, startTask, type BackgroundTask } from "@/lib/background-task";
+import { getTask, startTask, updateTaskProgress, type BackgroundTask } from "@/lib/background-task";
 
 type SearchResult = {
   code: string;
@@ -70,6 +70,7 @@ type PickAnalysisResult = {
   analysis: string;
   stockData: StockData;
   userNotes: string;
+  generatedAt: string;
   history: PickHistoryRecord[];
 };
 
@@ -82,6 +83,10 @@ type PickHistoryRecord = {
   technicalScore: number | null;
   valuationScore: number | null;
   totalScore: number | null;
+  generatedAt?: string;
+  stockData?: StockData;
+  analysis?: string;
+  userNotes?: string;
 };
 
 const PICK_TASK_KEY = "pick-analysis";
@@ -134,16 +139,25 @@ function extractScore(analysis: string, labels: string[]): number | null {
   return null;
 }
 
-function storePickAnalysis(stockData: StockData, analysis: string): PickHistoryRecord[] {
+function storePickAnalysis(
+  stockData: StockData,
+  analysis: string,
+  generatedAt: string,
+  userNotes: string,
+): PickHistoryRecord[] {
   const record: PickHistoryRecord = {
     id: `${Date.now()}-${stockData.code}`,
     code: stockData.code,
     name: stockData.name,
-    date: new Date().toISOString(),
+    date: generatedAt,
     fundamentalScore: extractScore(analysis, ["基本面"]),
     technicalScore: extractScore(analysis, ["技术面"]),
     valuationScore: extractScore(analysis, ["估值"]),
     totalScore: extractScore(analysis, ["加权总分", "总分"]),
+    generatedAt,
+    stockData,
+    analysis,
+    userNotes,
   };
   const next = [record, ...readPickHistory()].slice(0, 20);
   try {
@@ -154,6 +168,13 @@ function storePickAnalysis(stockData: StockData, analysis: string): PickHistoryR
   return next;
 }
 
+function formatGeneratedTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export default function PickPage() {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
@@ -162,6 +183,7 @@ export default function PickPage() {
   const [stockData, setStockData] = useState<StockData | null>(null);
   const [userNotes, setUserNotes] = useState("");
   const [analysis, setAnalysis] = useState("");
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
   const [loadingStep, setLoadingStep] = useState("AI分析进行中…");
@@ -175,6 +197,8 @@ export default function PickPage() {
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
+  const lastStockFetchRef = useRef(0);
+  const lastAnalysisRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -193,6 +217,7 @@ export default function PickPage() {
       setQuery(result.stockData.code);
       setUserNotes(result.userNotes);
       setAnalysis(result.analysis);
+      setGeneratedAt(result.generatedAt);
       setPickHistory(result.history);
       setLoadingAI(false);
       setError("");
@@ -202,14 +227,15 @@ export default function PickPage() {
       applyResult(task.result);
     } else if (task?.status === "error") {
       setLoadingAI(false);
-      setError("AI分析暂时不可用");
+      setError(task.error instanceof Error ? task.error.message : "AI分析暂时不可用");
     } else if (task?.status === "running") {
       setLoadingAI(true);
-      setLoadingStep("AI分析进行中…");
+      setLoadingStep(task.progress || "AI分析进行中…");
       void task.promise.then(applyResult).catch(() => {
         if (!mountedRef.current) return;
         setLoadingAI(false);
-        setError("AI分析暂时不可用");
+        const latestTask = getTask<PickAnalysisResult>(PICK_TASK_KEY);
+        setError(latestTask?.error instanceof Error ? latestTask.error.message : "AI分析暂时不可用");
       });
     }
 
@@ -253,10 +279,17 @@ export default function PickPage() {
   async function fetchStock(code: string) {
     const c = code.trim().toUpperCase();
     if (!c) return;
+    const now = Date.now();
+    if (now - lastStockFetchRef.current < 3_000) {
+      setError("请稍候3秒再试");
+      return;
+    }
+    lastStockFetchRef.current = now;
     setLoadingData(true);
     setError("");
     setStockData(null);
     setAnalysis("");
+    setGeneratedAt(null);
     setShowSuggest(false);
 
     try {
@@ -315,14 +348,22 @@ export default function PickPage() {
 
   async function runAnalysis() {
     if (!stockData) return;
+    const now = Date.now();
+    if (now - lastAnalysisRef.current < 10_000) {
+      setError("请稍候10秒再试");
+      return;
+    }
+    lastAnalysisRef.current = now;
     const currentStockData = stockData;
     const currentUserNotes = userNotes;
     setLoadingAI(true);
     setLoadingStep("正在拉取新闻和市场快报…");
     setError("");
     setAnalysis("");
+    setGeneratedAt(null);
 
     const task: BackgroundTask<PickAnalysisResult> = startTask(PICK_TASK_KEY, async () => {
+      updateTaskProgress(PICK_TASK_KEY, "正在拉取新闻和市场快报…");
       const marketDataStr = JSON.stringify(currentStockData, null, 2);
 
       // 并行拉取新闻+市场快报
@@ -333,39 +374,55 @@ export default function PickPage() {
       const newsData = newsRes?.ok ? await newsRes.json() : null;
       const pulseData = pulseRes?.ok ? await pulseRes.json() : null;
 
-      if (mountedRef.current) setLoadingStep("AI正在生成深度分析报告，约15-30秒…");
-      const res = await fetch("/api/invest/pick", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stockName: currentStockData.name,
-          stockCode: currentStockData.code,
-          marketData: marketDataStr,
-          news: newsData?.data?.news ?? [],
-          nextEarnings: newsData?.data?.nextEarnings ?? null,
-          marketPulse: pulseData?.data ?? null,
-          userNotes: currentUserNotes,
-        }),
-      });
-      if (!res.ok) throw new Error("分析失败");
-      const json = await res.json();
+      const generatingMessage = "AI正在生成深度分析报告，约15-90秒…";
+      updateTaskProgress(PICK_TASK_KEY, generatingMessage);
+      if (mountedRef.current) setLoadingStep(generatingMessage);
+      const retryMessage = "首次请求响应较慢，DeepSeek正在自动重试…";
+      const retryTimer = window.setTimeout(() => {
+        updateTaskProgress(PICK_TASK_KEY, retryMessage);
+        if (mountedRef.current) setLoadingStep(retryMessage);
+      }, 90_000);
+      let res: Response;
+      try {
+        res = await fetch("/api/invest/pick", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            stockName: currentStockData.name,
+            stockCode: currentStockData.code,
+            marketData: marketDataStr,
+            news: newsData?.data?.news ?? [],
+            nextEarnings: newsData?.data?.nextEarnings ?? null,
+            marketPulse: pulseData?.data ?? null,
+            userNotes: currentUserNotes,
+          }),
+        });
+      } finally {
+        window.clearTimeout(retryTimer);
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "AI分析失败，请重试");
       const analysis = json.data?.analysis ?? "";
+      if (!analysis) throw new Error("DeepSeek未返回有效内容，请重试");
+      const nextGeneratedAt = new Date().toISOString();
       return {
         analysis,
         stockData: currentStockData,
         userNotes: currentUserNotes,
-        history: storePickAnalysis(currentStockData, analysis),
+        generatedAt: nextGeneratedAt,
+        history: storePickAnalysis(currentStockData, analysis, nextGeneratedAt, currentUserNotes),
       };
     });
 
     void task.promise.then((result) => {
       if (!mountedRef.current) return;
       setAnalysis(result.analysis);
+      setGeneratedAt(result.generatedAt);
       setPickHistory(result.history);
       setLoadingAI(false);
-    }).catch(() => {
+    }).catch((taskError: unknown) => {
       if (!mountedRef.current) return;
-      setError("AI分析暂时不可用");
+      setError(taskError instanceof Error ? taskError.message : "AI分析暂时不可用");
       setLoadingAI(false);
     });
   }
@@ -421,9 +478,32 @@ export default function PickPage() {
     }
   }
 
+  function restoreHistoryRecord(record: PickHistoryRecord) {
+    if (!record.stockData || !record.analysis) {
+      setError("这条旧记录没有完整行情和报告，请重新分析");
+      return;
+    }
+    const restoredGeneratedAt = record.generatedAt || record.date;
+    storeStockData(record.stockData);
+    setStockData(record.stockData);
+    setQuery(record.stockData.code);
+    setAnalysis(record.analysis);
+    setUserNotes(record.userNotes || "");
+    setGeneratedAt(restoredGeneratedAt);
+    setShowHistory(false);
+    setError("");
+    window.setTimeout(() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
   const pricePosition = stockData?.fiftyTwoWeekHigh && stockData?.fiftyTwoWeekLow && stockData?.price
     ? ((stockData.price - stockData.fiftyTwoWeekLow) / (stockData.fiftyTwoWeekHigh - stockData.fiftyTwoWeekLow)) * 100
     : null;
+  const reportAgeHours = generatedAt ? (Date.now() - new Date(generatedAt).getTime()) / 3_600_000 : 0;
+  const reportFreshness = reportAgeHours >= 72
+    ? { text: "数据已过期，建议重新分析", tone: "bg-[var(--negative-bg)] text-[var(--negative)]" }
+    : reportAgeHours >= 24
+      ? { text: "数据可能已过期，建议重新分析", tone: "bg-[var(--warning-bg)] text-[var(--warning)]" }
+      : null;
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
@@ -475,7 +555,19 @@ export default function PickPage() {
                             ? "bg-[var(--warning-bg)] text-[var(--warning)]"
                             : "bg-[var(--negative-bg)] text-[var(--negative)]";
                       return (
-                        <tr key={record.id} className="border-b border-[var(--border)] last:border-0">
+                        <tr
+                          key={record.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => restoreHistoryRecord(record)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              restoreHistoryRecord(record);
+                            }
+                          }}
+                          className="cursor-pointer border-b border-[var(--border)] transition-colors last:border-0 hover:bg-[var(--surface-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--text)]"
+                        >
                           <td className="px-4 py-3 font-semibold">{record.code}</td>
                           <td className="max-w-40 truncate px-4 py-3 text-[var(--text-secondary)]">{record.name}</td>
                           <td className="px-4 py-3 text-xs text-[var(--text-muted)]">{new Date(record.date).toLocaleDateString("zh-CN")}</td>
@@ -489,7 +581,10 @@ export default function PickPage() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <button
-                              onClick={() => deleteHistoryRecord(record.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                deleteHistoryRecord(record.id);
+                              }}
                               className="text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--negative)]"
                             >
                               删除
@@ -760,7 +855,15 @@ export default function PickPage() {
                       <p className="text-base font-semibold text-[var(--text)]">{stockData.name}</p>
                       <p className="text-xs font-medium text-[var(--text-secondary)]">{stockData.code}</p>
                     </div>
+                    {generatedAt ? (
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">生成时间：{formatGeneratedTime(generatedAt)}</p>
+                    ) : null}
                   </div>
+                  {reportFreshness ? (
+                    <p className={`mb-4 rounded-lg px-3 py-2 text-xs font-medium ${reportFreshness.tone}`}>
+                      {reportFreshness.text}
+                    </p>
+                  ) : null}
                   <div className="whitespace-pre-wrap text-sm leading-7 text-[var(--text)]">{analysis}</div>
                   <p className="mt-5 border-t border-[var(--border)] pt-3 text-[11px] text-[var(--text-muted)]">
                     由费曼星生成，仅供研究参考，不构成投资建议。

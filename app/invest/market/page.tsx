@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 type WatchlistItem = {
   symbol: string;
@@ -65,6 +65,7 @@ export default function MarketPage() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const lastManualRefreshRef = useRef(0);
 
   useEffect(() => {
     setWatchlist(readWatchlist());
@@ -123,9 +124,19 @@ export default function MarketPage() {
   useEffect(() => {
     if (!hydrated) return;
     void fetchMarket();
-    const timer = window.setInterval(() => void fetchMarket(), 30_000);
+    const timer = window.setInterval(() => void fetchMarket(), 60_000);
     return () => window.clearInterval(timer);
   }, [fetchMarket, hydrated]);
+
+  function handleManualRefresh() {
+    const now = Date.now();
+    if (now - lastManualRefreshRef.current < 3_000) {
+      setError("请稍候3秒再试");
+      return;
+    }
+    lastManualRefreshRef.current = now;
+    void fetchMarket(true);
+  }
 
   async function addSymbol(event: FormEvent) {
     event.preventDefault();
@@ -203,7 +214,7 @@ export default function MarketPage() {
           <p className="mt-1 text-sm text-[var(--text-secondary)]">自选实时行情+板块轮动+市场情绪</p>
         </div>
         <button
-          onClick={() => void fetchMarket(true)}
+          onClick={handleManualRefresh}
           disabled={refreshing}
           className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] disabled:opacity-40"
         >
@@ -345,7 +356,7 @@ export default function MarketPage() {
       ) : null}
 
       <p className="mt-6 text-xs text-[var(--text-muted)]">
-        数据来自Finnhub实时API，30秒自动刷新。仅供研究参考，不构成投资建议。
+        数据来自Finnhub实时API，60秒自动刷新。仅供研究参考，不构成投资建议。
         {lastUpdate ? <span className="ml-2">最后更新：{lastUpdate.toLocaleTimeString("zh-CN")}</span> : null}
       </p>
     </div>

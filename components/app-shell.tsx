@@ -107,6 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [runningTaskKey, setRunningTaskKey] = useState<string | null>(null);
+  const [runningTaskProgress, setRunningTaskProgress] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
@@ -130,6 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const updateRunningTask = () => {
       const runningTask = getTasks().find(([, task]) => task.status === "running");
       setRunningTaskKey(runningTask?.[0] ?? null);
+      setRunningTaskProgress(runningTask?.[1].progress ?? null);
     };
 
     updateRunningTask();
@@ -161,11 +163,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {runningTaskKey ? (
         <div
           className="fixed inset-x-0 top-0 z-[70] h-1 overflow-hidden bg-[var(--border)] md:left-56"
-          title={{
+          title={runningTaskProgress || ({
             "pick-analysis": "AI选股分析中…",
             "review-analysis": "AI复盘分析中…",
             "chat-response": "AI回复中…",
-          }[runningTaskKey] ?? "AI任务处理中…"}
+          }[runningTaskKey] ?? "AI任务处理中…")}
         >
           <div className="h-full w-full animate-pulse bg-[var(--primary)]" />
         </div>

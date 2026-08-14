@@ -23,7 +23,18 @@ export type CallAIOptions = {
   retry?: number;
   timeout?: number;
   responseFormat?: "json" | "text";
+  throwOnError?: boolean;
 };
+
+export class AIRequestError extends Error {
+  code: "timeout" | "service_unavailable";
+
+  constructor(code: "timeout" | "service_unavailable") {
+    super(code === "timeout" ? "AI分析超时，请重试" : "AI服务暂时不可用");
+    this.name = "AIRequestError";
+    this.code = code;
+  }
+}
 
 export function sanitizeInput(value: unknown, maxLength = 20_000): string | null {
   if (typeof value !== "string") return null;
@@ -59,10 +70,11 @@ export async function callAI(
   const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
   const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
   const maxRetries = options.retry ?? 1;
+  let timedOut = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 55_000);
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 90_000);
 
     try {
       const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -88,17 +100,23 @@ export async function callAI(
       } else {
         console.error(`[ai] deepseek_status=${response.status} attempt=${attempt}`);
         if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          if (options.throwOnError) throw new AIRequestError("service_unavailable");
           return null;
         }
       }
     } catch (error) {
+      if (error instanceof AIRequestError) throw error;
       const reason = error instanceof Error && error.name === "AbortError" ? "timeout" : "request_failed";
+      if (reason === "timeout") timedOut = true;
       console.error(`[ai] ${reason} attempt=${attempt}`);
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
+  if (options.throwOnError) {
+    throw new AIRequestError(timedOut ? "timeout" : "service_unavailable");
+  }
   return null;
 }
 

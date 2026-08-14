@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { callAI } from "@/lib/ai";
+import { AIRequestError, callAI } from "@/lib/ai";
 import { loadKnowledgeBase } from "@/lib/knowledge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const requestSchema = z.object({
   trades: z.string().trim().min(10).max(8000),
@@ -90,16 +90,24 @@ export async function POST(request: NextRequest) {
     loadKnowledgeBase().slice(0, 2000),
   ].join("\n");
 
-  const answer = await callAI(
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userContent },
-    ],
-    { responseFormat: "text", temperature: 0.3, max_tokens: 3000, retry: 1 },
-  );
+  let answer: string | null;
+  try {
+    answer = await callAI(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
+      ],
+      { responseFormat: "text", temperature: 0.3, max_tokens: 3000, retry: 1, throwOnError: true },
+    );
+  } catch (error) {
+    if (error instanceof AIRequestError && error.code === "timeout") {
+      return NextResponse.json({ error: "AI分析超时，请重试" }, { status: 504 });
+    }
+    return NextResponse.json({ error: "DeepSeek服务暂时不可用，请稍后重试" }, { status: 503 });
+  }
 
   if (!answer) {
-    return NextResponse.json({ error: "AI分析暂时不可用" }, { status: 503 });
+    return NextResponse.json({ error: "DeepSeek未返回有效内容，请重试" }, { status: 503 });
   }
 
   return NextResponse.json(

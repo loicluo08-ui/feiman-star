@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { getTask, startTask, type BackgroundTask } from "@/lib/background-task";
+import { getTask, startTask, updateTaskProgress, type BackgroundTask } from "@/lib/background-task";
 
 type ReviewRecord = {
   id: string;
@@ -272,14 +272,15 @@ export default function ReviewPage() {
       applyResult(task.result);
     } else if (task?.status === "error") {
       setLoading(false);
-      setError("AI分析暂时不可用，请稍后重试");
+      setError(task.error instanceof Error ? task.error.message : "AI分析暂时不可用，请稍后重试");
     } else if (task?.status === "running") {
       setLoading(true);
-      setProgressStep("AI处理中…");
+      setProgressStep(task.progress || "AI处理中…");
       void task.promise.then(applyResult).catch(() => {
         if (!mountedRef.current) return;
         setLoading(false);
-        setError("AI分析暂时不可用，请稍后重试");
+        const latestTask = getTask<ReviewAnalysisResult>(REVIEW_TASK_KEY);
+        setError(latestTask?.error instanceof Error ? latestTask.error.message : "AI分析暂时不可用，请稍后重试");
       });
     }
 
@@ -350,6 +351,7 @@ export default function ReviewPage() {
     setStatsSource("local");
 
     const task: BackgroundTask<ReviewAnalysisResult> = startTask(REVIEW_TASK_KEY, async () => {
+      updateTaskProgress(REVIEW_TASK_KEY, "正在用AI解析交易记录…");
       let parsedStats: TradeStats;
       let parseMode: "ai" | "fallback" = "fallback";
 
@@ -365,6 +367,7 @@ export default function ReviewPage() {
         if (parsedTrades.length === 0) throw new Error("empty_trades");
         parsedStats = calculateTradeStatsFromEntries(parsedTrades);
         parseMode = "ai";
+        updateTaskProgress(REVIEW_TASK_KEY, "交易解析完成，正在生成复盘报告…");
         if (mountedRef.current) {
           setResolvedTradeStats(parsedStats);
           setStatsSource("ai");
@@ -372,6 +375,7 @@ export default function ReviewPage() {
         }
       } catch {
         parsedStats = calculateTradeStats(currentTrades);
+        updateTaskProgress(REVIEW_TASK_KEY, "AI解析失败，已用本地规则解析；正在生成复盘报告…");
         if (mountedRef.current) {
           setResolvedTradeStats(parsedStats);
           setStatsSource("fallback");
@@ -379,18 +383,29 @@ export default function ReviewPage() {
         }
       }
 
-      const res = await fetch("/api/invest/review", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          trades: currentTrades,
-          strategy: currentStrategy,
-          questions: currentQuestions,
-        }),
-      });
-      if (!res.ok) throw new Error("分析失败");
-      const json = await res.json();
+      const retryMessage = "首次请求响应较慢，DeepSeek正在自动重试…";
+      const retryTimer = window.setTimeout(() => {
+        updateTaskProgress(REVIEW_TASK_KEY, retryMessage);
+        if (mountedRef.current) setProgressStep(retryMessage);
+      }, 90_000);
+      let res: Response;
+      try {
+        res = await fetch("/api/invest/review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trades: currentTrades,
+            strategy: currentStrategy,
+            questions: currentQuestions,
+          }),
+        });
+      } finally {
+        window.clearTimeout(retryTimer);
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "AI分析失败，请重试");
       const result = json.data?.analysis ?? "";
+      if (!result) throw new Error("DeepSeek未返回有效内容，请重试");
       const record: ReviewRecord = {
         id: `${Date.now()}`,
         date: new Date().toISOString(),
@@ -422,9 +437,9 @@ export default function ReviewPage() {
         ...previous.filter((record) => record.id !== result.record.id),
       ].slice(0, 20));
       setLoading(false);
-    }).catch(() => {
+    }).catch((taskError: unknown) => {
       if (!mountedRef.current) return;
-      setError("AI分析暂时不可用，请稍后重试");
+      setError(taskError instanceof Error ? taskError.message : "AI分析暂时不可用，请稍后重试");
       setLoading(false);
     });
   }

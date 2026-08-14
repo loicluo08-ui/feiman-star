@@ -4,6 +4,7 @@ export type BackgroundTask<T = unknown> = {
   promise: Promise<T>;
   result?: T;
   error?: unknown;
+  progress?: string;
   status: TaskStatus;
 };
 
@@ -48,6 +49,13 @@ export function startTask<T>(key: string, fn: () => Promise<T>): BackgroundTask<
 
 export function getTask<T>(key: string): BackgroundTask<T> | undefined {
   return tasks.get(key) as BackgroundTask<T> | undefined;
+}
+
+export function updateTaskProgress(key: string, progress: string) {
+  const task = tasks.get(key);
+  if (!task || task.status !== "running") return;
+  task.progress = progress;
+  notifyListeners();
 }
 
 export function clearTask(key: string) {
