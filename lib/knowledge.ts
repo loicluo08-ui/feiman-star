@@ -10,9 +10,20 @@ let cachedKnowledge: string | null = null;
 export function loadKnowledgeBase(): string {
   if (cachedKnowledge) return cachedKnowledge;
   try {
-    const filePath = join(process.cwd(), "data", "investment-knowledge-base.md");
-    cachedKnowledge = readFileSync(filePath, "utf-8");
-    return cachedKnowledge;
+    // Vercel serverless: process.cwd()指向函数工作目录
+    // 本地开发: 指向项目根目录
+    const possiblePaths = [
+      join(process.cwd(), "data", "investment-knowledge-base.md"),
+      join(process.cwd(), "public", "investment-knowledge-base.md"),
+      join(__dirname, "..", "data", "investment-knowledge-base.md"),
+    ];
+    for (const p of possiblePaths) {
+      try {
+        cachedKnowledge = readFileSync(p, "utf-8");
+        if (cachedKnowledge) return cachedKnowledge;
+      } catch {}
+    }
+    return "";
   } catch {
     return "";
   }

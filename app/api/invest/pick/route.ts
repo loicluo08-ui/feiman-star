@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     "",
     "### 风险提示（至少3条具体风险）",
     "- 每条必须具体到这家公司",
-    - 覆盖：业务风险/财务风险/估值风险/情绪风险",
+    "- 覆盖：业务风险/财务风险/估值风险/情绪风险",
     "",
     "### 综合评分",
     "- 基本面评分1-10分（附一句话理由）",
@@ -159,8 +159,12 @@ export async function POST(request: NextRequest) {
     "- 末尾加「本分析由AI生成，仅供研究参考，不构成投资建议」",
   ].join("\n");
 
-  // 加载相关知识库片段
-  const sector = stockData.includes("sector") ? null : null; // sector从marketData JSON里无法直接取，后面改
+  // 从marketData JSON里解析sector
+  let sector: string | null = null;
+  try {
+    const parsed = JSON.parse(marketData);
+    sector = parsed?.financials?.sector ?? parsed?.sector ?? null;
+  } catch {}
   const knowledge = getRelevantKnowledge(sector);
 
   const newsBlock = (input.data.news ?? []).length > 0
@@ -174,7 +178,7 @@ export async function POST(request: NextRequest) {
     : "";
 
   const earningsBlock = input.data.nextEarnings
-    ? `下次财报：${input.data.nextEarnings.date}${input.data.nextEarnings.epsEstimate != null ? `，EPS预期：$${input.data.nextEarnings.epsEstimate.toFixed(2)}` : ""}${input.data.nextEarnings.hour ? `，${input.data.nextEarnings.hour === "bmo" ? "盘前" : "盘后"}` : ""}\n\n`
+    ? `下次财报：${input.data.nextEarnings.date}${input.data.nextEarnings.epsEstimate != null ? `，EPS预期：$${input.data.nextEarnings.epsEstimate.toFixed(2)}` : ""}${input.data.nextEarnings.hour ? `，${input.data.nextEarnings.hour === "bmo" ? "盘前" : "盘后"}` : ""}\n`
     : "";
 
   const pulseBlock = input.data.marketPulse
