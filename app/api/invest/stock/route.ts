@@ -30,10 +30,44 @@ export async function GET(request: NextRequest) {
   const code = rawCode;
 
   try {
+    // === 0. 获取Yahoo Finance cookie + crumb ===
+    let cookie = "";
+    let crumb = "";
+    try {
+      const cookieRes = await fetch("https://fc.yahoo.com/", {
+        headers: { "User-Agent": UA },
+        redirect: "manual",
+        signal: AbortSignal.timeout(5000),
+      });
+      const setCookie = cookieRes.headers.get("set-cookie") || "";
+      const match = setCookie.match(/A3=([^;]+)/);
+      if (match) cookie = match[1];
+
+      if (cookie) {
+        const crumbRes = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+          headers: { "User-Agent": UA, Cookie: `A3=${cookie}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (crumbRes.ok) {
+          crumb = (await crumbRes.text()).trim();
+        }
+      }
+    } catch {
+      // cookie获取失败，继续尝试不带认证
+    }
+
     // === 1. 主行情+日K（3个月≈120日）===
-    const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${code}?interval=1d&range=3mo`;
+    const chartParams = new URLSearchParams({
+      interval: "1d",
+      range: "3mo",
+      ...(crumb ? { crumb } : {}),
+    });
+    const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${code}?${chartParams}`;
     const chartRes = await fetch(chartUrl, {
-      headers: { "User-Agent": UA },
+      headers: {
+        "User-Agent": UA,
+        ...(cookie ? { Cookie: `A3=${cookie}` } : {}),
+      },
       signal: AbortSignal.timeout(10000),
     });
 
@@ -70,9 +104,16 @@ export async function GET(request: NextRequest) {
     // fallback链：quoteSummary(v10) → chart meta里的52周数据 → null
     let financials: Record<string, unknown> | null = null;
     try {
-      const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${code}?modules=summaryDetail,financialData,defaultKeyStatistics,assetProfile`;
+      const summaryParams = new URLSearchParams({
+        modules: "summaryDetail,financialData,defaultKeyStatistics,assetProfile",
+        ...(crumb ? { crumb } : {}),
+      });
+      const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${code}?${summaryParams}`;
       const summaryRes = await fetch(summaryUrl, {
-        headers: { "User-Agent": UA },
+        headers: {
+          "User-Agent": UA,
+          ...(cookie ? { Cookie: `A3=${cookie}` } : {}),
+        },
         signal: AbortSignal.timeout(8000),
       });
       if (summaryRes.ok) {

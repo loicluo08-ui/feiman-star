@@ -18,9 +18,41 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&enableFuzzyQuery=false&quotesQueryId=tss_match_phrase_query`;
+    // 先获取cookie+crumb
+    let cookie = "";
+    let crumb = "";
+    try {
+      const cookieRes = await fetch("https://fc.yahoo.com/", {
+        headers: { "User-Agent": UA },
+        redirect: "manual",
+        signal: AbortSignal.timeout(5000),
+      });
+      const setCookie = cookieRes.headers.get("set-cookie") || "";
+      const match = setCookie.match(/A3=([^;]+)/);
+      if (match) cookie = match[1];
+      if (cookie) {
+        const crumbRes = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+          headers: { "User-Agent": UA, Cookie: `A3=${cookie}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (crumbRes.ok) crumb = (await crumbRes.text()).trim();
+      }
+    } catch {}
+
+    const searchParams = new URLSearchParams({
+      q,
+      quotesCount: "8",
+      newsCount: "0",
+      enableFuzzyQuery: "false",
+      quotesQueryId: "tss_match_phrase_query",
+      ...(crumb ? { crumb } : {}),
+    });
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?${searchParams}`;
     const res = await fetch(url, {
-      headers: { "User-Agent": UA },
+      headers: {
+        "User-Agent": UA,
+        ...(cookie ? { Cookie: `A3=${cookie}` } : {}),
+      },
       signal: AbortSignal.timeout(6000),
     });
 
