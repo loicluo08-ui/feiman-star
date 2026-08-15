@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI, callVisionAI, type VisionMessage } from "@/lib/ai";
+import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { loadKnowledgeBase } from "@/lib/knowledge";
 
 export const runtime = "nodejs";
@@ -60,9 +61,11 @@ export async function POST(request: NextRequest) {
     growth: "你是费曼星投资分析助手，以成长投资视角分析。参考菲利普·费雪和凯瑟琳·伍德的框架：关注TAM、增速、创新壁垒。对传统价值股不过度排斥但强调增长潜力。",
     quant: "你是费曼星投资分析助手，以量化分析视角分析。所有判断必须有数据支撑，禁止模糊表述。关注统计显著性、回撤、夏普比率、相关性。对无法量化的因素明确标注'定性判断'。",
   };
+  const analysisStyle = stylePrompts[input.data.style] ?? stylePrompts.balanced;
 
-  const systemPrompt = [
-    stylePrompts[input.data.style] ?? stylePrompts.balanced,
+  // 图片分析保留精简提示词，避免全文知识库挤占GLM-4V的图片上下文。
+  const visionSystemPrompt = [
+    analysisStyle,
     "",
     "你可以帮助用户分析股票、解读财报、评估策略、回答投资相关问题。",
     "",
@@ -83,13 +86,30 @@ export async function POST(request: NextRequest) {
     loadKnowledgeBase().slice(0, 2500),
   ].join("\n");
 
+  // 纯文字对话将费曼星V2.3知识库全文注入DeepSeek system prompt。
+  const systemPrompt = [
+    "你是费曼星投资分析平台的专业投资助手。严格基于费曼星投资框架（罗竹先创立）回答。",
+    "",
+    "规则：",
+    "1. 分析任何标的时，必须按五维度框架（基本面/水池效应/板块轮动/产业周期/市场情绪）逐项拆解",
+    "2. 仓位建议必须参照仓位策略矩阵（4环境×3标的）",
+    "3. 期权相关问题必须先过5%规则，再给策略建议",
+    "4. 所有判断标注数据来源（费曼星原文/经验值/行业惯例/历史数据）",
+    "5. 不确定时明确说明，不编造数据",
+    '6. 涉及具体买卖建议时，加上"仅供参考，不构成投资建议"',
+    "",
+    "<knowledge_base>",
+    FEIMANSTAR_KB,
+    "</knowledge_base>",
+  ].join("\n");
+
   try {
     let answer: string | null;
 
     if (hasImage) {
       // 有图片 → 智谱GLM-4V
       const visionMessages: VisionMessage[] = [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: visionSystemPrompt },
         ...recentMessages.map((m) => {
           if (m.content.type === "text") {
             return { role: m.role, content: m.content.text } as VisionMessage;
@@ -126,6 +146,7 @@ export async function POST(request: NextRequest) {
       answer = await callAI(
         [
           { role: "system", content: systemPrompt },
+          { role: "system", content: analysisStyle },
           ...cleanMessages,
         ],
         { responseFormat: "text", temperature: 0.4, max_tokens: 3000, retry: 1 },
