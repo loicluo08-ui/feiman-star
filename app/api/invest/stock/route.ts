@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -192,7 +192,10 @@ async function getYahooChart(code: string): Promise<YahooChartResult | null> {
  * GET /api/invest/stock?code=AAPL
  */
 export async function GET(request: NextRequest) {
-  const limited = enforceRateLimit(request, "chat", RATE_LIMITS.chat);
+  const limited = enforceRateLimit(request, "stock", {
+    maxRequests: 30,
+    windowMs: 60_000,
+  });
   if (limited) {
     return NextResponse.json(
       { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
@@ -201,7 +204,7 @@ export async function GET(request: NextRequest) {
   }
 
   const rawCode = new URL(request.url).searchParams.get("code")?.trim().toUpperCase();
-  if (!rawCode || !/^[A-Z]{1,6}$/.test(rawCode)) {
+  if (!rawCode || !/^[A-Z]{1,5}$/.test(rawCode)) {
     return NextResponse.json({ error: "请输入有效的美股代码（如 AAPL）" }, { status: 400 });
   }
 
