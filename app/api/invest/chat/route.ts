@@ -5,6 +5,7 @@ import { crossValidate } from "@/lib/cross-validate";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { loadKnowledgeBase } from "@/lib/knowledge";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { extractStockCodes, buildStockContext, fetchStockData } from "@/lib/stock-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,12 +134,32 @@ export async function POST(request: NextRequest) {
     "5. 不确定时明确说明，不编造数据",
     "6. 涉及具体买卖建议时，加上\"仅供参考，不构成投资建议\"",
     "7. 简洁回答控制在800字以内，完整分析控制在2000字以内。用户没要求详细分析时默认简洁回答。",
+    "8. 如果系统在下方注入了实时行情数据，直接引用这些数据，不要说\"无法获取实时数据\"。",
     CROSS_VALIDATION_BLOCK,
     "",
     "<knowledge_base>",
     FEIMANSTAR_KB,
     "</knowledge_base>",
   ].join("\n");
+
+  // 自动上下文注入：提取用户消息中的股票代码，拉取实时行情
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+  const lastUserText = lastUserMsg?.content.type === "text"
+    ? lastUserMsg.content.text
+    : (lastUserMsg?.content.text ?? "");
+  const stockCodes = extractStockCodes(lastUserText);
+
+  let stockContext = "";
+  if (stockCodes.length > 0 && !hasImage) {
+    try {
+      const stockData = await fetchStockData(stockCodes);
+      stockContext = buildStockContext(stockData);
+    } catch {}
+  }
+
+  const finalSystemPrompt = stockContext
+    ? `${systemPrompt}\n${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。`
+    : systemPrompt;
 
   // 图片路径：保持非流式，由GLM-4V处理。
   if (hasImage) {
@@ -204,7 +225,7 @@ export async function POST(request: NextRequest) {
       try {
         for await (const chunk of callAIStream(
           [
-            { role: "system", content: systemPrompt },
+            { role: "system", content: finalSystemPrompt },
             { role: "system", content: analysisStyle },
             ...cleanMessages,
           ],
