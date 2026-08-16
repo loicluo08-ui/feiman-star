@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://feimanstar-invest-r1jl.vercel.app/sitemap.xml

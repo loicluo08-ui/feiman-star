@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AIRequestError, callAIStream } from "@/lib/ai";
 import { crossValidate } from "@/lib/cross-validate";
 import { getRelevantKnowledge } from "@/lib/knowledge";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,14 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, "pick", RATE_LIMITS.pick);
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const input = requestSchema.safeParse(body);
   if (!input.success) {

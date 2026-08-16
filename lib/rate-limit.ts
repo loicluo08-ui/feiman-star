@@ -68,11 +68,15 @@ export function getClientIP(request: Request): string {
  * 限流配置预设
  */
 export const RATE_LIMITS = {
-  // chat: 每IP每分钟10次（含已登录用户的正常使用）
+  // chat: 每IP每分钟10次
   chat: { maxRequests: 10, windowMs: 60_000 },
-  // 工具：每IP每分钟5次（生成类操作更耗资源）
+  // pick: 每IP每分钟3次（AI分析最耗资源）
+  pick: { maxRequests: 3, windowMs: 60_000 },
+  // review: 每IP每分钟5次
+  review: { maxRequests: 5, windowMs: 60_000 },
+  // 工具：每IP每分钟5次
   tools: { maxRequests: 5, windowMs: 60_000 },
-  // 登录/注册：每IP每分钟5次（防暴力破解）
+  // 登录/注册：每IP每分钟5次
   auth: { maxRequests: 5, windowMs: 60_000 },
   // 上传：每IP每分钟3次
   upload: { maxRequests: 3, windowMs: 60_000 },
@@ -80,6 +84,10 @@ export const RATE_LIMITS = {
   redeem: { maxRequests: 5, windowMs: 60_000 },
   // admin：每IP每分钟20次
   admin: { maxRequests: 20, windowMs: 60_000 },
+  // 搜索：每IP每分钟20次
+  search: { maxRequests: 20, windowMs: 60_000 },
+  // 行情：每IP每分钟30次
+  market: { maxRequests: 30, windowMs: 60_000 },
 } as const;
 
 /**

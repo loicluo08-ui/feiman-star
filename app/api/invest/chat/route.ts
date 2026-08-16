@@ -4,6 +4,7 @@ import { callAIStream, callVisionAI, type VisionMessage } from "@/lib/ai";
 import { crossValidate } from "@/lib/cross-validate";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { loadKnowledgeBase } from "@/lib/knowledge";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,10 +15,15 @@ const textSchema = z.object({
   text: z.string().trim().min(1).max(4000),
 });
 
+const MAX_IMAGE_SIZE = 4 * 1024 * 1024; // 4MB
+const MAX_BASE64_SIZE = Math.ceil(MAX_IMAGE_SIZE * 1.4); // base64膨胀约33%
+
 const imageSchema = z.object({
   type: z.literal("image"),
   dataUrls: z.array(
-    z.string().regex(/^data:image\/(jpeg|png|webp);base64,/),
+    z.string()
+      .regex(/^data:image\/(jpeg|png|webp);base64,/)
+      .max(MAX_BASE64_SIZE, "图片过大"),
   ).min(1).max(3),
   text: z.string().trim().max(4000).optional(),
 });
@@ -44,8 +50,6 @@ const requestSchema = z.object({
   ]).optional().default("balanced"),
 });
 
-const MAX_IMAGE_SIZE = 4 * 1024 * 1024;
-
 const CROSS_VALIDATION_BLOCK = [
   "输出前内部交叉验证（不输出验证过程，只输出最终通过验证的回答）：",
   "a. 事实核查：每个数据/结论必须有知识库支撑，无支撑的不输出或标注\"未验证\"。",
@@ -56,6 +60,14 @@ const CROSS_VALIDATION_BLOCK = [
 ].join("\n");
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, "chat", RATE_LIMITS.chat);
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
+
   const body = await request.json().catch(() => null);
   const input = requestSchema.safeParse(body);
   if (!input.success) {
