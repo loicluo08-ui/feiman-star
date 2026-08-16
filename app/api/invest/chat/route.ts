@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { callAI, callVisionAI, type VisionMessage } from "@/lib/ai";
+import { callAIStream, callVisionAI, type VisionMessage } from "@/lib/ai";
+import { crossValidate } from "@/lib/cross-validate";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { loadKnowledgeBase } from "@/lib/knowledge";
 
@@ -32,6 +33,7 @@ const requestSchema = z.object({
     "balanced",
     "value",
     "growth",
+    "quant",
     "technical",
     "芒格思维",
     "巴菲特",
@@ -42,7 +44,16 @@ const requestSchema = z.object({
   ]).optional().default("balanced"),
 });
 
-const MAX_IMAGE_SIZE = 4 * 1024 * 1024; // 4MB
+const MAX_IMAGE_SIZE = 4 * 1024 * 1024;
+
+const CROSS_VALIDATION_BLOCK = [
+  "输出前内部交叉验证（不输出验证过程，只输出最终通过验证的回答）：",
+  "a. 事实核查：每个数据/结论必须有知识库支撑，无支撑的不输出或标注\"未验证\"。",
+  "b. 逻辑一致性：前后论述不能自相矛盾。",
+  "c. 绝对化用语清除：禁止使用\"永久\"\"免费(无限期)\"\"全自动\"\"不会出错\"\"趋近于0\"\"百分之百\"\"零风险\"。",
+  "d. 边界标明：有限制的必须写明限制条件，高风险话题（医疗/法律/投资）加\"仅供参考\"。",
+  "e. 反追问测试：预判用户可能追问的点，确保没有答不上来的声称。",
+].join("\n");
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -52,7 +63,6 @@ export async function POST(request: NextRequest) {
   }
 
   const messages = input.data.messages;
-
   const imageMessages = messages.filter((message) => message.content.type === "image");
   const hasOversizedImage = imageMessages.some(
     (message) => message.content.type === "image"
@@ -92,12 +102,13 @@ export async function POST(request: NextRequest) {
     "- 不给出买卖建议，只做分析",
     "- 高风险话题（如期权、杠杆）要提示风险",
     "- 末尾加「本分析由AI生成，仅供研究参考，不构成投资建议」",
+    CROSS_VALIDATION_BLOCK,
     "",
     "费曼星投资知识库参考：",
     loadKnowledgeBase().slice(0, 2500),
   ].join("\n");
 
-  // 纯文字对话将费曼星V2.3知识库全文注入DeepSeek system prompt。
+  // 纯文字对话将费曼星V4.1知识库全文注入DeepSeek system prompt。
   const systemPrompt = [
     "你是费曼星投资分析平台的专业投资助手。严格基于费曼星投资框架（罗竹先创立）回答。",
     "",
@@ -107,31 +118,30 @@ export async function POST(request: NextRequest) {
     "3. 期权相关问题必须先过5%规则，再给策略建议",
     "4. 所有判断标注数据来源（费曼星原文/经验值/行业惯例/历史数据）",
     "5. 不确定时明确说明，不编造数据",
-    '6. 涉及具体买卖建议时，加上"仅供参考，不构成投资建议"',
+    "6. 涉及具体买卖建议时，加上\"仅供参考，不构成投资建议\"",
+    CROSS_VALIDATION_BLOCK,
     "",
     "<knowledge_base>",
     FEIMANSTAR_KB,
     "</knowledge_base>",
   ].join("\n");
 
-  try {
-    let answer: string | null;
-
-    if (hasImage) {
-      // 有图片 → 智谱GLM-4V
+  // 图片路径：保持非流式，由GLM-4V处理。
+  if (hasImage) {
+    try {
       const visionMessages: VisionMessage[] = [
         { role: "system", content: visionSystemPrompt },
-        ...recentMessages.map((m) => {
-          if (m.content.type === "text") {
-            return { role: m.role, content: m.content.text } as VisionMessage;
+        ...recentMessages.map((message) => {
+          if (message.content.type === "text") {
+            return { role: message.role, content: message.content.text } as VisionMessage;
           }
-          // 图片消息：把用户文字和最多3张图片放进同一个vision消息。
-          const userText = m.content.text ?? `请分析这${m.content.dataUrls.length}张图片`;
+          const userText = message.content.text
+            ?? `请分析这${message.content.dataUrls.length}张图片`;
           return {
-            role: m.role,
+            role: message.role,
             content: [
               { type: "text", text: userText },
-              ...m.content.dataUrls.map((dataUrl) => ({
+              ...message.content.dataUrls.map((dataUrl) => ({
                 type: "image_url" as const,
                 image_url: { url: dataUrl },
               })),
@@ -140,40 +150,93 @@ export async function POST(request: NextRequest) {
         }),
       ];
 
-      answer = await callVisionAI(visionMessages, {
+      const answer = await callVisionAI(visionMessages, {
         temperature: 0.4,
         max_tokens: 3000,
         retry: 1,
       });
-    } else {
-      // 纯文字 → DeepSeek
-      const textMessages = recentMessages.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content.type === "text" ? m.content.text : "",
-      }));
 
-      const cleanMessages = textMessages.filter((m) => m.content.length > 0);
+      if (!answer) {
+        return NextResponse.json({ error: "AI服务暂时不可用" }, { status: 503 });
+      }
 
-      answer = await callAI(
-        [
-          { role: "system", content: systemPrompt },
-          { role: "system", content: analysisStyle },
-          ...cleanMessages,
-        ],
-        { responseFormat: "text", temperature: 0.4, max_tokens: 3000, retry: 1 },
+      const validation = crossValidate(answer);
+      if (validation.cleaned) {
+        console.log(`[invest/chat] cross_validate flags=${validation.flags.join("; ")}`);
+      }
+      return NextResponse.json(
+        { data: { answer: validation.text } },
+        { headers: { "Cache-Control": "private, no-store" } },
       );
+    } catch (error) {
+      console.error("[invest/chat] vision_error", error);
+      return NextResponse.json({ error: "AI分析暂时不可用" }, { status: 503 });
     }
-
-    if (!answer) {
-      return NextResponse.json({ error: "AI服务暂时不可用" }, { status: 503 });
-    }
-
-    return NextResponse.json(
-      { data: { answer } },
-      { headers: { "Cache-Control": "private, no-store" } },
-    );
-  } catch (error) {
-    console.error("[invest/chat]", error);
-    return NextResponse.json({ error: "AI分析暂时不可用" }, { status: 503 });
   }
+
+  // 纯文字路径：DeepSeek SSE流式输出。
+  const cleanMessages = recentMessages
+    .map((message) => ({
+      role: message.role as "user" | "assistant",
+      content: message.content.type === "text" ? message.content.text : "",
+    }))
+    .filter((message) => message.content.length > 0);
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let fullText = "";
+
+      try {
+        for await (const chunk of callAIStream(
+          [
+            { role: "system", content: systemPrompt },
+            { role: "system", content: analysisStyle },
+            ...cleanMessages,
+          ],
+          { temperature: 0.4, max_tokens: 3000, retry: 1, timeout: 90_000 },
+        )) {
+          fullText += chunk;
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "chunk", text: chunk }) + "\n"),
+          );
+        }
+
+        if (!fullText.trim()) {
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "error", message: "AI服务暂时不可用" }) + "\n"),
+          );
+          return;
+        }
+
+        const validation = crossValidate(fullText);
+        if (validation.cleaned) {
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "patch", text: validation.text }) + "\n"),
+          );
+          console.log(`[invest/chat] cross_validate flags=${validation.flags.join("; ")}`);
+        }
+
+        controller.enqueue(
+          encoder.encode(JSON.stringify({ type: "done" }) + "\n"),
+        );
+      } catch (error) {
+        console.error("[invest/chat] stream_error", error);
+        controller.enqueue(
+          encoder.encode(JSON.stringify({ type: "error", message: "AI服务暂时不可用" }) + "\n"),
+        );
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

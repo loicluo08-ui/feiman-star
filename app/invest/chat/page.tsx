@@ -2,6 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, type BackgroundTask } from "@/lib/background-task";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 type AnalysisStyle = "balanced" | "value" | "growth" | "quant";
 
@@ -344,8 +345,60 @@ export default function ChatPage() {
           throw new Error(json.error || "请求失败");
         }
 
-        const json = await res.json();
-        const answer = json.data?.answer ?? "";
+        const contentType = res.headers.get("content-type") || "";
+        let answer = "";
+
+        if (contentType.includes("text/event-stream")) {
+          if (!res.body) throw new Error("AI服务不可用");
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              let data: { type: string; text?: string; message?: string };
+              try {
+                data = JSON.parse(line);
+              } catch {
+                continue;
+              }
+
+              if (data.type === "chunk") {
+                answer += data.text ?? "";
+              } else if (data.type === "patch") {
+                answer = data.text ?? answer;
+              } else if (data.type === "error") {
+                throw new Error(data.message ?? "AI服务不可用");
+              } else {
+                continue;
+              }
+
+              if (mountedRef.current) {
+                setMessages([
+                  ...currentMessages,
+                  userItem,
+                  { role: "assistant", text: answer },
+                ]);
+                scrollToBottom();
+              }
+            }
+          }
+        } else {
+          const json = await res.json();
+          answer = json.data?.answer ?? "";
+        }
+
+        if (!answer.trim()) throw new Error("AI服务暂时不可用");
+
         const completedMessages = [
           ...currentMessages,
           userItem,
@@ -548,8 +601,22 @@ export default function ChatPage() {
                       ))}
                     </div>
                   ) : null}
-                  {m.text || (loading && i === messages.length - 1) ? (
-                    <div className="whitespace-pre-wrap leading-6">{m.text || (loading && i === messages.length - 1 ? "思考中…" : "")}</div>
+                  {m.text ? (
+                    m.role === "assistant" ? (
+                      <>
+                        <MarkdownRenderer content={m.text} />
+                        {loading && i === messages.length - 1 ? (
+                          <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-[var(--text)] align-text-bottom" />
+                        ) : null}
+                      </>
+                    ) : (
+                      <div className="whitespace-pre-wrap leading-6">{m.text}</div>
+                    )
+                  ) : loading && i === messages.length - 1 ? (
+                    <div className="flex items-center gap-1 text-sm text-[var(--text-muted)]">
+                      <span className="inline-block h-4 w-0.5 animate-pulse bg-[var(--text)]" />
+                      思考中…
+                    </div>
                   ) : null}
                 </div>
               </div>

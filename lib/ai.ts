@@ -173,3 +173,80 @@ export async function callVisionAI(
 
   return null;
 }
+
+/**
+ * 流式调用 DeepSeek，逐 chunk yield 文本。
+ */
+export async function* callAIStream(
+  messages: ChatMessage[],
+  options: CallAIOptions = {},
+): AsyncGenerator<string> {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey || messages.length === 0) return;
+
+  const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+  const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
+  const timeoutMs = Math.max(1_000, Math.min(options.timeout ?? 60_000, 90_000));
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true,
+        thinking: { type: "disabled" },
+        temperature: options.temperature ?? 0.5,
+        max_tokens: options.max_tokens ?? 3_000,
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      console.error(`[ai-stream] deepseek_status=${response.status}`);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+        const data = trimmed.slice(6);
+        if (data === "[DONE]") return;
+
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (delta) yield delta;
+        } catch {
+          // 跳过格式异常的 chunk
+        }
+      }
+    }
+  } catch (error) {
+    const reason =
+      error instanceof Error && error.name === "AbortError" ? "timeout" : "stream_failed";
+    console.error(`[ai-stream] ${reason}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
