@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { AIRequestError, callAI } from "@/lib/ai";
+import { AIRequestError, callAIStream } from "@/lib/ai";
 import { crossValidate } from "@/lib/cross-validate";
 import { getRelevantKnowledge } from "@/lib/knowledge";
 
@@ -320,33 +320,65 @@ export async function POST(request: NextRequest) {
     knowledge ? `\n\n---\n\n费曼星投资知识库参考（请基于此框架分析）：\n${knowledge.slice(0, 3000)}` : "",
   ].join("\n");
 
-  let answer: string | null;
-  try {
-    answer = await callAI(
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userContent },
-      ],
-      { responseFormat: "text", temperature: 0.3, max_tokens: 4000, retry: 1, throwOnError: true, timeout: 60_000 },
-    );
-  } catch (error) {
-    if (error instanceof AIRequestError && error.code === "timeout") {
-      return NextResponse.json({ error: "AI分析超时，请重试" }, { status: 504 });
-    }
-    return NextResponse.json({ error: "DeepSeek服务暂时不可用，请稍后重试" }, { status: 503 });
-  }
+  let fullText = "";
+  const encoder = new TextEncoder();
 
-  if (!answer) {
-    return NextResponse.json({ error: "DeepSeek未返回有效内容，请重试" }, { status: 503 });
-  }
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        const aiStream = callAIStream(
+          [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+          ],
+          { temperature: 0.3, max_tokens: 4000, timeout: 60_000 },
+        );
 
-  const validation = crossValidate(answer);
-  if (validation.cleaned) {
-    console.log(`[invest/pick] cross_validate flags=${validation.flags.join("; ")}`);
-  }
+        for await (const chunk of aiStream) {
+          fullText += chunk;
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "chunk", text: chunk }) + "\n"),
+          );
+        }
 
-  return NextResponse.json(
-    { data: { analysis: validation.text } },
-    { headers: { "Cache-Control": "private, no-store" } },
-  );
+        if (!fullText.trim()) {
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "error", message: "DeepSeek未返回有效内容，请重试" }) + "\n"),
+          );
+          return;
+        }
+
+        const validation = crossValidate(fullText);
+        if (validation.cleaned) {
+          console.log(`[invest/pick] cross_validate flags=${validation.flags.join("; ")}`);
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "patch", text: validation.text }) + "\n"),
+          );
+        }
+
+        controller.enqueue(
+          encoder.encode(JSON.stringify({ type: "done" }) + "\n"),
+        );
+      } catch (error) {
+        console.error("[invest/pick] stream_error", error);
+        const message = error instanceof AIRequestError
+          ? (error.code === "timeout" ? "AI分析超时，请重试" : "DeepSeek服务暂时不可用")
+          : "AI服务暂时不可用";
+        controller.enqueue(
+          encoder.encode(JSON.stringify({ type: "error", message }) + "\n"),
+        );
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }
