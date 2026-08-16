@@ -7,7 +7,19 @@ export const metadata: Metadata = {
     default: "费曼星 · 投资分析工具",
     template: "%s · 费曼星",
   },
-  description: "AI驱动的A股选股、复盘、看板工具",
+  description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情数据来自Yahoo Finance，仅供研究参考，不构成投资建议。",
+  openGraph: {
+    title: "费曼星 · 投资分析工具",
+    description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情数据来自Yahoo Finance，仅供研究参考，不构成投资建议。",
+    type: "website",
+    locale: "zh_CN",
+    siteName: "费曼星",
+  },
+  twitter: {
+    card: "summary",
+    title: "费曼星 · 投资分析工具",
+    description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。",
+  },
 };
 
 const themeScript = `
@@ -31,6 +43,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body>
         <AppShell>{children}</AppShell>
+        <footer className="border-t border-[var(--border)] px-6 py-4 text-center">
+          <p className="text-xs text-[var(--text-muted)]">
+            费曼星 · 投资分析工具 · 行情数据来自Yahoo Finance，可能存在15-20分钟延迟 · 仅供研究参考，不构成投资建议
+          </p>
+        </footer>
       </body>
     </html>
   );
