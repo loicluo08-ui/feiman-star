@@ -48,7 +48,7 @@ export function crossValidate(text: string): CrossValidationResult {
   }
 
   for (const { topic, pattern, disclaimer } of HIGH_RISK_PATTERNS) {
-    if (pattern.test(cleaned) && !/仅供参考|不构成.*意见|以实际|请咨询/.test(cleaned)) {
+    if (pattern.test(cleaned) && !/仅供参考|仅供研究参考|不构成.*意见|不构成.*建议|以实际|请咨询/.test(cleaned)) {
       flags.push(`${topic}话题缺边界标注`);
       cleaned += `\n\n${disclaimer}`;
     }
