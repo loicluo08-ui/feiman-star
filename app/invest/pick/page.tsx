@@ -437,10 +437,42 @@ export default function PickPage() {
       } finally {
         window.clearTimeout(retryTimer);
       }
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "AI分析失败，请重试");
-      const analysis = json.data?.analysis ?? "";
-      if (!analysis) throw new Error("DeepSeek未返回有效内容，请重试");
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "AI分析失败，请重试");
+      }
+
+      // SSE流式读取
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("AI服务暂时不可用");
+      const decoder = new TextDecoder();
+      let analysis = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let data: { type: string; text?: string; message?: string };
+          try { data = JSON.parse(line); } catch { continue; }
+          if (data.type === "chunk") {
+            analysis += data.text ?? "";
+            if (mountedRef.current) setAnalysis(analysis);
+          } else if (data.type === "patch") {
+            analysis = data.text ?? analysis;
+            if (mountedRef.current) setAnalysis(analysis);
+          } else if (data.type === "error") {
+            throw new Error(data.message ?? "AI分析失败");
+          }
+        }
+      }
+
+      if (!analysis.trim()) throw new Error("DeepSeek未返回有效内容，请重试");
       const nextGeneratedAt = new Date().toISOString();
       return {
         analysis,

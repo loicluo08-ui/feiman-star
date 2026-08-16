@@ -553,10 +553,42 @@ export default function ReviewPage() {
       } finally {
         window.clearTimeout(retryTimer);
       }
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "AI分析失败，请重试");
-      const result = json.data?.analysis ?? "";
-      if (!result) throw new Error("DeepSeek未返回有效内容，请重试");
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "AI分析失败，请重试");
+      }
+
+      // SSE流式读取
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("AI服务暂时不可用");
+      const decoder = new TextDecoder();
+      let result = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let data: { type: string; text?: string; message?: string };
+          try { data = JSON.parse(line); } catch { continue; }
+          if (data.type === "chunk") {
+            result += data.text ?? "";
+            if (mountedRef.current) setAnalysis(result);
+          } else if (data.type === "patch") {
+            result = data.text ?? result;
+            if (mountedRef.current) setAnalysis(result);
+          } else if (data.type === "error") {
+            throw new Error(data.message ?? "AI分析失败");
+          }
+        }
+      }
+
+      if (!result.trim()) throw new Error("DeepSeek未返回有效内容，请重试");
       const record: ReviewRecord = {
         id: `${Date.now()}`,
         date: new Date().toISOString(),
@@ -566,7 +598,7 @@ export default function ReviewPage() {
         totalCapital: currentTotalCapital,
         analysis: result,
       };
-      if (result) saveReview(record);
+      saveReview(record);
 
       return {
         analysis: result,
