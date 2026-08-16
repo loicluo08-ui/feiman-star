@@ -319,7 +319,7 @@ export async function POST(request: NextRequest) {
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent },
       ],
-      { responseFormat: "text", temperature: 0.3, max_tokens: 4000, retry: 1, throwOnError: true },
+      { responseFormat: "text", temperature: 0.3, max_tokens: 3000, retry: 1, throwOnError: true },
     );
   } catch (error) {
     if (error instanceof AIRequestError && error.code === "timeout") {
