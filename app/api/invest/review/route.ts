@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AIRequestError, callAI } from "@/lib/ai";
+import { crossValidate } from "@/lib/cross-validate";
 import { loadKnowledgeBase } from "@/lib/knowledge";
 
 export const runtime = "nodejs";
@@ -85,6 +86,13 @@ export async function POST(request: NextRequest) {
     "- 亏钱交易不做道德评价，只做归因",
     "- 不建议具体买卖操作",
     "- 末尾加「本分析由AI生成，仅供研究参考」",
+    "",
+    "## 输出前内部交叉验证（不输出验证过程，只输出最终通过验证的回答）",
+    "a. 事实核查：每个结论必须从用户给的交易记录计算，不编造数字。",
+    "b. 逻辑一致性：前后论述不能自相矛盾。",
+    "c. 绝对化用语清除：禁止「永久」「全自动」「不会出错」「百分之百」「零风险」「保证不会」「完全安全」。",
+    "d. 边界标明：样本不足时标注，高风险话题加「仅供参考」。",
+    "e. 反追问测试：确保没有答不上来的声称。",
   ].join("\n");
 
   const userContent = [
@@ -121,8 +129,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "DeepSeek未返回有效内容，请重试" }, { status: 503 });
   }
 
+  const validation = crossValidate(answer);
+  if (validation.cleaned) {
+    console.log(`[invest/review] cross_validate flags=${validation.flags.join("; ")}`);
+  }
+
   return NextResponse.json(
-    { data: { analysis: answer } },
+    { data: { analysis: validation.text } },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }

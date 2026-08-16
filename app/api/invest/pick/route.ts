@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AIRequestError, callAI } from "@/lib/ai";
+import { crossValidate } from "@/lib/cross-validate";
 import { getRelevantKnowledge } from "@/lib/knowledge";
 
 export const runtime = "nodejs";
@@ -263,6 +264,13 @@ export async function POST(request: NextRequest) {
     "- 不给出买卖建议（买入/卖出/持有），只做分析",
     "- 不预测未来价格",
     "- 末尾加「本分析由AI生成，仅供研究参考，不构成投资建议」",
+    "",
+    "## 输出前内部交叉验证（不输出验证过程，只输出最终通过验证的回答）",
+    "a. 事实核查：每个数据/结论必须有市场数据支撑，无支撑的标注「数据缺失」不猜不编。",
+    "b. 逻辑一致性：前后论述不能自相矛盾（如评分与结论方向不一致）。",
+    "c. 绝对化用语清除：禁止使用「永久」「免费(无限期)」「全自动」「不会出错」「趋近于0」「百分之百」「零风险」「保证不会」「完全安全」。",
+    "d. 边界标明：有限制的必须写明限制条件，高风险话题加「仅供参考」。",
+    "e. 反追问测试：预判用户可能追问的点，确保没有答不上来的声称。",
   ].join("\n");
 
   // 从marketData JSON里解析sector
@@ -332,8 +340,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "DeepSeek未返回有效内容，请重试" }, { status: 503 });
   }
 
+  const validation = crossValidate(answer);
+  if (validation.cleaned) {
+    console.log(`[invest/pick] cross_validate flags=${validation.flags.join("; ")}`);
+  }
+
   return NextResponse.json(
-    { data: { analysis: answer } },
+    { data: { analysis: validation.text } },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }
