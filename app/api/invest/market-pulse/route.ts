@@ -7,6 +7,10 @@ const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
 const YAHOO_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 let yahooSessionPromise: Promise<{ cookie: string; crumb: string }> | null = null;
 
+// 30秒内存缓存，避免频繁请求Yahoo+Finnhub
+let cache: { data: unknown; expiresAt: number } | null = null;
+const CACHE_TTL = 30_000;
+
 function getYahooSession() {
   if (yahooSessionPromise) return yahooSessionPromise;
   yahooSessionPromise = (async () => {
@@ -55,6 +59,14 @@ async function fetchYahooCloses(symbol: string): Promise<number[]> {
  * GET /api/invest/market-pulse
  */
 export async function GET(request: NextRequest) {
+  // 检查缓存
+  if (cache && cache.expiresAt > Date.now()) {
+    return NextResponse.json(
+      { data: cache.data },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+
   try {
     const indices = [
       { symbol: "SPY", name: "标普500" },
@@ -178,15 +190,20 @@ export async function GET(request: NextRequest) {
       ? [...validSectors].sort((a, b) => (a.changePct ?? 0) - (b.changePct ?? 0))[0]
       : null;
 
-    return NextResponse.json({
-      data: {
+    const responseData = {
         indices: indexData,
         sectors: sectorData,
         sentiment,
         strongestSector: strongest ? `${strongest.name} (${strongest.changePct?.toFixed(2)}%)` : null,
         weakestSector: weakest ? `${weakest.name} (${weakest.changePct?.toFixed(2)}%)` : null,
         timestamp: new Date().toISOString(),
-      },
+    };
+
+    // 写入缓存
+    cache = { data: responseData, expiresAt: Date.now() + CACHE_TTL };
+
+    return NextResponse.json({
+      data: responseData,
     });
   } catch (error) {
     console.error("[market-pulse]", error);
