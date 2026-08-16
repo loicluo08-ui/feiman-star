@@ -25,7 +25,7 @@ const HIGH_RISK_PATTERNS: Array<{ topic: string; pattern: RegExp; disclaimer: st
   },
   {
     topic: "投资",
-    pattern: /(买入|卖出|加仓|减仓|具体收益|保证收益|稳赚|盈亏|收益率|止损|止盈|仓位)/,
+    pattern: /(买入|卖出|加仓|减仓|具体收益|保证收益|稳赚|盈亏|收益率|止损|止盈|仓位|估值|PE|PB|ROE|评分|基本面|技术面|行情|股价|市值|财报|盈利|亏损|投资)/,
     disclaimer: "以上涉及投资内容仅供参考，不构成投资建议，投资有风险，决策需谨慎。",
   },
 ];
