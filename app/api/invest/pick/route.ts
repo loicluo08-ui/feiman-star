@@ -370,12 +370,21 @@ export async function POST(request: NextRequest) {
         );
       } catch (error) {
         console.error("[invest/pick] stream_error", error);
-        const message = error instanceof AIRequestError
-          ? (error.code === "timeout" ? "AI分析超时，请重试" : "DeepSeek服务暂时不可用")
-          : "AI服务暂时不可用";
-        controller.enqueue(
-          encoder.encode(JSON.stringify({ type: "error", message }) + "\n"),
-        );
+        if (fullText.trim()) {
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "chunk", text: "\n\n---\n\n⚠️ AI生成中断，以上为已生成的部分内容。如需完整分析请重试。" }) + "\n"),
+          );
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "done" }) + "\n"),
+          );
+        } else {
+          const message = error instanceof AIRequestError
+            ? (error.code === "timeout" ? "AI分析超时，请重试" : "DeepSeek服务暂时不可用")
+            : "AI服务暂时不可用";
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "error", message }) + "\n"),
+          );
+        }
       } finally {
         controller.close();
       }

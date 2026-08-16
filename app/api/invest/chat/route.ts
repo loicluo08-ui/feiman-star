@@ -257,9 +257,20 @@ export async function POST(request: NextRequest) {
         );
       } catch (error) {
         console.error("[invest/chat] stream_error", error);
-        controller.enqueue(
-          encoder.encode(JSON.stringify({ type: "error", message: "AI服务暂时不可用" }) + "\n"),
-        );
+        // 降级：如果已有部分输出，补上结束语并正常done；否则发错误
+        if (fullText.trim()) {
+          const fallback = "\n\n---\n\n⚠️ AI生成中断，以上为已生成的部分内容。如需完整分析请重新提问。";
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "chunk", text: fallback }) + "\n"),
+          );
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "done" }) + "\n"),
+          );
+        } else {
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "error", message: "AI服务暂时不可用，请稍后重试" }) + "\n"),
+          );
+        }
       } finally {
         controller.close();
       }

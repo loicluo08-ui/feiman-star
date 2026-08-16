@@ -354,10 +354,22 @@ export default function ChatPage() {
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
           let buffer = "";
+          let receivedDone = false;
 
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+              // 连接断开：如果没收到done事件，补上中断提示
+              if (answer && !receivedDone) {
+                answer += "\n\n---\n\n⚠️ 连接中断，以上为已生成的部分内容。如需完整分析请重新提问。";
+                setMessages((items) => {
+                  const updated = [...items];
+                  updated[updated.length - 1] = { role: "assistant", text: answer };
+                  return updated;
+                });
+              }
+              break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
@@ -376,6 +388,9 @@ export default function ChatPage() {
                 answer += data.text ?? "";
               } else if (data.type === "patch") {
                 answer = data.text ?? answer;
+              } else if (data.type === "done") {
+                receivedDone = true;
+                break;
               } else if (data.type === "error") {
                 throw new Error(data.message ?? "AI服务不可用");
               } else {
