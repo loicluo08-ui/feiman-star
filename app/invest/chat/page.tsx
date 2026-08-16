@@ -474,6 +474,46 @@ export default function ChatPage() {
             >
               历史记录{history.length > 0 ? ` ${history.length}` : ""}
             </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  const data = localStorage.getItem(CHAT_HISTORY_KEY) || "[]";
+                  const blob = new Blob([data], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `feimanstar-chat-${new Date().toISOString().slice(0, 10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                title="导出对话记录"
+              >
+                导出
+              </button>
+              <label className="cursor-pointer rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]">
+                导入
+                <input
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const text = await file.text();
+                      const imported = JSON.parse(text);
+                      if (Array.isArray(imported)) {
+                        const existing = readChatHistory();
+                        const merged = [...imported, ...existing].slice(0, 50);
+                        localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(merged));
+                        setHistory(merged.slice(0, 20));
+                      }
+                    } catch {}
+                  }}
+                />
+              </label>
+            </div>
             <div className="flex gap-1">
               {[
                 { key: "balanced", label: "均衡" },
