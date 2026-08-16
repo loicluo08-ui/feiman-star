@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "d9ve1m9r01qv408k7rf0d9ve1m9r01qv408k7rfg";
+const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
 
 /**
  * 公司新闻+盈利日历
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   try {
     // 公司新闻（最近7天，取5条）
     const newsRes = await fetch(
-      `https://finnhub.io/api/v1/company-news?symbol=${code}&from=${weekAgoStr}&to=${todayStr}&token=${FINNHUB_KEY}`,
+      `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(code)}&from=${weekAgoStr}&to=${todayStr}&token=${FINNHUB_KEY}`,
       { signal: AbortSignal.timeout(8000) },
     );
     const allNews = newsRes.ok ? await newsRes.json() : [];

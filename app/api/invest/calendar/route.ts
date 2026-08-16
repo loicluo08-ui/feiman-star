@@ -4,7 +4,7 @@ import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "d9ve1m9r01qv408k7rf0d9ve1m9r01qv408k7rfg";
+const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
 const PROFILE_CACHE_TTL = 12 * 60 * 60 * 1000;
 const profileCache = new Map<string, { name: string; marketCap: number | null; expiresAt: number }>();
 

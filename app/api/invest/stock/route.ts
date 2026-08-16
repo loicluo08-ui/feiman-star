@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "d9ve1m9r01qv408k7rf0d9ve1m9r01qv408k7rfg";
+const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
 
 interface FinnhubQuote {
   c?: number;
@@ -308,7 +308,6 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     console.error(`[invest/stock] ${code} error: ${message}`);
-    console.error(`[invest/stock] finnhub_key: ${FINNHUB_KEY ? "set" : "NOT SET"}`);
-    return NextResponse.json({ error: `行情数据暂时不可用: ${message}` }, { status: 503 });
+    return NextResponse.json({ error: "行情数据暂时不可用，请稍后重试" }, { status: 503 });
   }
 }

@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "d9ve1m9r01qv408k7rf0d9ve1m9r01qv408k7rfg";
+    const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
     if (!FINNHUB_KEY) {
       return NextResponse.json({ data: [] });
     }
