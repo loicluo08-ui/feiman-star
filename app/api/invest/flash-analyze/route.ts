@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { FLASH_KB } from "@/lib/flash-kb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,13 +46,17 @@ export async function POST(request: NextRequest) {
 - 简洁，300字以内
 - 直接给判断，不要说"需要进一步观察"
 - 如果消息跟QQQ/纳斯达克100关联度低，直接说"此消息对QQQ影响有限"
-- 用中文回复`;
+- 用中文回复
+
+<knowledge_base>
+${FLASH_KB}
+</knowledge_base>`;
 
   const userPrompt = `快讯来源：${source || "未知"}
 标题：${title || "无标题"}
 内容：${content}
 
-请分析这条快讯对QQQ的影响。`;
+请结合知识库中的QQQ分析框架，分析这条快讯对QQQ的影响。`;
 
   const encoder = new TextEncoder();
 

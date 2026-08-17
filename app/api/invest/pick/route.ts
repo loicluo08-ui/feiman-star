@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AIRequestError, callAIStream } from "@/lib/ai";
 import { crossValidate } from "@/lib/cross-validate";
 import { getRelevantKnowledge } from "@/lib/knowledge";
+import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -327,6 +328,7 @@ export async function POST(request: NextRequest) {
     pulseBlock,
     userNotes ? `用户补充：${userNotes}` : "",
     knowledge ? `\n\n---\n\n费曼星投资知识库参考（请基于此框架分析）：\n${knowledge.slice(0, 3000)}` : "",
+    `\n\n<knowledge_base>\n${FEIMANSTAR_KB}\n</knowledge_base>`,
   ].join("\n");
 
   let fullText = "";

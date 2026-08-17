@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AIRequestError, callAIStream } from "@/lib/ai";
 import { crossValidate } from "@/lib/cross-validate";
 import { loadKnowledgeBase } from "@/lib/knowledge";
+import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -116,6 +117,10 @@ export async function POST(request: NextRequest) {
     "",
     "费曼星投资知识库参考（模块5仓位策略+模块6行为偏差）：",
     loadKnowledgeBase().slice(0, 2000),
+    "",
+    "<knowledge_base>",
+    FEIMANSTAR_KB,
+    "</knowledge_base>",
   ].join("\n");
 
   let fullText = "";
