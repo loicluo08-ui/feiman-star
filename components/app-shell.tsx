@@ -7,6 +7,7 @@ import { getTasks, subscribeTasks } from "@/lib/background-task";
 
 const navItems = [
   { href: "/", label: "首页", icon: "M3 12L12 3l9 9M5 10v10h14V10" },
+  { href: "/invest/flash", label: "实时快讯", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
   { href: "/invest/market", label: "市场快报", icon: "M3 3v18h18M7 14l4-4 4 4 5-5" },
   { href: "/invest/calendar", label: "财报日历", icon: "M7 3v3M17 3v3M4 8h16M5 5h14v16H5zM8 12h3M13 12h3M8 16h3" },
   { href: "/invest/pick", label: "AI选股", icon: "M3 3v18h18M7 14l4-4 4 4 5-5" },
