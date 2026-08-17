@@ -15,11 +15,8 @@ interface FlashItem {
   source: string;
 }
 
+// Vercel serverless多实例不共享内存缓存，直接每次拉取金十
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-// 内存缓存 5秒
-let cache: { data: FlashItem[]; ts: number } | null = null;
-const CACHE_TTL = 5_000;
 
 function stripHtml(html: string): string {
   return html
@@ -145,17 +142,7 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
 
 /** GET /api/invest/flash - 实时财经快讯（金十数据为主，华尔街见闻兜底） */
 export async function GET() {
-  // 检查缓存
-  if (cache && Date.now() - cache.ts < CACHE_TTL) {
-    return NextResponse.json({
-      data: cache.data,
-      timestamp: new Date().toISOString(),
-      source: "金十数据",
-      cached: true,
-    });
-  }
-
-  // 先拉金十
+  // 直接拉金十（Vercel多实例内存缓存不共享）
   let items = await fetchJin10();
 
   // 金十失败则拉华尔街见闻
@@ -164,21 +151,11 @@ export async function GET() {
   }
 
   if (items.length === 0) {
-    if (cache) {
-      return NextResponse.json({
-        data: cache.data,
-        timestamp: new Date().toISOString(),
-        source: "缓存",
-        cached: true,
-      });
-    }
     return NextResponse.json(
       { error: "快讯数据暂时不可用，请稍后重试" },
       { status: 503 },
     );
   }
-
-  cache = { data: items, ts: Date.now() };
 
   return NextResponse.json({
     data: items,
