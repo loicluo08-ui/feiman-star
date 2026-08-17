@@ -17,9 +17,9 @@ interface FlashItem {
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-// 内存缓存 30秒
+// 内存缓存 5秒
 let cache: { data: FlashItem[]; ts: number } | null = null;
-const CACHE_TTL = 30_000;
+const CACHE_TTL = 5_000;
 
 function stripHtml(html: string): string {
   return html

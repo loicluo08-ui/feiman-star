@@ -8,7 +8,7 @@ const tools = [
   {
     number: "01",
     title: "实时快讯",
-    description: "华尔街见闻全球+A股实时快讯，重要消息高亮，30秒自动刷新。",
+    description: "金十数据实时快讯，重要消息高亮，5秒自动刷新。",
     href: "/invest/flash",
     tags: ["实时", "全球", "A股"],
   },

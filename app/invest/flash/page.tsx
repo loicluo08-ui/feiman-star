@@ -84,7 +84,7 @@ export default function FlashPage() {
   useEffect(() => {
     fetchFlash();
     if (autoRefresh) {
-      timerRef.current = setInterval(fetchFlash, 30_000);
+      timerRef.current = setInterval(fetchFlash, 5_000);
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -215,7 +215,7 @@ export default function FlashPage() {
       {/* Footer */}
       <footer className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
         <p className="text-xs leading-5 text-[var(--text-muted)]">
-          快讯来源：金十数据（主）/华尔街见闻（备）。30秒自动刷新，数据可能有数秒延迟，仅供研究参考，不构成投资建议。
+          快讯来源：金十数据（主）/华尔街见闻（备）。5秒自动刷新，数据可能有数秒延迟，仅供研究参考，不构成投资建议。
         </p>
       </footer>
     </div>
