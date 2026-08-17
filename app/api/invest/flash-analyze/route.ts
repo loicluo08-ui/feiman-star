@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { FLASH_KB } from "@/lib/flash-kb";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +9,14 @@ const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || "";
 const DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, "flash-analyze", { maxRequests: 10, windowMs: 60_000 });
+  if (limited) {
+    return new Response(
+      JSON.stringify({ error: `请求过于频繁，请${limited.retryAfter}秒后重试` }),
+      { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(limited.retryAfter) } },
+    );
+  }
+
   if (!DEEPSEEK_KEY) {
     return new Response(
       JSON.stringify({ error: "AI分析未配置" }),
