@@ -21,6 +21,8 @@ const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
 function stripHtml(html: string): string {
   return html
     .replace(/<br\s*\/?>/g, "\n")
+    .replace(/<\/?b>/g, "")
+    .replace(/<\/?strong>/g, "")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -31,10 +33,26 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+// 检测是否含<b>或<strong>标签（金十用加粗表示重要内容）
+function hasBoldTag(html: string): boolean {
+  return /<b>|<strong>/.test(html);
+}
+
 function parseTime(timeStr: string): number {
   // "2026-08-17 22:34:25" -> unix timestamp
   const d = new Date(timeStr.replace(" ", "T") + "+08:00");
   return Math.floor(d.getTime() / 1000);
+}
+
+function formatRelativeTime(timeStr: string): string {
+  const ts = parseTime(timeStr);
+  const now = Math.floor(Date.now() / 1000);
+  const diff = now - ts;
+  if (diff < 10) return "刚刚";
+  if (diff < 60) return `${diff}秒前`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+  return timeStr;
 }
 
 interface Jin10Item {
@@ -60,7 +78,7 @@ async function fetchJin10(): Promise<FlashItem[]> {
         "User-Agent": UA,
         "Referer": "https://www.jin10.com/",
       },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(4000),
     });
     if (!res.ok) return [];
 
@@ -80,9 +98,9 @@ async function fetchJin10(): Promise<FlashItem[]> {
         title: cleanTitle,
         content: cleanContent,
         content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
-        time_str: item.time,
+        time_str: formatRelativeTime(item.time),
         timestamp: parseTime(item.time),
-        is_important: item.important === 1,
+        is_important: item.important === 1 || hasBoldTag(content),
         channels: item.channel || [],
         source: "金十数据",
       };

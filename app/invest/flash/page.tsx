@@ -83,7 +83,21 @@ export default function FlashPage() {
     if (autoRefresh) {
       timerRef.current = setInterval(fetchFlash, 5_000);
     }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    // 页面不可见时暂停轮询，节省资源
+    const handleVisibility = () => {
+      if (document.hidden && timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      } else if (!document.hidden && autoRefresh && !timerRef.current) {
+        fetchFlash();
+        timerRef.current = setInterval(fetchFlash, 5_000);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [fetchFlash, autoRefresh]);
 
   // AI分析
