@@ -8,11 +8,11 @@ interface FlashItem {
   title: string;
   content: string;
   content_text: string;
-  time: number;
   time_str: string;
-  channels: string[];
+  timestamp: number;
   is_important: boolean;
-  symbols?: string[];
+  channels: number[];
+  source: string;
 }
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -23,6 +23,7 @@ const CACHE_TTL = 30_000;
 
 function stripHtml(html: string): string {
   return html
+    .replace(/<br\s*\/?>/g, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -33,92 +34,141 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-function formatTime(ts: number): string {
-  const d = new Date(ts * 1000);
-  const now = new Date();
-  const diff = (now.getTime() - d.getTime()) / 1000;
-  if (diff < 60) return "刚刚";
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
-  return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+function parseTime(timeStr: string): number {
+  // "2026-08-17 22:34:25" -> unix timestamp
+  const d = new Date(timeStr.replace(" ", "T") + "+08:00");
+  return Math.floor(d.getTime() / 1000);
+}
+
+interface Jin10Item {
+  id: string;
+  time: string;
+  type: number;
+  data: {
+    title: string | null;
+    content: string;
+    exclusive_to?: string[];
+  };
+  important: number;
+  tags: string[];
+  channel: number[];
+  remark: string[];
+}
+
+/** 金十数据实时快讯 */
+async function fetchJin10(): Promise<FlashItem[]> {
+  try {
+    const res = await fetch("https://www.jin10.com/flash_newest.js", {
+      headers: {
+        "User-Agent": UA,
+        "Referer": "https://www.jin10.com/",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+
+    const text = await res.text();
+    // 格式: var newest = [...]
+    const jsonStr = text.replace("var newest = ", "").trim().replace(/;$/, "");
+    const data = JSON.parse(jsonStr) as Jin10Item[];
+
+    return data.map((item) => {
+      const title = item.data.title || "";
+      const content = item.data.content || "";
+      const cleanContent = stripHtml(content);
+      const cleanTitle = stripHtml(title);
+
+      return {
+        id: item.id,
+        title: cleanTitle,
+        content: cleanContent,
+        content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
+        time_str: item.time,
+        timestamp: parseTime(item.time),
+        is_important: item.important === 1,
+        channels: item.channel || [],
+        source: "金十数据",
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** 华尔街见闻快讯（备用源） */
+interface WscnItem {
+  id: string;
+  title: string;
+  content: string;
+  content_text: string;
+  display_time: number;
+  channels: Array<{ name: string }>;
+  is_important: boolean;
+  symbols?: Array<{ code: string }>;
 }
 
 async function fetchWallstreetCN(): Promise<FlashItem[]> {
-  const channels = [
-    { key: "global-channel", label: "全球" },
-    { key: "a-stock-channel", label: "A股" },
-  ];
+  try {
+    const res = await fetch(
+      "https://api-one-wscn.awtmt.com/apiv1/content/lives?channel=global-channel&limit=20",
+      {
+        headers: { "User-Agent": UA },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    if (!res.ok) return [];
 
-  const results = await Promise.all(
-    channels.map(async ({ key, label }) => {
-      try {
-        const res = await fetch(
-          `https://api-one-wscn.awtmt.com/apiv1/content/lives?channel=${key}&limit=20`,
-          {
-            headers: { "User-Agent": UA },
-            signal: AbortSignal.timeout(8000),
-          },
-        );
-        if (!res.ok) return [];
-        const data = await res.json() as { data?: { items?: unknown[] } };
-        const items = data?.data?.items ?? [];
-        return items.map((raw) => {
-          const item = raw as Record<string, unknown>;
-          const content = String(item.content || "");
-          const contentText = stripHtml(content);
-          return {
-            id: String(item.id || ""),
-            title: String(item.title || "").trim() || contentText.slice(0, 30),
-            content,
-            content_text: contentText,
-            time: Number(item.display_time || 0),
-            time_str: formatTime(Number(item.display_time || 0)),
-            channels: [label],
-            is_important: contentText.includes("重磅") || contentText.includes("重要") || contentText.includes("突发"),
-            symbols: Array.isArray(item.symbols) ? (item.symbols as Array<{ code?: string }>).map((s) => s.code || "").filter(Boolean) : undefined,
-          } as FlashItem;
-        });
-      } catch {
-        return [];
-      }
-    }),
-  );
+    const payload = (await res.json()) as {
+      data?: { items?: WscnItem[] };
+    };
+    const items = payload.data?.items ?? [];
 
-  const seen = new Set<string>();
-  const merged: FlashItem[] = [];
-  for (const list of results) {
-    for (const item of list) {
-      if (!seen.has(item.id)) {
-        seen.add(item.id);
-        merged.push(item);
-      }
-    }
+    return items.map((item) => {
+      const cleanContent = stripHtml(item.content || "");
+      const cleanTitle = stripHtml(item.title || "");
+      return {
+        id: `wscn_${item.id}`,
+        title: cleanTitle,
+        content: cleanContent,
+        content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
+        time_str: new Date(item.display_time * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
+        timestamp: item.display_time,
+        is_important: false,
+        channels: [],
+        source: "华尔街见闻",
+      };
+    });
+  } catch {
+    return [];
   }
-  merged.sort((a, b) => b.time - a.time);
-  return merged.slice(0, 40);
 }
 
-/** GET /api/invest/flash - 实时财经快讯 */
+/** GET /api/invest/flash - 实时财经快讯（金十数据为主，华尔街见闻兜底） */
 export async function GET() {
   // 检查缓存
   if (cache && Date.now() - cache.ts < CACHE_TTL) {
     return NextResponse.json({
       data: cache.data,
       timestamp: new Date().toISOString(),
-      source: "华尔街见闻",
+      source: "金十数据",
       cached: true,
     });
   }
 
-  const items = await fetchWallstreetCN();
+  // 先拉金十
+  let items = await fetchJin10();
+
+  // 金十失败则拉华尔街见闻
+  if (items.length === 0) {
+    items = await fetchWallstreetCN();
+  }
 
   if (items.length === 0) {
-    // 有旧缓存就返回旧的
     if (cache) {
       return NextResponse.json({
         data: cache.data,
         timestamp: new Date().toISOString(),
-        source: "华尔街见闻",
+        source: "缓存",
         cached: true,
       });
     }
@@ -133,6 +183,6 @@ export async function GET() {
   return NextResponse.json({
     data: items,
     timestamp: new Date().toISOString(),
-    source: "华尔街见闻",
+    source: items[0]?.source || "金十数据",
   });
 }
