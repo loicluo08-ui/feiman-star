@@ -775,7 +775,7 @@ export default function PickPage() {
         ))}
       </div>
 
-      {error ? <div className="mt-4 flex items-center gap-3"><p className="rounded-lg bg-[var(--negative-bg)] px-4 py-2.5 text-sm text-[var(--negative)]">{error}</p><button onClick={() => { setError(""); handlePick(); }} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--surface-muted)]">重试</button></div> : null}
+      {error ? <div className="mt-4 flex items-center gap-3"><p className="rounded-lg bg-[var(--negative-bg)] px-4 py-2.5 text-sm text-[var(--negative)]">{error}</p><button onClick={() => { setError(""); runAnalysis(); }} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--surface-muted)]">重试</button></div> : null}
 
       {/* 骨架屏 */}
       {loadingData && !stockData ? (
