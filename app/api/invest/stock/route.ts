@@ -201,7 +201,37 @@ async function getYahooChart(code: string): Promise<YahooChartResult | null> {
     const response = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?interval=1d&range=3mo`,
       {
-        headers: { "User-Agent": UA },
+        headers: {
+          "User-Agent": UA,
+          "Accept": "application/json",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        chart?: { result?: YahooChartResult[] };
+      };
+      if (payload.chart?.result?.[0]) {
+        return payload.chart.result[0];
+      }
+    }
+  } catch {
+    // 最终失败
+  }
+
+  // 方式3: 用query2域名+不同User-Agent
+  try {
+    const response = await fetch(
+      `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?interval=1d&range=3mo`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.5",
+          "Referer": "https://finance.yahoo.com/",
+        },
         signal: AbortSignal.timeout(8000),
       },
     );
