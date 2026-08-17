@@ -137,54 +137,87 @@ async function getFinnhubHistory(code: string) {
 }
 
 async function getYahooChart(code: string): Promise<YahooChartResult | null> {
-  try {
-    let cookie = "";
-    let crumb = "";
-
+  // 尝试多个Yahoo域名和方式
+  const yahooHosts = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
+  
+  for (const host of yahooHosts) {
     try {
-      const cookieResponse = await fetch("https://fc.yahoo.com/", {
-        headers: { "User-Agent": UA },
-        redirect: "manual",
-        signal: AbortSignal.timeout(5000),
-      });
-      const match = (cookieResponse.headers.get("set-cookie") || "").match(/A3=([^;]+)/);
-      if (match) cookie = match[1];
+      let cookie = "";
+      let crumb = "";
 
-      if (cookie) {
-        const crumbResponse = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
-          headers: { "User-Agent": UA, Cookie: `A3=${cookie}` },
+      // 方式1: 带cookie+crumb
+      try {
+        const cookieResponse = await fetch("https://fc.yahoo.com/", {
+          headers: { "User-Agent": UA },
+          redirect: "manual",
           signal: AbortSignal.timeout(5000),
         });
-        if (crumbResponse.ok) crumb = (await crumbResponse.text()).trim();
-      }
-    } catch {
-      // Cookie认证失败时继续尝试公开行情接口。
-    }
+        const setCookie = cookieResponse.headers.get("set-cookie") || "";
+        const match = setCookie.match(/A3=([^;]+)/);
+        if (match) cookie = match[1];
 
-    const params = new URLSearchParams({
-      interval: "1d",
-      range: "3mo",
-      ...(crumb ? { crumb } : {}),
-    });
-    const response = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?${params}`,
-      {
-        headers: {
-          "User-Agent": UA,
-          ...(cookie ? { Cookie: `A3=${cookie}` } : {}),
+        if (cookie) {
+          const crumbResponse = await fetch(`https://${host}/v1/test/getcrumb`, {
+            headers: { "User-Agent": UA, Cookie: `A3=${cookie}` },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (crumbResponse.ok) crumb = (await crumbResponse.text()).trim();
+        }
+      } catch {
+        // Cookie认证失败，继续尝试
+      }
+
+      const params = new URLSearchParams({
+        interval: "1d",
+        range: "3mo",
+        ...(crumb ? { crumb } : {}),
+      });
+      const response = await fetch(
+        `https://${host}/v8/finance/chart/${encodeURIComponent(code)}?${params}`,
+        {
+          headers: {
+            "User-Agent": UA,
+            ...(cookie ? { Cookie: `A3=${cookie}` } : {}),
+          },
+          signal: AbortSignal.timeout(10000),
         },
-        signal: AbortSignal.timeout(10000),
+      );
+      if (!response.ok) continue;
+
+      const payload = (await response.json()) as {
+        chart?: { result?: YahooChartResult[]; error?: { code?: string; description?: string } };
+      };
+      if (payload.chart?.result?.[0]) {
+        return payload.chart.result[0];
+      }
+      // 继续尝试下一个host
+    } catch {
+      // 继续尝试下一个host
+    }
+  }
+
+  // 方式2: 不带cookie直接请求（有时能成功）
+  try {
+    const response = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?interval=1d&range=3mo`,
+      {
+        headers: { "User-Agent": UA },
+        signal: AbortSignal.timeout(8000),
       },
     );
-    if (!response.ok) return null;
-
-    const payload = (await response.json()) as {
-      chart?: { result?: YahooChartResult[] };
-    };
-    return payload.chart?.result?.[0] ?? null;
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        chart?: { result?: YahooChartResult[] };
+      };
+      if (payload.chart?.result?.[0]) {
+        return payload.chart.result[0];
+      }
+    }
   } catch {
-    return null;
+    // 最终失败
   }
+
+  return null;
 }
 
 /**
