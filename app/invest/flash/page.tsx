@@ -44,6 +44,44 @@ export default function FlashPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const aiAbortRef = useRef<AbortController | null>(null);
 
+  // 浏览器通知：重要快讯弹窗
+  const [notifEnabled, setNotifEnabled] = useState(false);
+  const notifiedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "granted") {
+      setNotifEnabled(true);
+    }
+  }, []);
+
+  const toggleNotif = useCallback(async () => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted") {
+      setNotifEnabled((v) => !v);
+    } else if (Notification.permission !== "denied") {
+      const perm = await Notification.requestPermission();
+      if (perm === "granted") setNotifEnabled(true);
+    }
+  }, []);
+
+  // 新的重要快讯触发通知
+  useEffect(() => {
+    if (!notifEnabled) return;
+    const newImportant = items.filter(
+      (i) => i.is_important && !notifiedRef.current.has(i.id)
+    );
+    for (const item of newImportant) {
+      notifiedRef.current.add(item.id);
+      try {
+        new Notification("重要快讯", {
+          body: item.content.slice(0, 100),
+          tag: item.id,
+          icon: "/favicon.ico",
+        });
+      } catch {}
+    }
+  }, [items, notifEnabled]);
+
   // 客户端直连金十（绕过Vercel网络限制，cache-buster绕CDN缓存）
   const fetchJin10Client = useCallback(async (): Promise<FlashItem[]> => {
     try {
@@ -301,6 +339,18 @@ export default function FlashPage() {
               >
                 {autoRefresh ? "● 自动" : "○ 已暂停"}
               </button>
+              {/* 重要快讯通知开关 */}
+              <button
+                onClick={toggleNotif}
+                title={notifEnabled ? "关闭重要快讯提醒" : "开启重要快讯提醒"}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  notifEnabled
+                    ? "bg-orange-500 text-white"
+                    : "bg-[var(--surface-muted)] text-[var(--text-muted)]"
+                }`}
+              >
+                {notifEnabled ? "🔔 提醒开" : "🔔 提醒关"}
+              </button>
             </div>
           </header>
 
@@ -448,6 +498,9 @@ export default function FlashPage() {
               <div className="border-t border-[var(--border)] px-4 py-2">
                 <p className="text-[10px] text-[var(--text-muted)]">
                   AI分析由DeepSeek生成，仅供研究参考，不构成投资建议
+                </p>
+                <p className="mt-0.5 text-[10px] text-[var(--text-muted)] opacity-60">
+                  已通过交叉验证：过滤绝对化用语 · 标注风险边界 · 仅基于公开信息
                 </p>
               </div>
             </div>
