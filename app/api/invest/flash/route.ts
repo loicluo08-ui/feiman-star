@@ -141,14 +141,25 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
     return items.map((item) => {
       const cleanContent = stripHtml(item.content || "");
       const cleanTitle = stripHtml(item.title || "");
+      const ts = item.display_time;
+      // 相对时间
+      const now = Math.floor(Date.now() / 1000);
+      const diff = now - ts;
+      let timeStr: string;
+      if (diff < 10) timeStr = "刚刚";
+      else if (diff < 60) timeStr = `${diff}秒前`;
+      else if (diff < 3600) timeStr = `${Math.floor(diff / 60)}分钟前`;
+      else if (diff < 86400) timeStr = `${Math.floor(diff / 3600)}小时前`;
+      else timeStr = new Date(ts * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+
       return {
         id: `wscn_${item.id}`,
         title: cleanTitle,
         content: cleanContent,
         content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
-        time_str: new Date(item.display_time * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
-        timestamp: item.display_time,
-        is_important: false,
+        time_str: timeStr,
+        timestamp: ts,
+        is_important: item.is_important || false,
         channels: [],
         source: "华尔街见闻",
       };
@@ -158,14 +169,14 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
   }
 }
 
-/** GET /api/invest/flash - 实时财经快讯（金十数据为主，华尔街见闻兜底） */
+/** GET /api/invest/flash - 实时财经快讯（华尔街见闻为主，金十兜底） */
 export async function GET() {
-  // 直接拉金十（Vercel多实例内存缓存不共享）
-  let items = await fetchJin10();
+  // 华尔街见闻API实时性好，金十flash_newest.js有缓存延迟
+  let items = await fetchWallstreetCN();
 
-  // 金十失败则拉华尔街见闻
+  // 华尔街见闻失败则拉金十
   if (items.length === 0) {
-    items = await fetchWallstreetCN();
+    items = await fetchJin10();
   }
 
   if (items.length === 0) {
@@ -178,6 +189,6 @@ export async function GET() {
   return NextResponse.json({
     data: items,
     timestamp: new Date().toISOString(),
-    source: items[0]?.source || "金十数据",
+    source: items[0]?.source || "华尔街见闻",
   });
 }
