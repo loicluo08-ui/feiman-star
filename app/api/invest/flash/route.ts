@@ -18,7 +18,7 @@ interface FlashItem {
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 护城河1: 工具函数
+// 工具函数
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function stripHtml(html: string): string {
@@ -37,89 +37,58 @@ function stripHtml(html: string): string {
 }
 
 function hasBoldTag(html: string): boolean {
-  return /<b>|<strong>/.test(html);
+  return /<b>|<strong/.test(html);
 }
 
-function parseTime(timeStr: string): number {
-  const d = new Date(timeStr.replace(" ", "T") + "+08:00");
-  return Math.floor(d.getTime() / 1000);
-}
-
-function formatRelativeTime(timestamp: number): string {
+function formatRelativeTime(ts: number): string {
   const now = Math.floor(Date.now() / 1000);
-  const diff = now - timestamp;
+  const diff = now - ts;
   if (diff < 10) return "刚刚";
   if (diff < 60) return `${diff}秒前`;
   if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
-  return new Date(timestamp * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+  return new Date(ts * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 护城河2: 内容清洗 — 过滤广告/评论/低质量快讯
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-const SPAM_KEYWORDS = [
-  "扫码进群", "加微信", "限时优惠", "点击领取",
-  "免费领取", "注册即送", "邀请好友",
-];
-
-const COMMENT_KEYWORDS = [
-  "笔者认为", "笔者认为", "我们认为", "分析师认为",
-];
-
-function isSpam(content: string): boolean {
-  const lower = content.toLowerCase();
-  return SPAM_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()));
-}
-
-function isComment(content: string): boolean {
-  return COMMENT_KEYWORDS.some((kw) => content.includes(kw));
-}
-
-function isLowQuality(item: FlashItem): boolean {
-  // 内容太短（<10字符）且非重要
-  if (item.content.length < 10 && !item.is_important) return true;
-  // 广告
-  if (isSpam(item.content)) return true;
-  // 评论文章混入快讯
-  if (isComment(item.content)) return true;
-  // 未来时间（数据异常）
-  if (item.timestamp > Math.floor(Date.now() / 1000) + 60) return true;
-  // 太旧（>48小时）
-  if (item.timestamp < Math.floor(Date.now() / 1000) - 48 * 3600) return true;
+// 内容质量过滤
+function isLowQuality(content: string): boolean {
+  if (!content || content.length < 5) return true;
+  // 广告/推广
+  if (/扫码|进群|加微信|限时|优惠|点击链接|注册即送/.test(content)) return true;
+  // 分析评论（不是快讯）
+  if (/笔者认为|我们认为|分析师表示|建议关注/.test(content)) return true;
   return false;
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 护城河3: 指纹去重 — 内容相似度去重（不只看前30字符）
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 时间异常过滤
+function isTimeAbnormal(ts: number): boolean {
+  const now = Math.floor(Date.now() / 1000);
+  // 未来时间（数据错误）
+  if (ts > now + 60) return true;
+  // 超过48小时（太旧）
+  if (ts < now - 48 * 3600) return true;
+  return false;
+}
 
-function contentFingerprint(content: string): string {
-  // 去标点/空格/数字后取前20字符做指纹
-  const cleaned = content
-    .replace(/[\s\u3000\p{P}0-9a-zA-Z]/gu, "")
-    .slice(0, 20);
-  return cleaned;
+// 指纹去重（去掉标点空格后取前20字符）
+function makeFingerprint(content: string): string {
+  return content
+    .replace(/[\s\p{P}]/gu, "")
+    .slice(0, 20)
+    .toLowerCase();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 护城河4: 数据源 — 金十
+// 数据源1: 金十数据（主源）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-interface Jin10Item {
+interface Jin10Raw {
   id: string;
   time: string;
   type: number;
-  data: {
-    title: string | null;
-    content: string;
-    exclusive_to?: string[];
-  };
+  data: { content: string; title: string; source: string };
   important: number;
-  tags: string[];
   channel: number[];
-  remark: string[];
 }
 
 async function fetchJin10(): Promise<FlashItem[]> {
@@ -129,29 +98,30 @@ async function fetchJin10(): Promise<FlashItem[]> {
         "User-Agent": UA,
         Referer: "https://www.jin10.com/",
       },
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return [];
 
     const text = await res.text();
-    const jsonStr = text.replace("var newest = ", "").trim().replace(/;$/, "");
-    const data = JSON.parse(jsonStr) as Jin10Item[];
+    const match = text.match(/var newest = (.+);/);
+    if (!match) return [];
 
-    return data.map((item) => {
-      const title = item.data.title || "";
-      const content = item.data.content || "";
-      const cleanContent = stripHtml(content);
-      const cleanTitle = stripHtml(title);
-      const ts = parseTime(item.time);
+    const raw = JSON.parse(match[1]) as Jin10Raw[];
+
+    return raw.map((item) => {
+      const rawContent = item.data.content || "";
+      const cleanContent = stripHtml(rawContent);
+      const cleanTitle = stripHtml(item.data.title || "");
+      const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
 
       return {
-        id: item.id,
+        id: `jin10_${item.id}`,
         title: cleanTitle,
         content: cleanContent,
         content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
         time_str: formatRelativeTime(ts),
         timestamp: ts,
-        is_important: item.important === 1 || hasBoldTag(content),
+        is_important: item.important === 1 || hasBoldTag(rawContent),
         channels: item.channel || [],
         source: "金十数据",
       };
@@ -162,7 +132,7 @@ async function fetchJin10(): Promise<FlashItem[]> {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 护城河4: 数据源 — 华尔街见闻
+// 数据源2: 华尔街见闻（补充金十延迟期内的最新快讯）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 interface WscnItem {
@@ -171,9 +141,7 @@ interface WscnItem {
   content: string;
   content_text: string;
   display_time: number;
-  channels: Array<{ name: string }>;
   is_important: boolean;
-  symbols?: Array<{ code: string }>;
 }
 
 async function fetchWallstreetCN(): Promise<FlashItem[]> {
@@ -215,37 +183,29 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 护城河4: 数据源 — 财联社（第三源兜底）
+// 数据源3: 财联社（第三兜底）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async function fetchCLS(): Promise<FlashItem[]> {
   try {
     const res = await fetch(
-      "https://www.cls.cn/api/sw?app=CailianpressWeb&os=web&sv=8.4.6",
+      "https://www.cls.cn/nodeapi/updateTelegraphList?app=CailianpressWeb&category=&lastTime=&os=web&sv=8.4.6",
       {
         headers: {
           "User-Agent": UA,
           Referer: "https://www.cls.cn/",
         },
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(8000),
       },
     );
     if (!res.ok) return [];
 
     const payload = (await res.json()) as {
-      data?: {
-        roll_data?: Array<{
-          id: string;
-          ctime: number;
-          title: string;
-          content: string;
-          is_important: boolean;
-        }>;
-      };
+      data?: { roll_data?: Array<{ id: string; ctime: number; title: string; content: string; is_important: boolean; subject: string[] }> };
     };
     const items = payload.data?.roll_data ?? [];
 
-    return items.slice(0, 20).map((item) => {
+    return items.map((item) => {
       const cleanContent = stripHtml(item.content || "");
       const cleanTitle = stripHtml(item.title || "");
       const ts = item.ctime;
@@ -268,57 +228,64 @@ async function fetchCLS(): Promise<FlashItem[]> {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 护城河5: 静态兜底 — 所有源全挂时返回缓存或静态数据
+// 缓存兜底（Vercel单实例内存，5分钟有效）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// Vercel多实例不共享内存，但单实例内可以用作最后兜底
 let lastSuccessCache: FlashItem[] = [];
 let lastSuccessTime = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5分钟
 
 function getCachedFallback(): FlashItem[] {
-  // 缓存5分钟内有效
-  if (lastSuccessCache.length > 0 && Date.now() - lastSuccessTime < 5 * 60 * 1000) {
-    return lastSuccessCache.map((item) => ({
-      ...item,
-      time_str: formatRelativeTime(item.timestamp),
-      source: `${item.source}（缓存）`,
-    }));
-  }
-  return [];
+  if (Date.now() - lastSuccessTime > CACHE_TTL) return [];
+  return lastSuccessCache;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 主处理：三源并行 + 清洗 + 去重 + 排序 + 兜底
+// 主逻辑：金十优先，其他源补充
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** GET /api/invest/flash - 实时财经快讯（三源合并+多层护城河） */
+/** GET /api/invest/flash - 实时财经快讯（金十优先，多源补充） */
 export async function GET() {
-  // 三源并行拉取
-  const [wscnItems, jin10Items, clsItems] = await Promise.all([
-    fetchWallstreetCN(),
+  // 并行拉三个源
+  const [jin10Items, wscnItems, clsItems] = await Promise.all([
     fetchJin10(),
+    fetchWallstreetCN(),
     fetchCLS(),
   ]);
 
-  // 合并
-  const all = [...wscnItems, ...jin10Items, ...clsItems];
+  // 找到金十最新的timestamp
+  const jin10Latest = jin10Items.length > 0
+    ? Math.max(...jin10Items.map((i) => i.timestamp))
+    : 0;
 
-  // 护城河2: 过滤低质量
-  const filtered = all.filter((item) => !isLowQuality(item));
+  // 华尔街见闻只取金十还没有的（timestamp > 金十最新）
+  const wscnSupplement = wscnItems.filter((i) => i.timestamp > jin10Latest);
 
-  // 护城河3: 指纹去重
-  const seen = new Set<string>();
+  // 财联社也只取金十还没有的
+  const clsSupplement = clsItems.filter((i) => i.timestamp > jin10Latest);
+
+  // 合并：金十全部 + 其他源补充
+  const all = [...jin10Items, ...wscnSupplement, ...clsSupplement];
+
+  // 质量过滤
+  const filtered = all.filter(
+    (item) =>
+      !isLowQuality(item.content) &&
+      !isTimeAbnormal(item.timestamp),
+  );
+
+  // 指纹去重
+  const seen = new Map<string, number>();
   const deduped: FlashItem[] = [];
   for (const item of filtered.sort((a, b) => b.timestamp - a.timestamp)) {
-    const fp = contentFingerprint(item.content);
+    const fp = makeFingerprint(item.content);
     if (seen.has(fp)) continue;
-    seen.add(fp);
+    seen.set(fp, item.timestamp);
     deduped.push(item);
   }
 
-  let items = deduped.slice(0, 30);
+  const items = deduped.slice(0, 30);
 
-  // 护城河5: 全挂时用缓存兜底
   if (items.length === 0) {
     const cached = getCachedFallback();
     if (cached.length > 0) {
@@ -340,21 +307,21 @@ export async function GET() {
   lastSuccessCache = items;
   lastSuccessTime = Date.now();
 
-  // 统计源
+  // 统计
   const sources: string[] = [];
-  if (wscnItems.length > 0) sources.push("华尔街见闻");
   if (jin10Items.length > 0) sources.push("金十数据");
-  if (clsItems.length > 0) sources.push("财联社");
+  if (wscnSupplement.length > 0) sources.push("华尔街见闻");
+  if (clsSupplement.length > 0) sources.push("财联社");
 
   return NextResponse.json({
     data: items,
     timestamp: new Date().toISOString(),
-    source: sources.join("+") || "未知",
+    source: sources.join("+") || "金十数据",
     stats: {
       total: items.length,
-      wscn: wscnItems.length,
-      jin10: jin10Items.length,
-      cls: clsItems.length,
+      jin10: jin10Items.filter((i) => !isLowQuality(i.content)).length,
+      wscn_supplement: wscnSupplement.filter((i) => !isLowQuality(i.content)).length,
+      cls_supplement: clsSupplement.filter((i) => !isLowQuality(i.content)).length,
       filtered: all.length - filtered.length,
       deduped: filtered.length - deduped.length,
     },
