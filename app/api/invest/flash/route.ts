@@ -74,6 +74,7 @@ async function fetchJin10(): Promise<FlashItem[]> {
   const cacheBuster = Date.now();
   const urls = [
     `https://www.jin10.com/flash_newest.js?_=${cacheBuster}`,
+    `https://cdn.jin10.com/flash_newest.js?_=${cacheBuster}`,
     `https://www.jin10.com/flash_newest.js`,
   ];
 
@@ -83,10 +84,10 @@ async function fetchJin10(): Promise<FlashItem[]> {
         headers: {
           "User-Agent": UA,
           Referer: "https://www.jin10.com/",
-          "Cache-Control": "no-cache",
+          "Cache-Control": "no-cache, no-store, max-age=0",
           Pragma: "no-cache",
         },
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(4000),
       });
       if (!res.ok) continue;
 
@@ -140,7 +141,7 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
       "https://api-one-wscn.awtmt.com/apiv1/content/lives?channel=global-channel&limit=20",
       {
         headers: { "User-Agent": UA },
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(5000),
       },
     );
     if (!res.ok) return [];
@@ -170,45 +171,8 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 数据源3: 财联社
+// 数据源3已删除（财联社API全失效，换成金十第三CDN节点在fetchJin10里）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-async function fetchCLS(): Promise<FlashItem[]> {
-  try {
-    const res = await fetch(
-      "https://www.cls.cn/api/sw?app=CailianpressWeb&os=web&sv=8.4.6",
-      {
-        headers: { "User-Agent": UA },
-        signal: AbortSignal.timeout(5000),
-      },
-    );
-    if (!res.ok) return [];
-
-    const payload = (await res.json()) as {
-      data?: { roll_data?: Array<{ id: string; title: string; content: string; ctime: number; shareurl: string }> };
-    };
-    const items = payload.data?.roll_data ?? [];
-
-    return items.map((item) => {
-      const cleanContent = stripHtml(item.content || "");
-      const cleanTitle = stripHtml(item.title || "");
-      const ts = item.ctime;
-      return {
-        id: `cls_${item.id}`,
-        title: cleanTitle,
-        content: cleanContent,
-        content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
-        time_str: formatRelativeTime(ts),
-        timestamp: ts,
-        is_important: false,
-        channels: [],
-        source: "财联社",
-      };
-    });
-  } catch {
-    return [];
-  }
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 缓存兜底（5分钟）
@@ -230,23 +194,21 @@ function getCachedFallback(): FlashItem[] {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function GET() {
-  const [jin10Items, wscnItems, clsItems] = await Promise.all([
+  const [jin10Items, wscnItems] = await Promise.all([
     fetchJin10(),
     fetchWallstreetCN(),
-    fetchCLS(),
   ]);
 
   // 金十为主源
   let all: FlashItem[] = [...jin10Items];
 
-  // 华尔街见闻+财联社只补金十没有的（timestamp比金十最新的还新的）
+  // 华尔街见闻只补金十没有的（timestamp比金十最新的还新的）
   if (jin10Items.length > 0) {
     const jin10Latest = jin10Items[0].timestamp;
     const wscnSupplement = wscnItems.filter((i) => i.timestamp > jin10Latest);
-    const clsSupplement = clsItems.filter((i) => i.timestamp > jin10Latest);
-    all = [...wscnSupplement, ...clsSupplement, ...jin10Items];
+    all = [...wscnSupplement, ...jin10Items];
   } else {
-    all = [...wscnItems, ...clsItems];
+    all = [...wscnItems];
   }
 
   // 质量过滤
@@ -287,7 +249,6 @@ export async function GET() {
   const sources: string[] = [];
   if (jin10Items.length > 0) sources.push("金十数据");
   if (wscnItems.some((i) => i.timestamp > (jin10Items[0]?.timestamp || 0))) sources.push("华尔街见闻");
-  if (clsItems.some((i) => i.timestamp > (jin10Items[0]?.timestamp || 0))) sources.push("财联社");
 
   return NextResponse.json({
     data: items,
@@ -297,7 +258,6 @@ export async function GET() {
       total: items.length,
       jin10: jin10Items.length,
       wscn: wscnItems.length,
-      cls: clsItems.length,
     },
   });
 }
