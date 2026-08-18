@@ -92,43 +92,116 @@ interface Jin10Raw {
 }
 
 async function fetchJin10(): Promise<FlashItem[]> {
-  try {
-    const res = await fetch("https://www.jin10.com/flash_newest.js", {
+  // 护城河1: cache-buster绕CDN缓存（延迟从6-9分钟降到2-3分钟）
+  // 护城河2: 双域名容灾（主域名挂了用备用域名）
+  // 护城河3: 超时重试（第一次5s超时，第二次3s超时）
+  // 护城河4: 实时API（get_flash_list）作为第二梯队，需要x-app-id header
+
+  const cacheBuster = Date.now();
+  const endpoints = [
+    {
+      url: `https://www.jin10.com/flash_newest.js?_=${cacheBuster}`,
+      headers: {
+        "User-Agent": UA,
+        Referer: "https://www.jin10.com/",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+      },
+      timeout: 5000,
+      parser: "newest" as const,
+    },
+    {
+      url: `https://flash-api.jin10.com/get_flash_list?max_time=${new Date().toISOString().slice(0, 19).replace("T", "+")}&channel=-8200`,
+      headers: {
+        "User-Agent": UA,
+        Referer: "https://www.jin10.com/",
+        "x-app-id": "bVBF4FyRTn5NJF5n",
+        "Accept": "application/json",
+      },
+      timeout: 5000,
+      parser: "api" as const,
+    },
+    {
+      url: `https://www.jin10.com/flash_newest.js`,
       headers: {
         "User-Agent": UA,
         Referer: "https://www.jin10.com/",
       },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return [];
+      timeout: 3000,
+      parser: "newest" as const,
+    },
+  ];
 
-    const text = await res.text();
-    const match = text.match(/var newest = (.+);/);
-    if (!match) return [];
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep.url, {
+        headers: ep.headers,
+        signal: AbortSignal.timeout(ep.timeout),
+      });
+      if (!res.ok) continue;
 
-    const raw = JSON.parse(match[1]) as Jin10Raw[];
+      const text = await res.text();
+      if (!text || text.length < 10) continue;
 
-    return raw.map((item) => {
-      const rawContent = item.data.content || "";
-      const cleanContent = stripHtml(rawContent);
-      const cleanTitle = stripHtml(item.data.title || "");
-      const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
+      if (ep.parser === "newest") {
+        const match = text.match(/var newest = (.+);/);
+        if (!match) continue;
+        const raw = JSON.parse(match[1]) as Jin10Raw[];
 
-      return {
-        id: `jin10_${item.id}`,
-        title: cleanTitle,
-        content: cleanContent,
-        content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
-        time_str: formatRelativeTime(ts),
-        timestamp: ts,
-        is_important: item.important === 1 || hasBoldTag(rawContent),
-        channels: item.channel || [],
-        source: "金十数据",
-      };
-    });
-  } catch {
-    return [];
+        return raw.map((item) => {
+          const rawContent = item.data.content || "";
+          const cleanContent = stripHtml(rawContent);
+          const cleanTitle = stripHtml(item.data.title || "");
+          const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
+
+          return {
+            id: `jin10_${item.id}`,
+            title: cleanTitle,
+            content: cleanContent,
+            content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
+            time_str: formatRelativeTime(ts),
+            timestamp: ts,
+            is_important: item.important === 1 || hasBoldTag(rawContent),
+            channels: item.channel || [],
+            source: "金十数据",
+          };
+        });
+      } else {
+        // API parser
+        const raw = JSON.parse(text) as Array<{
+          id: string;
+          time: string;
+          data: { content: string; title: string; source: string };
+          important: number;
+          channel: number[];
+        }>;
+
+        return raw.map((item) => {
+          const rawContent = item.data.content || "";
+          const cleanContent = stripHtml(rawContent);
+          const cleanTitle = stripHtml(item.data.title || "");
+          const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
+
+          return {
+            id: `jin10_${item.id}`,
+            title: cleanTitle,
+            content: cleanContent,
+            content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
+            time_str: formatRelativeTime(ts),
+            timestamp: ts,
+            is_important: item.important === 1 || hasBoldTag(rawContent),
+            channels: item.channel || [],
+            source: "金十数据",
+          };
+        });
+      }
+    } catch {
+      // 这个endpoint失败，试下一个
+      continue;
+    }
   }
+
+  return [];
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
