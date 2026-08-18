@@ -8,6 +8,11 @@ export const metadata: Metadata = {
     template: "%s · 费曼星",
   },
   description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情数据来自Yahoo Finance，仅供研究参考，不构成投资建议。",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 5,
+  },
   openGraph: {
     title: "费曼星 · 投资分析工具",
     description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情数据来自Yahoo Finance，仅供研究参考，不构成投资建议。",
