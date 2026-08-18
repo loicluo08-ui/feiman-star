@@ -169,15 +169,29 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
   }
 }
 
-/** GET /api/invest/flash - 实时财经快讯（华尔街见闻为主，金十兜底） */
+/** GET /api/invest/flash - 实时财经快讯（双源合并：华尔街见闻+金十） */
 export async function GET() {
-  // 华尔街见闻API实时性好，金十flash_newest.js有缓存延迟
-  let items = await fetchWallstreetCN();
+  // 并行拉两个源，合并去重取最新
+  const [wscnItems, jin10Items] = await Promise.all([
+    fetchWallstreetCN(),
+    fetchJin10(),
+  ]);
 
-  // 华尔街见闻失败则拉金十
-  if (items.length === 0) {
-    items = await fetchJin10();
+  // 合并
+  const all = [...wscnItems, ...jin10Items];
+
+  // 按timestamp去重（同一条快讯两个源可能都有，取先到的）
+  const seen = new Map<string, number>();
+  const deduped: FlashItem[] = [];
+  for (const item of all.sort((a, b) => b.timestamp - a.timestamp)) {
+    // 用content前30字符做指纹去重
+    const fingerprint = item.content.slice(0, 30);
+    if (seen.has(fingerprint)) continue;
+    seen.set(fingerprint, item.timestamp);
+    deduped.push(item);
   }
+
+  const items = deduped.slice(0, 30);
 
   if (items.length === 0) {
     return NextResponse.json(
@@ -189,6 +203,6 @@ export async function GET() {
   return NextResponse.json({
     data: items,
     timestamp: new Date().toISOString(),
-    source: items[0]?.source || "华尔街见闻",
+    source: "华尔街见闻+金十数据",
   });
 }
