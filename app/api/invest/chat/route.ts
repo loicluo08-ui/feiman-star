@@ -4,7 +4,7 @@ import { callAIStream, callVisionAI, type VisionMessage } from "@/lib/ai";
 import { crossValidate } from "@/lib/cross-validate";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { loadKnowledgeBase } from "@/lib/knowledge";
-import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { extractStockCodes, buildStockContext, fetchStockData } from "@/lib/stock-context";
 
 export const runtime = "nodejs";
@@ -61,7 +61,7 @@ const CROSS_VALIDATION_BLOCK = [
 ].join("\n");
 
 export async function POST(request: NextRequest) {
-  const limited = enforceRateLimit(request, "chat", RATE_LIMITS.chat);
+  const limited = await enforceRateLimitAsync(request, "chat", RATE_LIMITS.chat);
   if (limited) {
     return NextResponse.json(
       { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },

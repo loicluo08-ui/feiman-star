@@ -4,7 +4,7 @@ import { AIRequestError, callAIStream } from "@/lib/ai";
 import { crossValidate } from "@/lib/cross-validate";
 import { loadKnowledgeBase } from "@/lib/knowledge";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
-import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const limited = enforceRateLimit(request, "review", RATE_LIMITS.review);
+  const limited = await enforceRateLimitAsync(request, "review", RATE_LIMITS.review);
   if (limited) {
     return NextResponse.json(
       { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
