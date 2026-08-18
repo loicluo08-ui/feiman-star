@@ -69,6 +69,7 @@ type TradeStats = {
   winRate: number | null;
   totalPnl: number;
   profitLossRatio: number | null;
+  closedPnls: number[];
 };
 
 type PositionViolation = {
@@ -213,6 +214,7 @@ function calculateTradeStatsFromEntries(entries: ParsedTrade[], explicitPnlText 
       : averageWin != null
         ? Number.POSITIVE_INFINITY
         : null,
+    closedPnls,
   };
 }
 
@@ -799,6 +801,49 @@ export default function ReviewPage() {
                     : "—"}
               />
             </div>
+            {/* 盈亏可视化 */}
+            {tradeStats.totalTrades > 0 && tradeStats.closedPnls && tradeStats.closedPnls.length > 0 && (
+              <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                <h4 className="mb-3 text-sm font-semibold text-[var(--text-muted)]">逐笔盈亏</h4>
+                <div className="flex items-end gap-1" style={{ height: "120px" }}>
+                  {tradeStats.closedPnls.map((pnl, i) => {
+                    const maxAbs = Math.max(...tradeStats.closedPnls.map(Math.abs), 1);
+                    const h = Math.max(2, (Math.abs(pnl) / maxAbs) * 100);
+                    const isWin = pnl >= 0;
+                    return (
+                      <div key={i} className="group relative flex flex-1 flex-col items-center justify-end" style={{ height: "100%" }}>
+                        <div
+                          className="w-full rounded-t transition-opacity hover:opacity-100"
+                          style={{
+                            height: `${h}%`,
+                            background: isWin ? "var(--positive)" : "var(--negative)",
+                            opacity: 0.7,
+                            minHeight: "2px",
+                          }}
+                        />
+                        <div className="pointer-events-none absolute -top-8 hidden whitespace-nowrap rounded bg-[var(--surface)] px-2 py-1 text-xs shadow group-hover:block">
+                          #{i + 1}: {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 flex justify-between text-xs text-[var(--text-muted)]">
+                  <span>第1笔</span>
+                  <span>第{tradeStats.closedPnls.length}笔</span>
+                </div>
+                <div className="mt-1 flex gap-4 text-xs">
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-3 rounded-sm" style={{ background: "var(--positive)" }}></span>
+                    盈利 {tradeStats.closedPnls.filter(p => p >= 0).length}笔
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-3 rounded-sm" style={{ background: "var(--negative)" }}></span>
+                    亏损 {tradeStats.closedPnls.filter(p => p < 0).length}笔
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-medium">仓位规则检查</p>

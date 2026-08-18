@@ -1224,30 +1224,63 @@ function IndustryBenchmark({
 
 function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: number | null; low52: number | null }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-  const valid = candles.filter((c) => c.close != null) as Array<{ date: string; close: number }>;
+  const valid = candles.filter((c) => c.close != null) as Array<{ date: string; close: number; volume: number | null }>;
   if (valid.length < 2) return null;
 
   const prices = valid.map((c) => c.close);
+  const volumes = valid.map((c) => c.volume ?? 0);
+  const maxVol = Math.max(...volumes, 1);
   const min = Math.min(...prices, low52 ?? Infinity);
   const max = Math.max(...prices, high52 ?? -Infinity);
   const range = max - min || 1;
   const W = 800;
-  const H = 200;
-  const padding = { top: 20, right: 50, bottom: 30, left: 50 };
+  const H = 280;
+  const padding = { top: 20, right: 50, bottom: 60, left: 50 };
   const chartW = W - padding.left - padding.right;
   const chartH = H - padding.top - padding.bottom;
+  const volH = 40;
+  const priceH = chartH - volH - 10;
+
+  // MA20
+  const ma20: Array<number | null> = valid.map((_, i) => {
+    if (i < 19) return null;
+    const slice = prices.slice(i - 19, i + 1);
+    return slice.reduce((a, b) => a + b, 0) / 20;
+  });
+  // MA60
+  const ma60: Array<number | null> = valid.map((_, i) => {
+    if (i < 59) return null;
+    const slice = prices.slice(i - 59, i + 1);
+    return slice.reduce((a, b) => a + b, 0) / 60;
+  });
 
   const points = valid.map((c, i) => {
     const x = padding.left + (i / (valid.length - 1)) * chartW;
-    const y = padding.top + chartH - ((c.close - min) / range) * chartH;
-    return { x, y, close: c.close, date: c.date };
+    const y = padding.top + priceH - ((c.close - min) / range) * priceH;
+    return { x, y, close: c.close, date: c.date, volume: c.volume };
   });
 
   const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
 
+  const ma20Path = ma20.map((ma, i) => {
+    if (ma == null) return null;
+    const x = padding.left + (i / (valid.length - 1)) * chartW;
+    const y = padding.top + priceH - ((ma - min) / range) * priceH;
+    return { x, y };
+  }).filter(Boolean);
+  const ma20D = ma20Path.map((p, i) => `${i === 0 ? "M" : "L"} ${p!.x.toFixed(1)} ${p!.y.toFixed(1)}`).join(" ");
+
+  const ma60Path = ma60.map((ma, i) => {
+    if (ma == null) return null;
+    const x = padding.left + (i / (valid.length - 1)) * chartW;
+    const y = padding.top + priceH - ((ma - min) / range) * priceH;
+    return { x, y };
+  }).filter(Boolean);
+  const ma60D = ma60Path.map((p, i) => `${i === 0 ? "M" : "L"} ${p!.x.toFixed(1)} ${p!.y.toFixed(1)}`).join(" ");
+
   const yLabels = Array.from({ length: 5 }, (_, i) => {
     const val = max - (range * i) / 4;
-    const y = padding.top + (chartH * i) / 4;
+    const y = padding.top + (priceH * i) / 4;
     return { val, y };
   });
 
@@ -1255,6 +1288,7 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
   const lastPrice = valid[valid.length - 1].close;
   const isUp = lastPrice >= firstPrice;
   const lineColor = isUp ? "var(--positive)" : "var(--negative)";
+  const volBottom = padding.top + priceH + 10;
 
   function handleMove(e: React.MouseEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1268,14 +1302,26 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
   }
 
   const hovered = hoverIdx != null ? points[hoverIdx] : null;
+  const hoveredMA20 = hoverIdx != null ? ma20[hoverIdx] : null;
+  const hoveredMA60 = hoverIdx != null ? ma60[hoverIdx] : null;
 
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-[var(--text-muted)]">120日走势</h3>
-        <span className={`text-xs font-medium ${isUp ? "text-[var(--positive)]" : "text-[var(--negative)]"}`}>
-          {isUp ? "▲" : "▼"} {(((lastPrice - firstPrice) / firstPrice) * 100).toFixed(2)}%
-        </span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-3 rounded-sm" style={{ background: "var(--positive)" }}></span>
+            MA20
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-3 rounded-sm bg-orange-500"></span>
+            MA60
+          </span>
+          <span className={`font-medium ${isUp ? "text-[var(--positive)]" : "text-[var(--negative)]"}`}>
+            {isUp ? "▲" : "▼"} {(((lastPrice - firstPrice) / firstPrice) * 100).toFixed(2)}%
+          </span>
+        </div>
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
@@ -1293,6 +1339,27 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
             </text>
           </g>
         ))}
+        {/* 成交量柱 */}
+        {points.map((p, i) => {
+          const h = (volumes[i] / maxVol) * volH;
+          return (
+            <rect
+              key={`vol-${i}`}
+              x={p.x - 2}
+              y={volBottom + volH - h}
+              width={3}
+              height={h}
+              fill={p.close >= (valid[i-1]?.close ?? p.close) ? "var(--positive)" : "var(--negative)"}
+              opacity={0.3}
+            />
+          );
+        })}
+        {/* 成交量标签 */}
+        <text x={padding.left} y={volBottom - 4} fontSize="9" fill="var(--text-muted)">成交量</text>
+        {/* MA60 */}
+        {ma60D && <path d={ma60D} fill="none" stroke="#f97316" strokeWidth="1.5" opacity={0.8} />}
+        {/* MA20 */}
+        {ma20D && <path d={ma20D} fill="none" stroke="var(--positive)" strokeWidth="1.5" opacity={0.8} />}
         {/* 价格线 */}
         <path d={pathD} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         {/* 起点终点 */}
@@ -1307,10 +1374,20 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
           <g>
             <line x1={hovered.x} y1={padding.top} x2={hovered.x} y2={H - padding.bottom} stroke="var(--text-muted)" strokeWidth="1" strokeDasharray="3 3" />
             <circle cx={hovered.x} cy={hovered.y} r="4" fill={lineColor} stroke="var(--surface)" strokeWidth="2" />
-            <rect x={hovered.x - 45} y={padding.top - 16} width="90" height="20" rx="4" fill="var(--primary)" />
+            <rect x={hovered.x - 50} y={padding.top - 16} width={100} height={20} rx="4" fill="var(--primary)" />
             <text x={hovered.x} y={padding.top - 2} textAnchor="middle" fontSize="10" fill="var(--primary-foreground)" fontWeight="600">
               ${hovered.close.toFixed(2)} {hovered.date.slice(5)}
             </text>
+            {hoveredMA20 != null && (
+              <text x={hovered.x} y={hovered.y - 10} textAnchor="middle" fontSize="9" fill="var(--positive)">
+                MA20: ${hoveredMA20.toFixed(2)}
+              </text>
+            )}
+            {hoveredMA60 != null && (
+              <text x={hovered.x} y={hovered.y + 14} textAnchor="middle" fontSize="9" fill="#f97316">
+                MA60: ${hoveredMA60.toFixed(2)}
+              </text>
+            )}
           </g>
         ) : null}
         {/* X轴日期 */}
