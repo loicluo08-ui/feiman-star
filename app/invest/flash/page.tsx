@@ -44,15 +44,134 @@ export default function FlashPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const aiAbortRef = useRef<AbortController | null>(null);
 
-  const fetchFlash = useCallback(async () => {
-    setRefreshing(true);
+  // 客户端直连金十（绕过Vercel网络限制，cache-buster绕CDN缓存）
+  const fetchJin10Client = useCallback(async (): Promise<FlashItem[]> => {
+    try {
+      const cb = Date.now();
+      const res = await fetch(`https://www.jin10.com/flash_newest.js?_=${cb}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) return [];
+      const text = await res.text();
+      const match = text.match(/var newest = (.+);/);
+      if (!match) return [];
+
+      const raw = JSON.parse(match[1]) as Array<{
+        id: string;
+        time: string;
+        type: number;
+        data: { content: string; title: string; source: string };
+        important: number;
+        channel: number[];
+      }>;
+
+      return raw.map((item) => {
+        const content = item.data.content || "";
+        const cleanContent = content
+          .replace(/<br\s*\/?>/g, "\n")
+          .replace(/<\/?b>/g, "")
+          .replace(/<\/?strong>/g, "")
+          .replace(/<[^>]+>/g, "")
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .trim();
+        const cleanTitle = (item.data.title || "").replace(/<[^>]+>/g, "").trim();
+        const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
+        const now = Math.floor(Date.now() / 1000);
+        const diff = now - ts;
+        let timeStr: string;
+        if (diff < 10) timeStr = "刚刚";
+        else if (diff < 60) timeStr = `${diff}秒前`;
+        else if (diff < 3600) timeStr = `${Math.floor(diff / 60)}分钟前`;
+        else if (diff < 86400) timeStr = `${Math.floor(diff / 3600)}小时前`;
+        else timeStr = item.time;
+
+        return {
+          id: `jin10_${item.id}`,
+          title: cleanTitle,
+          content: cleanContent,
+          content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
+          time_str: timeStr,
+          timestamp: ts,
+          is_important: item.important === 1 || /<b>|<strong/.test(content),
+          channels: item.channel || [],
+          source: "金十数据",
+        };
+      });
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // 服务端API（华尔街见闻+财联社补充+金十兜底）
+  const fetchServerFlash = useCallback(async (): Promise<{
+    data: FlashItem[];
+    source: string;
+    stats?: Record<string, number>;
+  }> => {
     try {
       const res = await fetch("/api/invest/flash", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      const newItems: FlashItem[] = json.data || [];
+      return {
+        data: json.data || [],
+        source: json.source || "",
+        stats: json.stats,
+      };
+    } catch {
+      return { data: [], source: "" };
+    }
+  }, []);
 
-      setSource(json.source || "");
+  const fetchFlash = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // 并行：客户端直连金十 + 服务端API
+      const [jin10Items, serverData] = await Promise.all([
+        fetchJin10Client(),
+        fetchServerFlash(),
+      ]);
+
+      // 金十客户端数据为主源
+      let allItems: FlashItem[] = [...jin10Items];
+
+      // 服务端数据补充（华尔街见闻+财联社，补金十没有的）
+      if (jin10Items.length > 0) {
+        const jin10Latest = jin10Items[0].timestamp;
+        const supplement = serverData.data.filter(
+          (item) => item.timestamp > jin10Latest && item.source !== "金十数据"
+        );
+        allItems = [...supplement, ...jin10Items];
+      } else {
+        // 金十客户端也挂了，用服务端全部数据
+        allItems = serverData.data;
+      }
+
+      // 去重（content前30字符指纹）
+      const seen = new Map<string, number>();
+      const deduped: FlashItem[] = [];
+      for (const item of allItems.sort((a, b) => b.timestamp - a.timestamp)) {
+        const fp = item.content.replace(/[\s\W]/g, "").slice(0, 20);
+        if (seen.has(fp)) continue;
+        seen.set(fp, item.timestamp);
+        deduped.push(item);
+      }
+
+      const newItems = deduped.slice(0, 30);
+
+      // 更新source显示
+      const sources: string[] = [];
+      if (jin10Items.length > 0) sources.push("金十数据");
+      const serverSources = serverData.data.filter(
+        (i) => i.source !== "金十数据" && i.timestamp > (jin10Items[0]?.timestamp || 0)
+      );
+      const wscnCount = serverSources.filter((i) => i.source === "华尔街见闻").length;
+      const clsCount = serverSources.filter((i) => i.source === "财联社").length;
+      if (wscnCount > 0) sources.push("华尔街见闻");
+      if (clsCount > 0) sources.push("财联社");
+      if (sources.length === 0 && serverData.source) sources.push(serverData.source);
+
+      setSource(sources.join("+") || "金十数据");
       setLastUpdate(new Date().toLocaleTimeString("zh-CN"));
 
       if (prevIdsRef.current.size > 0) {
@@ -76,7 +195,7 @@ export default function FlashPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [fetchJin10Client, fetchServerFlash]);
 
   useEffect(() => {
     fetchFlash();
