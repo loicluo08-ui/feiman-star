@@ -17,10 +17,6 @@ interface FlashItem {
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 工具函数
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 function stripHtml(html: string): string {
   return html
     .replace(/<br\s*\/?>/g, "\n")
@@ -50,153 +46,75 @@ function formatRelativeTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
 }
 
-// 内容质量过滤
 function isLowQuality(content: string): boolean {
-  if (!content || content.length < 5) return true;
-  // 广告/推广
-  if (/扫码|进群|加微信|限时|优惠|点击链接|注册即送/.test(content)) return true;
-  // 分析评论（不是快讯）
-  if (/笔者认为|我们认为|分析师表示|建议关注/.test(content)) return true;
+  if (!content || content.length < 8) return true;
+  const lower = content.toLowerCase();
+  if (/扫码|加微信|进群|限时|优惠|点击链接/.test(content)) return true;
+  if (/笔者认为|我们认为|小编觉得/.test(content)) return true;
   return false;
 }
 
-// 时间异常过滤
-function isTimeAbnormal(ts: number): boolean {
-  const now = Math.floor(Date.now() / 1000);
-  // 未来时间（数据错误）
-  if (ts > now + 60) return true;
-  // 超过48小时（太旧）
-  if (ts < now - 48 * 3600) return true;
-  return false;
-}
-
-// 指纹去重（去掉标点空格后取前20字符）
 function makeFingerprint(content: string): string {
-  return content
-    .replace(/[\s\p{P}]/gu, "")
-    .slice(0, 20)
-    .toLowerCase();
+  return content.replace(/[\s\W]/g, "").slice(0, 20);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 数据源1: 金十数据（主源）
+// 数据源1: 金十（服务端兜底，主源在客户端直连）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 interface Jin10Raw {
   id: string;
   time: string;
-  type: number;
   data: { content: string; title: string; source: string };
   important: number;
   channel: number[];
 }
 
 async function fetchJin10(): Promise<FlashItem[]> {
-  // 护城河1: cache-buster绕CDN缓存（延迟从6-9分钟降到2-3分钟）
-  // 护城河2: 双域名容灾（主域名挂了用备用域名）
-  // 护城河3: 超时重试（第一次5s超时，第二次3s超时）
-  // 护城河4: 实时API（get_flash_list）作为第二梯队，需要x-app-id header
-
   const cacheBuster = Date.now();
-  const endpoints = [
-    {
-      url: `https://www.jin10.com/flash_newest.js?_=${cacheBuster}`,
-      headers: {
-        "User-Agent": UA,
-        Referer: "https://www.jin10.com/",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-      },
-      timeout: 5000,
-      parser: "newest" as const,
-    },
-    {
-      url: `https://flash-api.jin10.com/get_flash_list?max_time=${new Date().toISOString().slice(0, 19).replace("T", "+")}&channel=-8200`,
-      headers: {
-        "User-Agent": UA,
-        Referer: "https://www.jin10.com/",
-        "x-app-id": "bVBF4FyRTn5NJF5n",
-        "Accept": "application/json",
-      },
-      timeout: 5000,
-      parser: "api" as const,
-    },
-    {
-      url: `https://www.jin10.com/flash_newest.js`,
-      headers: {
-        "User-Agent": UA,
-        Referer: "https://www.jin10.com/",
-      },
-      timeout: 3000,
-      parser: "newest" as const,
-    },
+  const urls = [
+    `https://www.jin10.com/flash_newest.js?_=${cacheBuster}`,
+    `https://www.jin10.com/flash_newest.js`,
   ];
 
-  for (const ep of endpoints) {
+  for (const url of urls) {
     try {
-      const res = await fetch(ep.url, {
-        headers: ep.headers,
-        signal: AbortSignal.timeout(ep.timeout),
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": UA,
+          Referer: "https://www.jin10.com/",
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
+        signal: AbortSignal.timeout(5000),
       });
       if (!res.ok) continue;
 
       const text = await res.text();
       if (!text || text.length < 10) continue;
 
-      if (ep.parser === "newest") {
-        const match = text.match(/var newest = (.+);/);
-        if (!match) continue;
-        const raw = JSON.parse(match[1]) as Jin10Raw[];
+      const match = text.match(/var newest = (.+);/);
+      if (!match) continue;
 
-        return raw.map((item) => {
-          const rawContent = item.data.content || "";
-          const cleanContent = stripHtml(rawContent);
-          const cleanTitle = stripHtml(item.data.title || "");
-          const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
-
-          return {
-            id: `jin10_${item.id}`,
-            title: cleanTitle,
-            content: cleanContent,
-            content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
-            time_str: formatRelativeTime(ts),
-            timestamp: ts,
-            is_important: item.important === 1 || hasBoldTag(rawContent),
-            channels: item.channel || [],
-            source: "金十数据",
-          };
-        });
-      } else {
-        // API parser
-        const raw = JSON.parse(text) as Array<{
-          id: string;
-          time: string;
-          data: { content: string; title: string; source: string };
-          important: number;
-          channel: number[];
-        }>;
-
-        return raw.map((item) => {
-          const rawContent = item.data.content || "";
-          const cleanContent = stripHtml(rawContent);
-          const cleanTitle = stripHtml(item.data.title || "");
-          const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
-
-          return {
-            id: `jin10_${item.id}`,
-            title: cleanTitle,
-            content: cleanContent,
-            content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
-            time_str: formatRelativeTime(ts),
-            timestamp: ts,
-            is_important: item.important === 1 || hasBoldTag(rawContent),
-            channels: item.channel || [],
-            source: "金十数据",
-          };
-        });
-      }
+      const raw = JSON.parse(match[1]) as Jin10Raw[];
+      return raw.map((item) => {
+        const rawContent = item.data.content || "";
+        const cleanContent = stripHtml(rawContent);
+        const cleanTitle = stripHtml(item.data.title || "");
+        const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
+        return {
+          id: `jin10_${item.id}`,
+          title: cleanTitle,
+          content: cleanContent,
+          content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
+          time_str: formatRelativeTime(ts),
+          timestamp: ts,
+          is_important: item.important === 1 || hasBoldTag(rawContent),
+          channels: item.channel || [],
+          source: "金十数据",
+        };
+      });
     } catch {
-      // 这个endpoint失败，试下一个
       continue;
     }
   }
@@ -205,14 +123,13 @@ async function fetchJin10(): Promise<FlashItem[]> {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 数据源2: 华尔街见闻（补充金十延迟期内的最新快讯）
+// 数据源2: 华尔街见闻
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 interface WscnItem {
   id: string;
   title: string;
   content: string;
-  content_text: string;
   display_time: number;
   is_important: boolean;
 }
@@ -228,16 +145,13 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
     );
     if (!res.ok) return [];
 
-    const payload = (await res.json()) as {
-      data?: { items?: WscnItem[] };
-    };
+    const payload = (await res.json()) as { data?: { items?: WscnItem[] } };
     const items = payload.data?.items ?? [];
 
     return items.map((item) => {
       const cleanContent = stripHtml(item.content || "");
       const cleanTitle = stripHtml(item.title || "");
       const ts = item.display_time;
-
       return {
         id: `wscn_${item.id}`,
         title: cleanTitle,
@@ -256,25 +170,22 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 数据源3: 财联社（第三兜底）
+// 数据源3: 财联社
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async function fetchCLS(): Promise<FlashItem[]> {
   try {
     const res = await fetch(
-      "https://www.cls.cn/nodeapi/updateTelegraphList?app=CailianpressWeb&category=&lastTime=&os=web&sv=8.4.6",
+      "https://www.cls.cn/api/sw?app=CailianpressWeb&os=web&sv=8.4.6",
       {
-        headers: {
-          "User-Agent": UA,
-          Referer: "https://www.cls.cn/",
-        },
-        signal: AbortSignal.timeout(8000),
+        headers: { "User-Agent": UA },
+        signal: AbortSignal.timeout(5000),
       },
     );
     if (!res.ok) return [];
 
     const payload = (await res.json()) as {
-      data?: { roll_data?: Array<{ id: string; ctime: number; title: string; content: string; is_important: boolean; subject: string[] }> };
+      data?: { roll_data?: Array<{ id: string; title: string; content: string; ctime: number; shareurl: string }> };
     };
     const items = payload.data?.roll_data ?? [];
 
@@ -282,7 +193,6 @@ async function fetchCLS(): Promise<FlashItem[]> {
       const cleanContent = stripHtml(item.content || "");
       const cleanTitle = stripHtml(item.title || "");
       const ts = item.ctime;
-
       return {
         id: `cls_${item.id}`,
         title: cleanTitle,
@@ -290,7 +200,7 @@ async function fetchCLS(): Promise<FlashItem[]> {
         content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
         time_str: formatRelativeTime(ts),
         timestamp: ts,
-        is_important: item.is_important || false,
+        is_important: false,
         channels: [],
         source: "财联社",
       };
@@ -301,59 +211,54 @@ async function fetchCLS(): Promise<FlashItem[]> {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 缓存兜底（Vercel单实例内存，5分钟有效）
+// 缓存兜底（5分钟）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 let lastSuccessCache: FlashItem[] = [];
 let lastSuccessTime = 0;
-const CACHE_TTL = 5 * 60 * 1000; // 5分钟
+const CACHE_TTL = 5 * 60 * 1000;
 
 function getCachedFallback(): FlashItem[] {
-  if (Date.now() - lastSuccessTime > CACHE_TTL) return [];
-  return lastSuccessCache;
+  if (Date.now() - lastSuccessTime < CACHE_TTL && lastSuccessCache.length > 0) {
+    return lastSuccessCache;
+  }
+  return [];
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 主逻辑：金十优先，其他源补充
+// 主函数：金十为主，华尔街见闻+财联社补充
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** GET /api/invest/flash - 实时财经快讯（金十优先，多源补充） */
 export async function GET() {
-  // 并行拉三个源
   const [jin10Items, wscnItems, clsItems] = await Promise.all([
     fetchJin10(),
     fetchWallstreetCN(),
     fetchCLS(),
   ]);
 
-  // 找到金十最新的timestamp
-  const jin10Latest = jin10Items.length > 0
-    ? Math.max(...jin10Items.map((i) => i.timestamp))
-    : 0;
+  // 金十为主源
+  let all: FlashItem[] = [...jin10Items];
 
-  // 华尔街见闻只取金十还没有的（timestamp > 金十最新）
-  const wscnSupplement = wscnItems.filter((i) => i.timestamp > jin10Latest);
-
-  // 财联社也只取金十还没有的
-  const clsSupplement = clsItems.filter((i) => i.timestamp > jin10Latest);
-
-  // 合并：金十全部 + 其他源补充
-  const all = [...jin10Items, ...wscnSupplement, ...clsSupplement];
+  // 华尔街见闻+财联社只补金十没有的（timestamp比金十最新的还新的）
+  if (jin10Items.length > 0) {
+    const jin10Latest = jin10Items[0].timestamp;
+    const wscnSupplement = wscnItems.filter((i) => i.timestamp > jin10Latest);
+    const clsSupplement = clsItems.filter((i) => i.timestamp > jin10Latest);
+    all = [...wscnSupplement, ...clsSupplement, ...jin10Items];
+  } else {
+    all = [...wscnItems, ...clsItems];
+  }
 
   // 质量过滤
-  const filtered = all.filter(
-    (item) =>
-      !isLowQuality(item.content) &&
-      !isTimeAbnormal(item.timestamp),
-  );
+  const filtered = all.filter((i) => !isLowQuality(i.content));
 
   // 指纹去重
-  const seen = new Map<string, number>();
+  const seen = new Set<string>();
   const deduped: FlashItem[] = [];
   for (const item of filtered.sort((a, b) => b.timestamp - a.timestamp)) {
     const fp = makeFingerprint(item.content);
     if (seen.has(fp)) continue;
-    seen.set(fp, item.timestamp);
+    seen.add(fp);
     deduped.push(item);
   }
 
@@ -376,15 +281,13 @@ export async function GET() {
     );
   }
 
-  // 更新缓存
   lastSuccessCache = items;
   lastSuccessTime = Date.now();
 
-  // 统计
   const sources: string[] = [];
   if (jin10Items.length > 0) sources.push("金十数据");
-  if (wscnSupplement.length > 0) sources.push("华尔街见闻");
-  if (clsSupplement.length > 0) sources.push("财联社");
+  if (wscnItems.some((i) => i.timestamp > (jin10Items[0]?.timestamp || 0))) sources.push("华尔街见闻");
+  if (clsItems.some((i) => i.timestamp > (jin10Items[0]?.timestamp || 0))) sources.push("财联社");
 
   return NextResponse.json({
     data: items,
@@ -392,11 +295,9 @@ export async function GET() {
     source: sources.join("+") || "金十数据",
     stats: {
       total: items.length,
-      jin10: jin10Items.filter((i) => !isLowQuality(i.content)).length,
-      wscn_supplement: wscnSupplement.filter((i) => !isLowQuality(i.content)).length,
-      cls_supplement: clsSupplement.filter((i) => !isLowQuality(i.content)).length,
-      filtered: all.length - filtered.length,
-      deduped: filtered.length - deduped.length,
+      jin10: jin10Items.length,
+      wscn: wscnItems.length,
+      cls: clsItems.length,
     },
   });
 }
