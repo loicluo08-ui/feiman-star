@@ -210,7 +210,13 @@ export default function FlashPage() {
       if (sources.length === 0 && serverData.source) sources.push(serverData.source);
 
       setSource(sources.join("+") || "金十数据");
-      setLastUpdate(new Date().toLocaleTimeString("zh-CN"));
+      // 显示最新快讯的时间，而非前端拉取时间
+      const latestTs = newItems[0]?.timestamp;
+      if (latestTs) {
+        setLastUpdate(new Date(latestTs * 1000).toLocaleTimeString("zh-CN", { hour12: false }));
+      } else {
+        setLastUpdate(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
+      }
 
       if (prevIdsRef.current.size > 0) {
         const newSet = new Set<string>();
