@@ -170,20 +170,8 @@ export default function FlashPage() {
         fetchServerFlash(),
       ]);
 
-      // 金十客户端数据为主源
-      let allItems: FlashItem[] = [...jin10Items];
-
-      // 服务端数据补充（华尔街见闻+财联社，补金十没有的）
-      if (jin10Items.length > 0) {
-        const jin10Latest = jin10Items[0].timestamp;
-        const supplement = serverData.data.filter(
-          (item) => item.timestamp > jin10Latest && item.source !== "金十数据"
-        );
-        allItems = [...supplement, ...jin10Items];
-      } else {
-        // 金十客户端也挂了，用服务端全部数据
-        allItems = serverData.data;
-      }
+      // 金十客户端数据为主源，服务端数据全量合并（华尔街见闻无CDN缓存，实时性好）
+      let allItems: FlashItem[] = [...jin10Items, ...serverData.data];
 
       // 去重（content前30字符指纹）
       const seen = new Map<string, number>();
@@ -200,13 +188,7 @@ export default function FlashPage() {
       // 更新source显示
       const sources: string[] = [];
       if (jin10Items.length > 0) sources.push("金十数据");
-      const serverSources = serverData.data.filter(
-        (i) => i.source !== "金十数据" && i.timestamp > (jin10Items[0]?.timestamp || 0)
-      );
-      const wscnCount = serverSources.filter((i) => i.source === "华尔街见闻").length;
-      const clsCount = serverSources.filter((i) => i.source === "财联社").length;
-      if (wscnCount > 0) sources.push("华尔街见闻");
-      if (clsCount > 0) sources.push("财联社");
+      if (serverData.data.some((i) => i.source === "华尔街见闻")) sources.push("华尔街见闻");
       if (sources.length === 0 && serverData.source) sources.push(serverData.source);
 
       setSource(sources.join("+") || "金十数据");

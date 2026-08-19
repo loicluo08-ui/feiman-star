@@ -207,17 +207,10 @@ export async function GET() {
     fetchWallstreetCN(),
   ]);
 
-  // 金十为主源
-  let all: FlashItem[] = [...jin10Items];
-
-  // 华尔街见闻只补金十没有的（timestamp比金十最新的还新的）
-  if (jin10Items.length > 0) {
-    const jin10Latest = jin10Items[0].timestamp;
-    const wscnSupplement = wscnItems.filter((i) => i.timestamp > jin10Latest);
-    all = [...wscnSupplement, ...jin10Items];
-  } else {
-    all = [...wscnItems];
-  }
+  // 金十为主源，华尔街见闻全量合并（无CDN缓存，实时性好）
+  // 之前只在金十延迟时补华尔街见闻，但金十CDN缓存4小时会导致午间延迟17分钟
+  // 改为始终合并，靠去重处理重叠
+  let all: FlashItem[] = [...jin10Items, ...wscnItems];
 
   // 质量过滤 + 英文过滤（金十会推英文原文，同一条新闻通常有中文版）
   const filtered = all.filter((i) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text));
