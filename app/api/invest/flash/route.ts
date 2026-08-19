@@ -54,6 +54,14 @@ function isLowQuality(content: string): boolean {
   return false;
 }
 
+function isEnglishDominant(text: string): boolean {
+  if (!text || text.length < 10) return false;
+  const chinese = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  const letters = (text.match(/[a-zA-Z]/g) || []).length;
+  // 中文字符占比<15%且英文字母>50字符 → 英文主导
+  return chinese / text.length < 0.15 && letters > 50;
+}
+
 function makeFingerprint(content: string): string {
   return content.replace(/[\s\W]/g, "").slice(0, 20);
 }
@@ -211,8 +219,8 @@ export async function GET() {
     all = [...wscnItems];
   }
 
-  // 质量过滤
-  const filtered = all.filter((i) => !isLowQuality(i.content));
+  // 质量过滤 + 英文过滤（金十会推英文原文，同一条新闻通常有中文版）
+  const filtered = all.filter((i) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text));
 
   // 指纹去重
   const seen = new Set<string>();
