@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { getFutuStock } from "@/lib/futu";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -246,17 +247,22 @@ export async function GET(request: NextRequest) {
   const code = rawCode;
 
   try {
-    const [quote, metrics, profile, yahooResult] = await Promise.all([
+    // 富途为主源（实时），Yahoo/Finnhub并行做兜底
+    const [futu, quote, metrics, profile, yahooResult] = await Promise.all([
+      getFutuStock(code),
       getFinnhubQuote(code),
       getFinnhubMetrics(code),
       getFinnhubProfile(code),
       getYahooChart(code),
     ]);
 
-    const price = quote?.c ?? yahooResult?.meta?.regularMarketPrice ?? null;
-    const previousClose = quote?.pc ?? yahooResult?.meta?.chartPreviousClose ?? null;
-    const change = quote?.d ?? (price != null && previousClose != null ? price - previousClose : null);
-    const changePct = quote?.dp ?? (change != null && previousClose ? (change / previousClose) * 100 : null);
+    const price = futu?.price ?? quote?.c ?? yahooResult?.meta?.regularMarketPrice ?? null;
+    const previousClose =
+      futu?.previousClose ?? quote?.pc ?? yahooResult?.meta?.chartPreviousClose ?? null;
+    const change = futu != null && price != null && previousClose != null
+      ? price - previousClose
+      : quote?.d ?? (price != null && previousClose != null ? price - previousClose : null);
+    const changePct = change != null && previousClose ? (change / previousClose) * 100 : null;
 
     const timestamps = yahooResult?.timestamp ?? [];
     const closes = yahooResult?.indicators?.quote?.[0]?.close ?? [];
@@ -323,21 +329,34 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: {
         code,
-        name: profile?.name || yahooResult?.meta?.longName || yahooResult?.meta?.shortName || code,
+        name: futu?.name || profile?.name || yahooResult?.meta?.longName || yahooResult?.meta?.shortName || code,
         currency: "USD",
         exchange: profile?.exchange || yahooResult?.meta?.exchangeName || "",
         price: price != null ? Number(price.toFixed(2)) : null,
         previousClose: previousClose != null ? Number(previousClose.toFixed(2)) : null,
         change: change != null ? Number(change.toFixed(2)) : null,
         changePct: changePct != null ? Number(changePct.toFixed(2)) : null,
-        volume: yahooResult?.meta?.regularMarketVolume ?? null,
-        marketCap: profile?.marketCapitalization ? profile.marketCapitalization * 1_000_000 : null,
+        open: futu?.open ?? null,
+        high: futu?.high ?? null,
+        low: futu?.low ?? null,
+        volume: futu?.volume ?? yahooResult?.meta?.regularMarketVolume ?? null,
+        turnover: futu?.turnover ?? null,
+        marketCap: futu?.marketCap ?? (profile?.marketCapitalization ? profile.marketCapitalization * 1_000_000 : null),
         fiftyTwoWeekHigh: yahooResult?.meta?.fiftyTwoWeekHigh ?? null,
         fiftyTwoWeekLow: yahooResult?.meta?.fiftyTwoWeekLow ?? null,
         candles,
-        financials,
-        realtime: Boolean(quote),
+        financials: financials
+          ? {
+              ...financials,
+              pe: financials.pe ?? futu?.peTtm ?? null,
+              pb: financials.pb ?? futu?.pb ?? null,
+              eps: financials.eps ?? futu?.eps ?? null,
+            }
+          : financials,
+        realtime: Boolean(futu || quote),
         isETF,
+        source: futu ? "futu" : quote ? "finnhub" : "yahoo",
+        dataTime: futu?.dataTime ?? null,
       },
     });
   } catch (error) {

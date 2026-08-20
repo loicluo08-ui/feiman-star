@@ -1016,7 +1016,7 @@ export default function PickPage() {
       ) : null}
 
       <p className="mt-10 text-xs text-[var(--text-muted)]">
-        行情数据来自 Yahoo Finance，可能存在 15 分钟延迟。本工具仅供研究参考，不构成投资建议。
+        行情数据来自富途（实时）。本工具仅供研究参考，不构成投资建议。
       </p>
     </div>
   );
