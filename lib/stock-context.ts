@@ -193,6 +193,11 @@ export function buildStockContext(
   if (stockData.length === 0) return "";
   const lines = stockData.map((s) => {
     const parts = [`${s.code} (${s.name})`];
+    if (s.price == null) {
+      // D5：单只获取失败明确标注，模型才知道这只走降级
+      parts.push(`[获取失败，无有效数据。执行D5：明说该股数据缺失，可用知识库定性分析，禁止编造数字]`);
+      return `- ${parts.join(" | ")}`;
+    }
     if (s.freshness) parts.push(`[${s.freshness}]`);
     if (s.anomaly) parts.push(`[数据异常，经备用源校正]`);
     if (s.price != null) parts.push(`现价:$${s.price}`);

@@ -174,7 +174,10 @@ export async function POST(request: NextRequest) {
     try {
       const stockData = await fetchStockData(stockCodes);
       stockContext = buildStockContext(stockData);
-    } catch {}
+    } catch {
+      // D5触发点：整体获取失败也要注入标注，模型才知道走降级路径
+      stockContext = `\n用户提到的股票[${stockCodes.join(", ")}]实时数据获取失败（网络层）。执行D5：明确告知数据获取失败，用知识库做定性框架分析，不编造数字。`;
+    }
   }
 
   const finalSystemPrompt = stockContext
