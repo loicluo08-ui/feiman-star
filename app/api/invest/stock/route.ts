@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getFutuStock } from "@/lib/futu";
+import { getQtStock } from "@/lib/qt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -247,8 +248,9 @@ export async function GET(request: NextRequest) {
   const code = rawCode;
 
   try {
-    // 富途为主源（实时），Yahoo/Finnhub并行做兜底
-    const [futu, quote, metrics, profile, yahooResult] = await Promise.all([
+    // 腾讯为主源（实时免费），富途/Finnhub/Yahoo兜底
+    const [qt, futu, quote, metrics, profile, yahooResult] = await Promise.all([
+      getQtStock(code),
       getFutuStock(code),
       getFinnhubQuote(code),
       getFinnhubMetrics(code),
@@ -256,13 +258,11 @@ export async function GET(request: NextRequest) {
       getYahooChart(code),
     ]);
 
-    const price = futu?.price ?? quote?.c ?? yahooResult?.meta?.regularMarketPrice ?? null;
+    const price = qt?.price ?? futu?.price ?? quote?.c ?? yahooResult?.meta?.regularMarketPrice ?? null;
     const previousClose =
-      futu?.previousClose ?? quote?.pc ?? yahooResult?.meta?.chartPreviousClose ?? null;
-    const change = futu != null && price != null && previousClose != null
-      ? price - previousClose
-      : quote?.d ?? (price != null && previousClose != null ? price - previousClose : null);
-    const changePct = change != null && previousClose ? (change / previousClose) * 100 : null;
+      qt?.previousClose ?? futu?.previousClose ?? quote?.pc ?? yahooResult?.meta?.chartPreviousClose ?? null;
+    const change = qt?.change ?? quote?.d ?? (price != null && previousClose != null ? price - previousClose : null);
+    const changePct = qt?.changePct ?? quote?.dp ?? (change != null && previousClose ? (change / previousClose) * 100 : null);
 
     const timestamps = yahooResult?.timestamp ?? [];
     const closes = yahooResult?.indicators?.quote?.[0]?.close ?? [];
@@ -329,34 +329,34 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: {
         code,
-        name: futu?.name || profile?.name || yahooResult?.meta?.longName || yahooResult?.meta?.shortName || code,
+        name: qt?.name || futu?.name || profile?.name || yahooResult?.meta?.longName || yahooResult?.meta?.shortName || code,
         currency: "USD",
         exchange: profile?.exchange || yahooResult?.meta?.exchangeName || "",
         price: price != null ? Number(price.toFixed(2)) : null,
         previousClose: previousClose != null ? Number(previousClose.toFixed(2)) : null,
         change: change != null ? Number(change.toFixed(2)) : null,
         changePct: changePct != null ? Number(changePct.toFixed(2)) : null,
-        open: futu?.open ?? null,
-        high: futu?.high ?? null,
-        low: futu?.low ?? null,
-        volume: futu?.volume ?? yahooResult?.meta?.regularMarketVolume ?? null,
-        turnover: futu?.turnover ?? null,
-        marketCap: futu?.marketCap ?? (profile?.marketCapitalization ? profile.marketCapitalization * 1_000_000 : null),
+        open: qt?.open ?? futu?.open ?? null,
+        high: qt?.high ?? futu?.high ?? null,
+        low: qt?.low ?? futu?.low ?? null,
+        volume: qt?.volume ?? futu?.volume ?? yahooResult?.meta?.regularMarketVolume ?? null,
+        turnover: qt?.turnover ?? futu?.turnover ?? null,
+        marketCap: qt?.marketCap ?? futu?.marketCap ?? (profile?.marketCapitalization ? profile.marketCapitalization * 1_000_000 : null),
         fiftyTwoWeekHigh: yahooResult?.meta?.fiftyTwoWeekHigh ?? null,
         fiftyTwoWeekLow: yahooResult?.meta?.fiftyTwoWeekLow ?? null,
         candles,
         financials: financials
           ? {
               ...financials,
-              pe: financials.pe ?? futu?.peTtm ?? null,
+              pe: financials.pe ?? qt?.pe ?? futu?.peTtm ?? null,
               pb: financials.pb ?? futu?.pb ?? null,
               eps: financials.eps ?? futu?.eps ?? null,
             }
           : financials,
-        realtime: Boolean(futu || quote),
+        realtime: Boolean(qt || futu || quote),
         isETF,
-        source: futu ? "futu" : quote ? "finnhub" : "yahoo",
-        dataTime: futu?.dataTime ?? null,
+        source: qt ? "tencent" : futu ? "futu" : quote ? "finnhub" : "yahoo",
+        dataTime: qt?.time ?? futu?.dataTime ?? null,
       },
     });
   } catch (error) {
