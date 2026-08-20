@@ -51,6 +51,7 @@ export function extractStockCodes(text: string): string[] {
 export async function fetchStockData(codes: string[]): Promise<Array<{
   code: string; name: string; price: number | null; pe: number | null;
   changePct: number | null; marketCap: number | null;
+  previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null;
 }>> {
   const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
   const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
@@ -61,8 +62,41 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
     let name = code;
     let marketCap: number | null = null;
     let pe: number | null = null;
+    let previousClose: number | null = null;
+    let open: number | null = null;
+    let high: number | null = null;
+    let low: number | null = null;
+    let volume: number | null = null;
 
-    if (FINNHUB_KEY) {
+    // 腾讯源优先（实时+全套字段+免认证）
+    try {
+      const qtRes = await fetch(`https://qt.gtimg.cn/q=us${encodeURIComponent(code)}`, {
+        headers: { "User-Agent": UA, Referer: "https://gu.qq.com/" },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (qtRes.ok) {
+        const raw = new TextDecoder("gbk").decode(await qtRes.arrayBuffer());
+        const m = raw.match(/"[^"]*"/);
+        if (m) {
+          const f = m[0].slice(1, -1).split("~");
+          if (f.length > 44 && parseFloat(f[3]) > 0) {
+            name = f[1] || name;
+            price = parseFloat(f[3]) || null;
+            previousClose = parseFloat(f[4]) || null;
+            open = parseFloat(f[5]) || null;
+            volume = parseFloat(f[6]) || null;
+            changePct = f[32] != null && f[32] !== "" ? parseFloat(f[32]) : null;
+            high = f[33] != null && f[33] !== "" ? parseFloat(f[33]) : null;
+            low = f[34] != null && f[34] !== "" ? parseFloat(f[34]) : null;
+            pe = f[39] != null && f[39] !== "" && parseFloat(f[39]) > 0 ? parseFloat(f[39]) : null;
+            marketCap = f[44] != null && f[44] !== "" && parseFloat(f[44]) > 0 ? parseFloat(f[44]) : null;
+          }
+        }
+      }
+    } catch {}
+
+    // Finnhub兜底（腾讯失败时）
+    if (price == null && FINNHUB_KEY) {
       try {
         const [quoteRes, profileRes] = await Promise.allSettled([
           fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(code)}&token=${FINNHUB_KEY}`, { signal: AbortSignal.timeout(4000) }),
@@ -71,58 +105,67 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
         if (quoteRes.status === "fulfilled" && quoteRes.value.ok) {
           const q = await quoteRes.value.json();
           price = q.c ?? null;
-          changePct = q.dp ?? null;
+          previousClose = q.pc ?? null;
+          if (changePct == null) changePct = q.dp ?? null;
         }
         if (profileRes.status === "fulfilled" && profileRes.value.ok) {
           const p = await profileRes.value.json();
-          name = p.name || code;
-          marketCap = p.marketCapitalization ? p.marketCapitalization * 1_000_000 : null;
+          if (name === code) name = p.name || code;
+          if (marketCap == null) marketCap = p.marketCapitalization ? p.marketCapitalization * 1_000_000 : null;
         }
       } catch {}
     }
 
-    // Yahoo获取PE和fallback价格
-    try {
-      const yahooRes = await fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?interval=1d&range=1d`,
-        { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(4000) },
-      );
-      if (yahooRes.ok) {
-        const yd = await yahooRes.json();
-        const meta = yd?.chart?.result?.[0]?.meta;
-        if (meta) {
-          if (!price) price = meta.regularMarketPrice ?? null;
-          if (!changePct) changePct = meta.regularMarketChangePercent ?? null;
-          if (name === code) name = meta.longName || meta.shortName || name;
-          pe = meta.trailingPE ?? null;
-          if (!marketCap) marketCap = meta.marketCap ?? null;
+    // Yahoo最后兜底
+    if (price == null) {
+      try {
+        const yahooRes = await fetch(
+          `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?interval=1d&range=1d`,
+          { headers: { "User-Agent": UA, Referer: "https://finance.yahoo.com/" }, signal: AbortSignal.timeout(4000) },
+        );
+        if (yahooRes.ok) {
+          const yd = await yahooRes.json();
+          const meta = yd?.chart?.result?.[0]?.meta;
+          if (meta) {
+            price = meta.regularMarketPrice ?? null;
+            previousClose = meta.chartPreviousClose ?? previousClose;
+            if (changePct == null) changePct = meta.regularMarketChangePercent ?? null;
+            if (name === code) name = meta.longName || meta.shortName || name;
+            if (pe == null) pe = meta.trailingPE ?? null;
+            if (marketCap == null) marketCap = meta.marketCap ?? null;
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
-    return { code, name, price, pe, changePct, marketCap };
+    return { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume };
   }));
 }
 
 export function buildStockContext(
-  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null }>,
+  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null; previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null }>,
 ): string {
   if (stockData.length === 0) return "";
   const lines = stockData.map((s) => {
     const parts = [`${s.code} (${s.name})`];
-    if (s.price != null) parts.push(`价格:$${s.price}`);
+    if (s.price != null) parts.push(`现价:$${s.price}`);
+    if (s.previousClose != null) parts.push(`昨收:$${s.previousClose}`);
     if (s.changePct != null) parts.push(`涨跌:${s.changePct}%`);
+    if (s.open != null) parts.push(`开:$${s.open}`);
+    if (s.high != null) parts.push(`高:$${s.high}`);
+    if (s.low != null) parts.push(`低:$${s.low}`);
+    if (s.volume != null) parts.push(`量:${(s.volume / 1e6).toFixed(2)}亿股`);
     if (s.pe != null) parts.push(`PE:${s.pe}`);
     if (s.marketCap != null) {
       const capB = s.marketCap / 1e9;
-      if (capB > 1) parts.push(`市值:$${capB.toFixed(1)}B`);
+      if (capB > 1) parts.push(`市值:$${capB.toFixed(0)}B`);
     }
     return `- ${parts.join(" | ")}`;
   });
   return [
     "",
-    "用户提到的股票实时数据（来自Yahoo Finance，可能延迟15-20分钟）：",
+    `用户提到的股票实时数据（腾讯行情，${new Date().toLocaleString("zh-CN", { timeZone: "America/New_York", hour12: false })} 美东时间）：`,
     ...lines,
-    "请在分析时引用这些数据，数据缺失时标注「数据缺失」。",
+    "涨跌幅计算基准为昨收。请在分析时引用这些数据并展示算式（S1）。数据未提供的字段写「数据缺失」，禁止编造。",
   ].join("\n");
 }
