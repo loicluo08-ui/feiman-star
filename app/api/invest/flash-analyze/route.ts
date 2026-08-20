@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const systemPrompt = `你是费曼星投资分析助手。用户会给你一条财经快讯，你需要快速分析这条消息对QQQ（纳斯达克100 ETF）的影响。
+  const systemPrompt = `你是星启投资分析助手。用户会给你一条财经快讯，你需要快速分析这条消息对QQQ（纳斯达克100 ETF）的影响。
 
 分析格式：
 1. 【一句话总结】这条消息的核心内容

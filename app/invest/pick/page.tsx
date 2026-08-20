@@ -525,7 +525,7 @@ export default function PickPage() {
         String(now.getDate()).padStart(2, "0"),
       ].join("-");
       const link = document.createElement("a");
-      link.download = `费曼星分析_${stockData.code}_${date}.png`;
+      link.download = `星启分析_${stockData.code}_${date}.png`;
       link.href = dataUrl;
       document.body.appendChild(link);
       link.click();
@@ -967,7 +967,7 @@ export default function PickPage() {
                 </div>
                 <div ref={reportRef} className="rounded-xl bg-[var(--surface-subtle)] p-5">
                   <div className="mb-4 border-b border-[var(--border)] pb-3">
-                    <p className="text-xs font-medium text-[var(--text-muted)]">费曼星 · AI选股分析</p>
+                    <p className="text-xs font-medium text-[var(--text-muted)]">星启 · AI选股分析</p>
                     <div className="mt-1 flex items-baseline justify-between gap-3">
                       <p className="text-base font-semibold text-[var(--text)]">{stockData.name}</p>
                       <p className="text-xs font-medium text-[var(--text-secondary)]">{stockData.code}</p>
@@ -1006,7 +1006,7 @@ export default function PickPage() {
                   ) : null}
                   <div className="whitespace-pre-wrap text-sm leading-7 text-[var(--text)]">{analysis}</div>
                   <p className="mt-5 border-t border-[var(--border)] pt-3 text-[11px] text-[var(--text-muted)]">
-                    由费曼星生成，仅供研究参考，不构成投资建议。
+                    由星启生成，仅供研究参考，不构成投资建议。
                   </p>
                 </div>
               </div>

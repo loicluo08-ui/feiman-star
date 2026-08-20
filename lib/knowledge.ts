@@ -5,7 +5,7 @@ import { join } from "path";
 let cachedKnowledge: string | null = null;
 
 /**
- * 加载费曼星投资知识库（静态文件，构建时读取）
+ * 加载星启投资知识库（静态文件，构建时读取）
  */
 export function loadKnowledgeBase(): string {
   if (cachedKnowledge) return cachedKnowledge;

@@ -444,7 +444,7 @@ export default function ReviewPage() {
   function exportSummaryMarkdown() {
     if (!summary || !summaryPeriod) return;
     const date = new Date().toISOString().slice(0, 10);
-    const title = summaryPeriod === "week" ? "费曼星投资周报" : "费曼星投资月报";
+    const title = summaryPeriod === "week" ? "星启投资周报" : "星启投资月报";
     const blob = new Blob([`# ${title}\n\n${summary}\n`], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
