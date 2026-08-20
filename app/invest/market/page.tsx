@@ -77,6 +77,50 @@ export default function MarketPage() {
     setHydrated(true);
   }, []);
 
+  // 前端直连腾讯行情（qt.gtimg.cn允许跨域）：实时刷新自选股报价，不依赖服务端出口
+  const fetchQtDirect = useCallback(async (symbols: string[]) => {
+    if (symbols.length === 0) return;
+    try {
+      const q = symbols.slice(0, 20).map((s) => `us${s}`).join(",");
+      const res = await fetch(`https://qt.gtimg.cn/q=${q}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const text = new TextDecoder("gbk").decode(await res.arrayBuffer());
+      setQuotes((prev) => {
+        const next = { ...prev };
+        for (const line of text.split(";")) {
+          const m = line.trim().match(/v_us(\w+)="([^"]*)"/);
+          if (!m) continue;
+          const f = m[2].split("~");
+          if (f.length < 35) continue;
+          const price = parseFloat(f[3]);
+          const change = parseFloat(f[31]);
+          const changePct = parseFloat(f[32]);
+          if (!Number.isFinite(price) || price <= 0) continue;
+          next[m[1]] = {
+            symbol: m[1],
+            price,
+            change: Number.isFinite(change) ? change : null,
+            changePct: Number.isFinite(changePct) ? changePct : null,
+          };
+        }
+        return next;
+      });
+      setLastUpdate(new Date());
+    } catch {
+      // 直连失败静默，服务端数据兜底
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const symbols = watchlist.map((item) => item.symbol);
+    fetchQtDirect(symbols);
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") fetchQtDirect(symbols);
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [hydrated, watchlist, fetchQtDirect]);
+
   useEffect(() => {
     if (!hydrated) return;
     try {
@@ -386,7 +430,7 @@ export default function MarketPage() {
       ) : null}
 
       <p className="mt-6 text-xs text-[var(--text-muted)]">
-        数据来自Finnhub实时API，60秒自动刷新。仅供研究参考，不构成投资建议。
+        自选股报价由浏览器直连腾讯行情实时刷新（30秒），指数与板块数据来自服务端聚合。仅供研究参考，不构成投资建议。
         {lastUpdate ? <span className="ml-2">最后更新：{lastUpdate.toLocaleTimeString("zh-CN")}</span> : null}
       </p>
     </div>
