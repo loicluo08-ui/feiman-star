@@ -11,6 +11,7 @@ const STOCK_ALIASES: Record<string, string> = {
   "礼来": "LLY", "联合健康": "UNH", "摩根大通": "JPM",
   "迪士尼": "DIS", "耐克": "NKE", "波音": "BA", "高盛": "GS",
   "英特尔": "INTC", "intel": "INTC", "甲骨文": "ORCL", "Adobe": "ADBE", "思科": "CSCO",
+  "伯克希尔": "BRK.A", "巴菲特": "BRK.A", "美团": "MPNGY", "网易": "NTES", "携程": "TCOM",
 };
 
 const STOP_WORDS = new Set(["PE","PB","ROE","ROA","EPS","CEO","CFO","CTO","IPO","ETF","GDP","CPI","FED","API","JSON","HTTP","URL","USD","USA","AI","ML","PR","IR","IT","AR","VR","PC","GB","TB","CPU","GPU","RAM","SSD","HDD","USB","HDMI","WTO","WHO","NYC","LAX","SFO","DC","LA","SF"]);
