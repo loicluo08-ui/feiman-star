@@ -7,7 +7,7 @@ export const metadata: Metadata = {
     default: "费曼星 · 投资分析工具",
     template: "%s · 费曼星",
   },
-  description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情数据来自富途（实时），部分指标来自Yahoo Finance，仅供研究参考，不构成投资建议。",
+  description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情数据来自Yahoo Finance（约15分钟延迟），仅供研究参考，不构成投资建议。",
   viewport: {
     width: "device-width",
     initialScale: 1,
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "费曼星 · 投资分析工具",
-    description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情数据来自富途（实时），部分指标来自Yahoo Finance，仅供研究参考，不构成投资建议。",
+    description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情数据来自Yahoo Finance（约15分钟延迟），仅供研究参考，不构成投资建议。",
     type: "website",
     locale: "zh_CN",
     siteName: "费曼星",
@@ -50,7 +50,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <AppShell>{children}</AppShell>
         <footer className="border-t border-[var(--border)] px-6 py-4 text-center">
           <p className="text-xs text-[var(--text-muted)]">
-            费曼星 · 投资分析工具 · 行情数据来自富途 · 仅供研究参考，不构成投资建议
+            费曼星 · 投资分析工具 · 行情数据来自Yahoo Finance · 仅供研究参考，不构成投资建议
           </p>
         </footer>
       </body>

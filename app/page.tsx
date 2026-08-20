@@ -59,7 +59,7 @@ export default function HomePage() {
           AI驱动的美股分析工具
         </h1>
         <p className="mt-4 max-w-2xl text-[15px] leading-7 text-[var(--text-secondary)]">
-          选股分析+交易复盘。行情数据来自富途（实时）。
+          选股分析+交易复盘。行情数据来自Yahoo Finance（约15分钟延迟）。
         </p>
       </section>
 
@@ -89,7 +89,7 @@ export default function HomePage() {
       {/* Disclaimer */}
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-5">
         <p className="text-xs leading-6 text-[var(--text-muted)]">
-          行情数据来自富途（实时），K线来自Yahoo Finance。所有数据和分析由AI生成，仅供研究参考，不构成任何投资建议。
+          行情数据来自Yahoo Finance（约15分钟延迟）。所有数据和分析由AI生成，仅供研究参考，不构成任何投资建议。
         </p>
       </section>
     </div>
