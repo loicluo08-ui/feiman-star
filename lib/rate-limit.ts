@@ -1,12 +1,16 @@
-/** RATE_LIMITS 配置 */
+/** RATE_LIMITS 配置
+ * 8/21策略：大幅放开（自用阶段），只保留防滥用的底线——防的是脚本刷爆DeepSeek余额和外部API配额，
+ * 不限制正常人类使用（连续快速使用也不会触线）。
+ * DeepSeek侧还有自己的并发限制做第二道保护。
+ */
 
 export const RATE_LIMITS = {
-  chat: { maxRequests: 10, windowMs: 60_000 },   // 10次/分
-  pick: { maxRequests: 3, windowMs: 60_000 },     // 3次/分
-  review: { maxRequests: 5, windowMs: 60_000 },   // 5次/分
-  flash: { maxRequests: 30, windowMs: 60_000 },   // 30次/分
-  stock: { maxRequests: 20, windowMs: 60_000 },   // 20次/分
-  search: { maxRequests: 20, windowMs: 60_000 },  // 20次/分
+  chat: { maxRequests: 60, windowMs: 60_000 },    // 60次/分（防脚本刷DeepSeek余额）
+  pick: { maxRequests: 30, windowMs: 60_000 },    // 30次/分（每次调DeepSeek，防刷）
+  review: { maxRequests: 30, windowMs: 60_000 },  // 30次/分（同上）
+  flash: { maxRequests: 120, windowMs: 60_000 },  // 120次/分（免费源，只防恶意脚本）
+  stock: { maxRequests: 120, windowMs: 60_000 },  // 120次/分（腾讯免费源，宽松）
+  search: { maxRequests: 120, windowMs: 60_000 }, // 120次/分
 } as const;
 
 /** KV限流（如果配置了KV环境变量则启用全局限流，否则降级为内存限流）
