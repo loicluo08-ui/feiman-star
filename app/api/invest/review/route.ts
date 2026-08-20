@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     "",
     questions ? `特别想分析的问题：${questions}` : "",
     "",
-    "星启投资知识库参考（模块5仓位策略+模块6行为偏差）：",
+    "费曼星投资知识库参考（模块5仓位策略+模块6行为偏差）：",
     loadKnowledgeBase().slice(0, 2000),
     "",
     "<knowledge_base>",

@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   ].filter(Boolean).join("\n")).join("\n\n---\n\n");
 
   const systemPrompt = [
-    "你是星启投资复盘分析师。以下是用户本周/本月的全部交易记录。",
+    "你是费曼星投资复盘分析师。以下是用户本周/本月的全部交易记录。",
     `请生成${periodName}，必须使用Markdown并包含：`,
     "1. 整体表现（胜率/盈亏比/总盈亏）",
     "2. 最佳交易和最差交易",

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "星启 · 投资分析工具",
+  title: "费曼星 · 投资分析工具",
 };
 
 const tools = [
@@ -54,7 +54,7 @@ export default function HomePage() {
     <div className="mx-auto max-w-5xl px-5 py-12 sm:px-8 sm:py-16">
       {/* Hero */}
       <section className="mb-14">
-        <p className="text-sm font-medium text-[var(--text-muted)]">星启 · 投资分析</p>
+        <p className="text-sm font-medium text-[var(--text-muted)]">费曼星 · 投资分析</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
           AI驱动的美股分析工具
         </h1>

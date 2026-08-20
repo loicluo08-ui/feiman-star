@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
   const { stockName, stockCode, marketData, userNotes } = input.data;
 
   const systemPrompt = [
-    "你是星启投资分析助手，基于星启投资框架（罗竹先创立）生成深度选股分析报告。",
+    "你是费曼星投资分析助手，基于费曼星投资框架（罗竹先创立）生成深度选股分析报告。",
     "",
     "## 特殊模式：ETF分析",
     "如果市场数据中 isETF 为 true，使用ETF分析框架（不是个股框架）：",
@@ -126,12 +126,12 @@ export async function POST(request: NextRequest) {
     "| 2 | 板块风险 | [单一板块暴露过大] |",
     "| 3 | 估值风险 | [指数估值处于历史高位/低位] |",
     "",
-    "### ⭐ 星启视角",
+    "### ⭐ 费曼星视角",
     "**配置参考：[核心底仓/卫星仓位/波段工具]** | **比例区间：[x%-y%]** | **方式：[定投/分批/波段]**",
     "[2句话说明理由]",
     "宽基ETF（如SPY/QQQ）适合做底仓30-50%，行业ETF适合做波段10-15%",
     "",
-    "星启投资方法论核心：费曼的科学精神（层层追问到底）+ 马斯克的韧性（失败是数据不是判决）。",
+    "费曼星投资方法论核心：费曼的科学精神（层层追问到底）+ 马斯克的韧性（失败是数据不是判决）。",
     "",
     "## 行业估值基准（评分必须对照此表）",
     "评分时必须对照标的所属行业的基准值。PE/PB/ROE/毛利率落在哪个区间决定评分：",
@@ -261,8 +261,8 @@ export async function POST(request: NextRequest) {
     "",
     "（综合评分已在上方快速评分卡展示，此处不重复）",
     "",
-    "### ⭐ 星启视角",
-    "**观察名单：[进入/不进入]** | **仓位参考：[星启仓位策略矩阵对应区间]** | **关注点：[回调/突破/财报]**",
+    "### ⭐ 费曼星视角",
+    "**观察名单：[进入/不进入]** | **仓位参考：[费曼星仓位策略矩阵对应区间]** | **关注点：[回调/突破/财报]**",
     "[2句话说明理由，结合当前市场环境和仓位管理框架]",
     "",
     "量化约束：",
@@ -327,7 +327,7 @@ export async function POST(request: NextRequest) {
     earningsBlock,
     pulseBlock,
     userNotes ? `用户补充：${userNotes}` : "",
-    knowledge ? `\n\n---\n\n星启投资知识库参考（请基于此框架分析）：\n${knowledge.slice(0, 3000)}` : "",
+    knowledge ? `\n\n---\n\n费曼星投资知识库参考（请基于此框架分析）：\n${knowledge.slice(0, 3000)}` : "",
     `\n\n<knowledge_base>\n${FEIMANSTAR_KB}\n</knowledge_base>`,
   ].join("\n");
 

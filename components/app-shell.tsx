@@ -33,7 +33,7 @@ function SidebarContent({
       <div className="mb-8 flex items-center justify-between gap-3 px-2">
         <Link href="/" onClick={onNavigate} className="flex items-center gap-2.5">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--primary)] text-sm font-bold text-[var(--primary-foreground)]">费</span>
-          <span className="text-[15px] font-semibold tracking-tight">星启</span>
+          <span className="text-[15px] font-semibold tracking-tight">费曼星</span>
         </Link>
         <div className="flex items-center gap-1">
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
@@ -191,7 +191,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </button>
         <Link href="/" className="flex items-center gap-2">
           <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--primary)] text-xs font-bold text-[var(--primary-foreground)]">费</span>
-          <span className="text-sm font-semibold">星启</span>
+          <span className="text-sm font-semibold">费曼星</span>
         </Link>
         <div className="ml-auto">
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
