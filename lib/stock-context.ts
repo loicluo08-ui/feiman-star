@@ -5,12 +5,12 @@
 const STOCK_ALIASES: Record<string, string> = {
   "苹果": "AAPL", "英伟达": "NVDA", "特斯拉": "TSLA", "亚马逊": "AMZN",
   "微软": "MSFT", "谷歌": "GOOGL", "meta": "META", "脸书": "META",
-  "网飞": "NFLX", "奈飞": "NFLX", "超微": "AMD", "高通": "QCOM",
+  "网飞": "NFLX", "奈飞": "NFLX", "超微": "SMCI", "超威": "AMD", "高通": "QCOM",
   "台积电": "TSM", "阿里": "BABA", "拼多多": "PDD", "京东": "JD",
   "百度": "BIDU", "理想": "LI", "蔚来": "NIO", "小鹏": "XPEV",
   "礼来": "LLY", "联合健康": "UNH", "摩根大通": "JPM",
   "迪士尼": "DIS", "耐克": "NKE", "波音": "BA", "高盛": "GS",
-  "英特尔": "INTC", "甲骨文": "ORCL", "Adobe": "ADBE", "思科": "CSCO",
+  "英特尔": "INTC", "intel": "INTC", "甲骨文": "ORCL", "Adobe": "ADBE", "思科": "CSCO",
 };
 
 const STOP_WORDS = new Set(["PE","PB","ROE","ROA","EPS","CEO","CFO","CTO","IPO","ETF","GDP","CPI","FED","API","JSON","HTTP","URL","USD","USA","AI","ML","PR","IR","IT","AR","VR","PC","GB","TB","CPU","GPU","RAM","SSD","HDD","USB","HDMI","WTO","WHO","NYC","LAX","SFO","DC","LA","SF"]);
@@ -45,7 +45,17 @@ export function extractStockCodes(text: string): string[] {
     });
   }
 
-  return Array.from(codes).slice(0, 3);
+  // 小写热门代码（nvda/tsla等常见输入习惯，白名单防误伤普通英文单词）
+  const HOT_CODES = new Set(["AAPL","NVDA","TSLA","MSFT","GOOG","GOOGL","AMZN","META","AMD","INTC","NFLX","AVGO","TSM","BABA","PDD","JD","BIDU","NIO","XPEV","LI","COIN","MSTR","PLTR","SMCI","MU","QCOM","TXN","ARM","SOFI","RIVN","LCID","F","GM","JPM","GS","BAC","V","MA","DIS","NKE","BA","LMT","XOM","CVX","JNJ","LLY","UNH","WMT","COST","UBER","ABNB","SQ","PYPL","SHOP","SNOW","CRWD","NET","DKNG","RBLX","TTD","ROKU","ZM","PENN","FUTU","BILI","TME","IQ","VIPS","ZK","DASH","SNAP","PINS","SPOT","TSLA"]);
+  const lowerMatches = normalizedText.match(/(?<![a-zA-Z])([a-z]{2,5})(?![a-zA-Z])/g);
+  if (lowerMatches) {
+    lowerMatches.forEach((w) => {
+      const up = w.toUpperCase();
+      if (HOT_CODES.has(up)) codes.add(up);
+    });
+  }
+
+  return Array.from(codes).slice(0, 4);
 }
 
 export async function fetchStockData(codes: string[]): Promise<Array<{
@@ -86,7 +96,8 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
             const pPrice = parseFloat(f[3]);
             const pPrev = parseFloat(f[4]) || 0;
             const pPct = f[32] !== "" ? parseFloat(f[32]) : 0;
-            const pPE = f[39] !== "" ? parseFloat(f[39]) : 0;
+            const pPEraw = f[39] == null ? "" : f[39];
+            const pPE = pPEraw !== "" && !isNaN(parseFloat(pPEraw)) ? parseFloat(pPEraw) : 0;
             // D2合理性闸门：零负价/异常涨跌/极端PE → 弃用走备用源
             const sane = pPrice > 0 && pPrev > 0 && Math.abs(pPct) <= 20 && (pPE === 0 || (pPE > 0 && pPE < 1000));
             if (sane) {
@@ -105,7 +116,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
               const tm = (f[30] || "").match(/(\d{2}):(\d{2}):(\d{2})/);
               if (tm) {
                 try {
-                  const nyNow = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+                  const nyNow = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
                   const [nh, nm] = nyNow.split(":").map(Number);
                   const qMin = parseInt(tm[1]) * 60 + parseInt(tm[2]);
                   const nMin = nh * 60 + nm;
