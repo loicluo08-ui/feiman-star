@@ -124,11 +124,14 @@ export async function GET(request: NextRequest) {
     if (requestedSymbols.length > 0) {
       const quotes = await Promise.all(requestedSymbols.map(async (symbol) => {
         const quote = await fetchQuote(symbol);
+        const multiPeriod = await fetchMultiPeriodChange(symbol, quote?.price ?? null);
         return {
           symbol,
           price: quote?.price ?? null,
           change: quote?.change ?? null,
           changePct: quote?.changePct ?? null,
+          changePct5d: multiPeriod.changePct5d,
+          changePct20d: multiPeriod.changePct20d,
         };
       }));
 
