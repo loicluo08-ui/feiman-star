@@ -167,7 +167,10 @@ export async function POST(request: NextRequest) {
   const lastUserText = lastUserMsg?.content.type === "text"
     ? lastUserMsg.content.text
     : (lastUserMsg?.content.text ?? "");
-  const stockCodes = extractStockCodes(lastUserText);
+  // 合并最近2条用户文本提取代码（覆盖"它现在多少钱"代词回指场景）
+  const userTexts = messages.filter((m) => m.role === "user" && m.content.type === "text").map((m) => m.content.text);
+  const combinedText = userTexts.slice(-2).join(" ");
+  const stockCodes = extractStockCodes(combinedText);
 
   let stockContext = "";
   if (stockCodes.length > 0 && !hasImage) {
