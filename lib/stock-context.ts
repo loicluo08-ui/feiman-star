@@ -101,14 +101,17 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
               low = f[34] !== "" && f[34] !== undefined ? parseFloat(f[34]) : null;
               pe = pPE > 0 ? pPE : null;
               marketCap = f[44] !== "" && parseFloat(f[44]) > 0 ? parseFloat(f[44]) : null;
-              // D1新鲜度：f[30]=行情时间(美东MM/DD HH:MM)，算数据年龄
+              // D1新鲜度：f[30]=行情时间(美东MM/DD HH:MM)，算数据年龄（用Intl拿纽约当前时刻，自动处理夏冬令时）
               const tm = (f[30] || "").match(/(\d{2}):(\d{2}):(\d{2})/);
               if (tm) {
-                const nowET = new Date(Date.now() + 4 * 3600 * 1000); // 美东≈UTC-4（夏令时）
-                const qMin = parseInt(tm[1]) * 60 + parseInt(tm[2]);
-                const nMin = nowET.getUTCHours() * 60 + nowET.getUTCMinutes();
-                const ageMin = (nMin - qMin + 1440) % 1440;
-                qtTimestamp = ageMin < 5 ? "实时" : ageMin < 30 ? `延迟${ageMin}分钟` : `数据时间${tm[1]}:${tm[2]}美东(可能为收盘)`;
+                try {
+                  const nyNow = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+                  const [nh, nm] = nyNow.split(":").map(Number);
+                  const qMin = parseInt(tm[1]) * 60 + parseInt(tm[2]);
+                  const nMin = nh * 60 + nm;
+                  const ageMin = (nMin - qMin + 1440) % 1440;
+                  qtTimestamp = ageMin < 5 ? "实时" : ageMin < 30 ? `延迟${ageMin}分钟` : `数据时间${tm[1]}:${tm[2]}美东(非实时,可能为收盘)`;
+                } catch { qtTimestamp = `数据时间${tm[1]}:${tm[2]}美东`; }
               }
             }
           }
