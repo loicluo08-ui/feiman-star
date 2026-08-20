@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getQtStocks } from "@/lib/qt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,7 +91,22 @@ export async function GET(request: NextRequest) {
       { symbol: "XLC", name: "通信服务" },
     ];
 
+    // 动态symbols（若有）
+    const requestedSymbols = (new URL(request.url).searchParams.get("symbols") ?? "")
+      .split(",")
+      .map((symbol) => symbol.trim().toUpperCase())
+      .filter((symbol, index, symbols) => /^[A-Z]{1,6}$/.test(symbol) && symbols.indexOf(symbol) === index)
+      .slice(0, 20);
+
+    // 腾讯批量源：一次请求拿全部实时行情（免认证），失败则全走Finnhub
+    const qtAllSymbols = [...requestedSymbols, ...indices.map((i) => i.symbol), ...sectors.map((s) => s.symbol)];
+    const qtMap = await getQtStocks(qtAllSymbols);
+
     const fetchQuote = async (symbol: string) => {
+      const q = qtMap.get(symbol);
+      if (q && q.price != null) {
+        return { price: q.price, change: q.change, changePct: q.changePct };
+      }
       const res = await fetch(
         `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`,
         { signal: AbortSignal.timeout(6000) },
@@ -135,12 +151,6 @@ export async function GET(request: NextRequest) {
         };
       }
     };
-
-    const requestedSymbols = (new URL(request.url).searchParams.get("symbols") ?? "")
-      .split(",")
-      .map((symbol) => symbol.trim().toUpperCase())
-      .filter((symbol, index, symbols) => /^[A-Z]{1,6}$/.test(symbol) && symbols.indexOf(symbol) === index)
-      .slice(0, 20);
 
     if (requestedSymbols.length > 0) {
       const quotes = await Promise.all(requestedSymbols.map(async (symbol) => {
