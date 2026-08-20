@@ -3,6 +3,7 @@ import { z } from "zod";
 import { callAIStream, callVisionAI, type VisionMessage } from "@/lib/ai";
 import { crossValidate } from "@/lib/cross-validate";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
+import { BASE_SKILLS } from "@/lib/chat-skills";
 import { loadKnowledgeBase } from "@/lib/knowledge";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { extractStockCodes, buildStockContext, fetchStockData } from "@/lib/stock-context";
@@ -154,6 +155,7 @@ export async function POST(request: NextRequest) {
     "10. 回复结尾用【追问方向】给出1个针对本次分析的最强反方论据+2个用户可能感兴趣的追问方向（如：\"AAPL的护城河有多宽？\"\"当前估值处于历史什么分位？\"）",
     "11. 如果回答中过滤了绝对化用语或标注了风险边界，在结尾【追问方向】前加一行【已验证】：说明过滤了什么（如：已过滤2处绝对化表述，已标注期权风险边界）",
     CROSS_VALIDATION_BLOCK,
+    BASE_SKILLS,
     "",
     "<knowledge_base>",
     FEIMANSTAR_KB,
