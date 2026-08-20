@@ -117,7 +117,7 @@ export default function MarketPage() {
     fetchQtDirect(symbols);
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") fetchQtDirect(symbols);
-    }, 30000);
+    }, 10000);
     return () => clearInterval(timer);
   }, [hydrated, watchlist, fetchQtDirect]);
 
@@ -430,7 +430,7 @@ export default function MarketPage() {
       ) : null}
 
       <p className="mt-6 text-xs text-[var(--text-muted)]">
-        自选股报价由浏览器直连腾讯行情实时刷新（30秒），指数与板块数据来自服务端聚合。仅供研究参考，不构成投资建议。
+        自选股报价由浏览器直连腾讯行情实时刷新（10秒），指数与板块数据来自服务端聚合。仅供研究参考，不构成投资建议。
         {lastUpdate ? <span className="ml-2">最后更新：{lastUpdate.toLocaleTimeString("zh-CN")}</span> : null}
       </p>
     </div>
