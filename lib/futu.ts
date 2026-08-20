@@ -92,10 +92,11 @@ function extractStockInfo(html: string, code: string): Record<string, string> | 
   const blockMatch = region.match(/"stock_info"\s*:\s*\{([\s\S]{200,8000}?)\}\s*,\s*"/);
   if (!blockMatch) return null;
   const body = blockMatch[1];
-  // 提取 "key":"value" 对
+  // 提取 "key":"value" 对（Array.from兼容es5 target，for...of iterator需downlevelIteration）
   const info: Record<string, string> = {};
-  const pairs = body.matchAll(/"([a-zA-Z_]+)"\s*:\s*"([^"]*)"/g);
-  for (const p of pairs) {
+  const pairRegex = /"([a-zA-Z_]+)"\s*:\s*"([^"]*)"/g;
+  let p: RegExpExecArray | null;
+  while ((p = pairRegex.exec(body)) !== null) {
     if (!(p[1] in info)) info[p[1]] = p[2];
   }
   return info.priceNominal ? info : null;
