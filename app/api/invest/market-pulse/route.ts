@@ -6,53 +6,41 @@ export const dynamic = "force-dynamic";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
 const YAHOO_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-let yahooSessionPromise: Promise<{ cookie: string; crumb: string }> | null = null;
 
-// 30秒内存缓存，避免频繁请求Yahoo+Finnhub
+// 30秒内存缓存，避免频繁请求腾讯+Yahoo+Finnhub
 let cache: { data: unknown; expiresAt: number } | null = null;
 const CACHE_TTL = 30_000;
 
-function getYahooSession() {
-  if (yahooSessionPromise) return yahooSessionPromise;
-  yahooSessionPromise = (async () => {
-    try {
-      const cookieResponse = await fetch("https://fc.yahoo.com/", {
-        headers: { "User-Agent": YAHOO_UA },
-        redirect: "manual",
-        signal: AbortSignal.timeout(4000),
-      });
-      const match = (cookieResponse.headers.get("set-cookie") || "").match(/A3=([^;]+)/);
-      const cookie = match?.[1] ?? "";
-      if (!cookie) return { cookie: "", crumb: "" };
-      const crumbResponse = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
-        headers: { "User-Agent": YAHOO_UA, Cookie: `A3=${cookie}` },
-        signal: AbortSignal.timeout(4000),
-      });
-      return { cookie, crumb: crumbResponse.ok ? (await crumbResponse.text()).trim() : "" };
-    } catch {
-      return { cookie: "", crumb: "" };
-    }
-  })();
-  return yahooSessionPromise;
-}
-
 async function fetchYahooCloses(symbol: string): Promise<number[]> {
-  try {
-    const { cookie, crumb } = await getYahooSession();
-    const params = new URLSearchParams({ interval: "1d", range: "3mo", ...(crumb ? { crumb } : {}) });
-    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?${params}`, {
-      headers: { "User-Agent": YAHOO_UA, ...(cookie ? { Cookie: `A3=${cookie}` } : {}) },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!response.ok) return [];
-    const payload = (await response.json()) as {
-      chart?: { result?: Array<{ indicators?: { quote?: Array<{ close?: Array<number | null> }> } }> };
-    };
-    return (payload.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [])
-      .filter((value): value is number => typeof value === "number" && value > 0);
-  } catch {
-    return [];
+  // query2优先+完整浏览器headers（stock route同款已验证配置；query1裸请求会被限）
+  const browserHeaders: Record<string, string> = {
+    "User-Agent": YAHOO_UA,
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Referer": "https://finance.yahoo.com/",
+  };
+  for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
+    try {
+      const response = await fetch(`https://${host}/v8/finance/chart/${symbol}?interval=1d&range=3mo`, {
+        headers: browserHeaders,
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) continue;
+      const payload = (await response.json()) as {
+        chart?: { result?: Array<{ indicators?: { quote?: Array<{ close?: Array<number | null> }> } }> };
+      };
+      const closes = (payload.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [])
+        .filter((value): value is number => typeof value === "number" && value > 0);
+      if (closes.length > 0) return closes;
+    } catch {
+      // 换下一个host
+    }
   }
+  return [];
 }
 
 /**
@@ -123,33 +111,14 @@ export async function GET(request: NextRequest) {
 
     const fetchMultiPeriodChange = async (symbol: string, currentPrice: number | null) => {
       if (currentPrice == null) return { changePct5d: null, changePct20d: null };
-      const to = Math.floor(Date.now() / 1000);
-      const from = to - 45 * 24 * 60 * 60;
-      try {
-        const response = await fetch(
-          `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_KEY}`,
-          { signal: AbortSignal.timeout(6000) },
-        );
-        if (!response.ok) throw new Error("finnhub_history_unavailable");
-        const payload = (await response.json()) as { s?: string; c?: unknown };
-        const closes = payload.s === "ok" && Array.isArray(payload.c)
-          ? payload.c.filter((value): value is number => typeof value === "number" && value > 0)
-          : await fetchYahooCloses(symbol);
-        const close5d = closes.length >= 6 ? closes[closes.length - 6] : null;
-        const close20d = closes.length >= 21 ? closes[closes.length - 21] : null;
-        return {
-          changePct5d: close5d ? ((currentPrice - close5d) / close5d) * 100 : null,
-          changePct20d: close20d ? ((currentPrice - close20d) / close20d) * 100 : null,
-        };
-      } catch {
-        const closes = await fetchYahooCloses(symbol);
-        const close5d = closes.length >= 6 ? closes[closes.length - 6] : null;
-        const close20d = closes.length >= 21 ? closes[closes.length - 21] : null;
-        return {
-          changePct5d: close5d ? ((currentPrice - close5d) / close5d) * 100 : null,
-          changePct20d: close20d ? ((currentPrice - close20d) / close20d) * 100 : null,
-        };
-      }
+      // Finnhub candle免费版已停（403），直接走Yahoo query2（stock route同款配置）
+      const closes = await fetchYahooCloses(symbol);
+      const close5d = closes.length >= 6 ? closes[closes.length - 6] : null;
+      const close20d = closes.length >= 21 ? closes[closes.length - 21] : null;
+      return {
+        changePct5d: close5d ? ((currentPrice - close5d) / close5d) * 100 : null,
+        changePct20d: close20d ? ((currentPrice - close20d) / close20d) * 100 : null,
+      };
     };
 
     if (requestedSymbols.length > 0) {
