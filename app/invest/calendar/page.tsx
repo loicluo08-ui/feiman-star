@@ -43,6 +43,8 @@ function formatMarketCap(value: number | null) {
 
 export default function CalendarPage() {
   const [data, setData] = useState<CalendarData | null>(null);
+  // 跨周搜索数据：query非空时懒加载-2..+2周并集
+  const [searchPool, setSearchPool] = useState<EarningItem[] | null>(null);
   const [query, setQuery] = useState("");
   const [weekOffset, setWeekOffset] = useState(0);
   const [largeCapOnly, setLargeCapOnly] = useState(true);
@@ -66,12 +68,40 @@ export default function CalendarPage() {
 
   useEffect(() => {
     void loadCalendar(weekOffset);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset]);
+
+  const trimmedQuery = query.trim().toLowerCase();
+  useEffect(() => {
+    if (!trimmedQuery || searchPool) return;
+    // 有搜索词时拉前后2周并入搜索池（一次性，取消时不清空避免反复拉）
+    let cancelled = false;
+    (async () => {
+      try {
+        const offsets = [-2, -1, 1, 2];
+        const results = await Promise.all(
+          offsets.map(async (o) => {
+            const r = await fetch(`/api/invest/calendar?weekOffset=${o}`, { cache: "no-store" });
+            const j = await r.json().catch(() => ({}));
+            return (j.data?.earnings ?? []) as EarningItem[];
+          }),
+        );
+        if (!cancelled) setSearchPool(results.flat());
+      } catch {
+        if (!cancelled) setSearchPool([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [trimmedQuery, searchPool]);
+
 
   const grouped = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    const filtered = (data?.earnings ?? []).filter((item) => (
+    // 跨周搜索：搜索时合并本周±2周数据，解决"NVDA下周才财报，本周搜不到"的断裂
+    const searchBase = normalizedQuery && searchPool
+      ? [...(data?.earnings ?? []), ...searchPool]
+      : (data?.earnings ?? []);
+    const filtered = searchBase.filter((item) => (
       (!largeCapOnly || (item.marketCap != null && item.marketCap > LARGE_CAP_THRESHOLD))
       && (
         !normalizedQuery
@@ -79,7 +109,14 @@ export default function CalendarPage() {
         || item.name.toLowerCase().includes(normalizedQuery)
       )
     ));
-    const groups = filtered.reduce<Record<string, EarningItem[]>>((result, item) => {
+    const seen = new Set<string>();
+    const deduped = filtered.filter((item) => {
+      const key = `${item.date}|${item.symbol}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const groups = deduped.reduce<Record<string, EarningItem[]>>((result, item) => {
       (result[item.date] ??= []).push(item);
       return result;
     }, {});
@@ -87,7 +124,7 @@ export default function CalendarPage() {
       items.sort((a, b) => (b.marketCap ?? -1) - (a.marketCap ?? -1));
     });
     return groups;
-  }, [data, largeCapOnly, query]);
+  }, [data, largeCapOnly, query, searchPool]);
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
