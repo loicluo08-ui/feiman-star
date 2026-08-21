@@ -10,23 +10,24 @@ const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
  * GET /api/invest/news?code=AAPL
  */
 
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "Accept": "application/json,text/plain,*/*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Referer": "https://finance.yahoo.com/",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-site",
+};
+
 const fmt = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
 // Yahoo搜索端点兜底（Finnhub company-news是premium-only，免费层恒空）
 async function getYahooNews(code: string): Promise<Array<{ headline: string; source: string; url: string; date: string; summary: string }>> {
-  const browserHeaders: Record<string, string> = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "application/json,text/plain,*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://finance.yahoo.com/",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-site",
-  };
   try {
     const res = await fetch(
       `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(code)}&newsCount=5&quotesCount=0`,
-      { headers: browserHeaders, signal: AbortSignal.timeout(6000) },
+      { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(6000) },
     );
     if (!res.ok) return [];
     const data = (await res.json()) as { news?: Array<{ title?: string; publisher?: string; link?: string; providerPublishTime?: number }> };
@@ -76,26 +77,43 @@ export async function GET(request: NextRequest) {
         summary: (n.summary ?? "").slice(0, 200),
       }));
 
-    // 盈利日历（未来30天）
-    const todayPlus30 = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const earningsRes = await fetch(
-      `https://finnhub.io/api/v1/calendar/earnings?from=${todayStr}&to=${fmt(todayPlus30)}&token=${FINNHUB_KEY}`,
-      { signal: AbortSignal.timeout(8000) },
-    );
+    // 下次财报：Finnhub calendar/earnings是premium恒空 → Yahoo quoteSummary calendarEvents（crumb链尽力而为）
     let nextEarnings: { date: string; epsEstimate: number | null; hour: string } | null = null;
-    if (earningsRes.ok) {
-      const earningsData = await earningsRes.json();
-      const earningsList: Array<{ symbol: string; date: string; epsEstimate: number | null; hour: string }> =
-        earningsData.earningsCalendar ?? [];
-      const found = earningsList.find((e) => e.symbol === code);
-      if (found) {
-        nextEarnings = {
-          date: found.date,
-          epsEstimate: found.epsEstimate,
-          hour: found.hour || "",
-        };
+    try {
+      const cookieRes = await fetch("https://fc.yahoo.com", { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(4000) });
+      const cookies = (cookieRes.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
+      if (cookies) {
+        const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+          headers: { ...BROWSER_HEADERS, Cookie: cookies },
+          signal: AbortSignal.timeout(4000),
+        });
+        const crumb = (await crumbRes.text()).trim();
+        if (crumb && crumb.length <= 32) {
+          const calRes = await fetch(
+            `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(code.replace(".", "-"))}?modules=calendarEvents&crumb=${encodeURIComponent(crumb)}`,
+            { headers: { ...BROWSER_HEADERS, Cookie: cookies }, signal: AbortSignal.timeout(6000) },
+          );
+          if (calRes.ok) {
+            const cal = (await calRes.json()) as {
+              quoteSummary?: { result?: Array<{ calendarEvents?: { earnings?: { date?: { iso?: string }; epsActual?: { raw?: number }; epsEstimate?: { raw?: number } } } }> };
+            };
+            const e = cal.quoteSummary?.result?.[0]?.calendarEvents?.earnings;
+            if (e?.date?.iso) {
+              const ts = new Date(e.date.iso).getTime();
+              // 只取未来30天内的财报日
+              if (ts > Date.now() - 86400000 && ts < Date.now() + 31 * 86400000) {
+                const nyHour = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", hour12: false }).format(new Date(ts));
+                nextEarnings = {
+                  date: e.date.iso.slice(0, 10),
+                  epsEstimate: e.epsEstimate?.raw ?? e.epsActual?.raw ?? null,
+                  hour: parseInt(nyHour) < 12 ? "bmo" : "amc",
+                };
+              }
+            }
+          }
+        }
       }
-    }
+    } catch {}
 
     // Finnhub company-news免费层premium-only恒空 → Yahoo兜底
     let finalNews: Array<{ headline: string; source: string; url: string; date: string; summary: string }> = news;
