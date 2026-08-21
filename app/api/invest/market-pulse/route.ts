@@ -12,7 +12,22 @@ const YAHOO_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/53
 let cache: { data: unknown; expiresAt: number } | null = null;
 const CACHE_TTL = 30_000;
 
+// 日线缓存：板块5d/20d一天只变一次，60分钟TTL把16个ETF的Yahoo请求压到每小时16个
+const closesCache = new Map<string, { closes: number[]; expiresAt: number }>();
+
 async function fetchYahooCloses(symbol: string): Promise<number[]> {
+  const cached = closesCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now() && cached.closes.length > 0) {
+    return cached.closes;
+  }
+  const result = await fetchYahooClosesUncached(symbol);
+  if (result.length > 0) {
+    closesCache.set(symbol, { closes: result, expiresAt: Date.now() + 60 * 60 * 1000 });
+  }
+  return result;
+}
+
+async function fetchYahooClosesUncached(symbol: string): Promise<number[]> {
   // query2优先+完整浏览器headers（stock route同款已验证配置；query1裸请求会被限）
   const browserHeaders: Record<string, string> = {
     "User-Agent": YAHOO_UA,
@@ -131,18 +146,25 @@ export async function GET(request: NextRequest) {
     };
 
     if (requestedSymbols.length > 0) {
-      const quotes = await Promise.all(requestedSymbols.map(async (symbol) => {
-        const quote = await fetchQuote(symbol);
-        const multiPeriod = await fetchMultiPeriodChange(symbol, quote?.price ?? null);
-        return {
-          symbol,
-          price: quote?.price ?? null,
-          change: quote?.change ?? null,
-          changePct: quote?.changePct ?? null,
-          changePct5d: multiPeriod.changePct5d,
-          changePct20d: multiPeriod.changePct20d,
-        };
-      }));
+            // 分批拉取：Yahoo对16并发限流(429全灭)，每批4个+批间300ms
+      const quotes: Array<{ symbol: string; price: number | null; change: number | null; changePct: number | null; changePct5d: number | null; changePct20d: number | null; name?: string }> = [];
+      for (let i = 0; i < requestedSymbols.length; i += 4) {
+        const batch = requestedSymbols.slice(i, i + 4);
+        const batchResults = await Promise.all(batch.map(async (symbol) => {
+          const quote = await fetchQuote(symbol);
+          const multiPeriod = await fetchMultiPeriodChange(symbol, quote?.price ?? null);
+          return {
+            symbol,
+            price: quote?.price ?? null,
+            change: quote?.change ?? null,
+            changePct: quote?.changePct ?? null,
+            changePct5d: multiPeriod.changePct5d,
+            changePct20d: multiPeriod.changePct20d,
+          };
+        }));
+        quotes.push(...batchResults);
+        if (i + 4 < requestedSymbols.length) await new Promise(r => setTimeout(r, 300));
+      }
 
       return NextResponse.json(
         { data: { quotes, timestamp: new Date().toISOString() } },
