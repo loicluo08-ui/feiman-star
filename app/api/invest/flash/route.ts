@@ -190,6 +190,10 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
 let lastSuccessCache: FlashItem[] = [];
 let lastSuccessTime = 0;
 const CACHE_TTL = 5 * 60 * 1000;
+// 主路径节流缓存：快讯更新频率分钟级，10秒内的重复请求直接回缓存（防前端5秒轮询打穿金十）
+let throttleCache: FlashItem[] = [];
+let throttleTime = 0;
+const THROTTLE_TTL = 10 * 1000;
 
 function getCachedFallback(): FlashItem[] {
   if (Date.now() - lastSuccessTime < CACHE_TTL && lastSuccessCache.length > 0) {
@@ -209,6 +213,11 @@ export async function GET(request: Request) {
       { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
       { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
     );
+  }
+
+  // 10秒节流缓存命中→直接返回（前端5秒轮询，快讯分钟级更新，用户零感知）
+  if (Date.now() - throttleTime < THROTTLE_TTL && throttleCache.length > 0) {
+    return NextResponse.json({ data: throttleCache });
   }
 
   const [jin10Items, wscnItems] = await Promise.all([
@@ -235,6 +244,12 @@ export async function GET(request: Request) {
   }
 
   const items = deduped.slice(0, 30);
+
+  // 写节流缓存（成功拿到任何数据就缓存，包括items非空的路径）
+  if (items.length > 0) {
+    throttleCache = items;
+    throttleTime = Date.now();
+  }
 
   if (items.length === 0) {
     const cached = getCachedFallback();
