@@ -177,11 +177,21 @@ export async function GET(request: NextRequest) {
         const q = await fetchQuote(idx.symbol);
         return { ...idx, ...q };
       })),
-      Promise.all(sectors.map(async (sec) => {
-        const q = await fetchQuote(sec.symbol);
-        const multiPeriod = await fetchMultiPeriodChange(sec.symbol, q?.price ?? null);
-        return { ...sec, ...q, ...multiPeriod };
-      })),
+      // 板块分批拉取：11个ETF并发Yahoo必限流（429全灭），4个/批+300ms间隔
+      (async () => {
+        const results: Array<Record<string, unknown>> = [];
+        for (let i = 0; i < sectors.length; i += 4) {
+          const batch = sectors.slice(i, i + 4);
+          const batchResults = await Promise.all(batch.map(async (sec) => {
+            const q = await fetchQuote(sec.symbol);
+            const multiPeriod = await fetchMultiPeriodChange(sec.symbol, q?.price ?? null);
+            return { ...sec, ...q, ...multiPeriod };
+          }));
+          results.push(...batchResults);
+          if (i + 4 < sectors.length) await new Promise(r => setTimeout(r, 300));
+        }
+        return results;
+      })(),
     ]);
 
     // 判断市场情绪
