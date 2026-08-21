@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getYahooChart, type YahooChartResult } from "@/lib/yahoo-chart";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getFutuStock } from "@/lib/futu";
 import { getQtStock } from "@/lib/qt";
@@ -32,27 +33,6 @@ interface FinnhubCandles {
   t?: number[];
   v?: Array<number | null>;
   s?: string;
-}
-
-interface YahooChartResult {
-  meta?: {
-    instrumentType?: string;
-    longName?: string;
-    shortName?: string;
-    exchangeName?: string;
-    regularMarketPrice?: number;
-    regularMarketVolume?: number;
-    chartPreviousClose?: number;
-    fiftyTwoWeekHigh?: number;
-    fiftyTwoWeekLow?: number;
-  };
-  timestamp?: number[];
-  indicators?: {
-    quote?: Array<{
-      close?: Array<number | null>;
-      volume?: Array<number | null>;
-    }>;
-  };
 }
 
 async function getFinnhubQuote(code: string): Promise<FinnhubQuote | null> {
@@ -243,97 +223,6 @@ async function getFinnhubHistory(code: string) {
   }
 }
 
-async function getYahooChart(code: string): Promise<YahooChartResult | null> {
-  // Yahoo需要完整浏览器headers才能在Vercel上工作；带点代码（BRK.A）在Yahoo是横杠（BRK-A）
-  const yahooCode = code.replace(".", "-");
-  const browserHeaders = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Referer": "https://finance.yahoo.com/",
-  };
-
-  // 方式1: query2域名+完整headers（最可靠）
-  for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
-    try {
-      const response = await fetch(
-        `https://${host}/v8/finance/chart/${encodeURIComponent(yahooCode)}?interval=1d&range=3mo`,
-        { headers: browserHeaders, signal: AbortSignal.timeout(8000) },
-      );
-      if (!response.ok) continue;
-      const payload = (await response.json()) as {
-        chart?: { result?: YahooChartResult[]; error?: { code?: string; description?: string } };
-      };
-      if (payload.chart?.result?.[0]) {
-        return payload.chart.result[0];
-      }
-    } catch {
-      // 继续尝试
-    }
-  }
-
-  // 方式2: 带cookie+crumb（备用）
-  for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
-    try {
-      let cookie = "";
-      let crumb = "";
-      try {
-        const cookieResponse = await fetch("https://fc.yahoo.com/", {
-          headers: { "User-Agent": browserHeaders["User-Agent"] },
-          redirect: "manual",
-          signal: AbortSignal.timeout(5000),
-        });
-        const setCookie = cookieResponse.headers.get("set-cookie") || "";
-        const match = setCookie.match(/A3=([^;]+)/);
-        if (match) cookie = match[1];
-        if (cookie) {
-          const crumbResponse = await fetch(`https://${host}/v1/test/getcrumb`, {
-            headers: { "User-Agent": browserHeaders["User-Agent"], Cookie: `A3=${cookie}` },
-            signal: AbortSignal.timeout(5000),
-          });
-          if (crumbResponse.ok) crumb = (await crumbResponse.text()).trim();
-        }
-      } catch {}
-
-      const params = new URLSearchParams({
-        interval: "1d",
-        range: "3mo",
-        ...(crumb ? { crumb } : {}),
-      });
-      const response = await fetch(
-        `https://${host}/v8/finance/chart/${encodeURIComponent(code)}?${params}`,
-        {
-          headers: {
-            ...browserHeaders,
-            ...(cookie ? { Cookie: `A3=${cookie}` } : {}),
-          },
-          signal: AbortSignal.timeout(8000),
-        },
-      );
-      if (!response.ok) continue;
-      const payload = (await response.json()) as {
-        chart?: { result?: YahooChartResult[] };
-      };
-      if (payload.chart?.result?.[0]) {
-        return payload.chart.result[0];
-      }
-    } catch {}
-  }
-
-  return null;
-}
-
-/**
- * 美股实时行情、历史K线与财务指标。
- * GET /api/invest/stock?code=AAPL
- */
 export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request, "stock", {
     maxRequests: 30,

@@ -60,6 +60,8 @@ export function extractStockCodes(text: string): string[] {
 }
 
 // 历史锚点缓存：Yahoo chart对云IP限流敏感（429），15分钟缓存把重复请求压到最低
+import { getYahooChart, extractHistoryAnchors } from "./yahoo-chart";
+
 const histCache = new Map<string, { data: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null; expiresAt: number }>();
 
 export async function fetchStockData(codes: string[]): Promise<Array<{
@@ -176,35 +178,8 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
     if (cachedHist && cachedHist.expiresAt > Date.now()) {
       history = cachedHist.data;
     } else try {
-      const yhCode = code.replace(".", "-");
-      const yhRes = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yhCode)}?interval=1d&range=3mo`, {
-        headers: {
-          "User-Agent": UA,
-          "Accept": "application/json,text/plain,*/*",
-          "Accept-Language": "en-US,en;q=0.9",
-          "Referer": "https://finance.yahoo.com/",
-          "Sec-Fetch-Dest": "empty",
-          "Sec-Fetch-Mode": "cors",
-          "Sec-Fetch-Site": "same-site",
-        },
-        signal: AbortSignal.timeout(5000),
-      });
-      if (yhRes.ok) {
-        const yh = (await yhRes.json()) as { chart?: { result?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ close?: Array<number | null> }> } }> } };
-        const r0 = yh.chart?.result?.[0];
-        const rawCloses = r0?.indicators?.quote?.[0]?.close ?? [];
-        const closes = rawCloses.filter((c): c is number => c != null);
-        if (closes.length >= 30) {
-          const last20 = closes.slice(-21, -1); // 最近一个月约21个交易日
-          history = {
-            oneMonthAgo: closes[closes.length - 22] ?? null,
-            threeMonthsAgo: closes[0] ?? null,
-            monthHigh: last20.length ? Math.max(...last20) : null,
-            monthLow: last20.length ? Math.min(...last20) : null,
-          };
-        }
-        histCache.set(code, { data: history, expiresAt: Date.now() + 15 * 60 * 1000 });
-      }
+      history = extractHistoryAnchors(await getYahooChart(code, "3mo"));
+      histCache.set(code, { data: history, expiresAt: Date.now() + 15 * 60 * 1000 });
     } catch {}
 
     // D2豁免：腾讯被闸门弃用但Finnhub价格与腾讯原始价一致(±1.5%)→真实极端行情(财报跳空/熔断级波动)，恢复数据
