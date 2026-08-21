@@ -241,7 +241,7 @@ export async function GET(request: NextRequest) {
   }
 
   const rawCode = new URL(request.url).searchParams.get("code")?.trim().toUpperCase();
-  if (!rawCode || !/^[A-Z]{1,5}$/.test(rawCode)) {
+  if (!rawCode || !/^[A-Z]{1,5}(\.[A-Z])?$/.test(rawCode)) {
     return NextResponse.json({ error: "请输入有效的美股代码（如 AAPL）" }, { status: 400 });
   }
 

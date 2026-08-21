@@ -48,7 +48,7 @@ function decodeGbk(buf: ArrayBuffer): string {
 }
 
 function parseQtLine(line: string): QtStock | null {
-  const m = line.match(/v_(\w+)="([^"]*)"/);
+  const m = line.match(/v_([\w.]+)="([^"]*)"/);
   if (!m) return null;
   const code = m[1];
   const f = m[2].split("~");
@@ -67,7 +67,7 @@ function parseQtLine(line: string): QtStock | null {
     turnover: num(f[37]),
     pe: num(f[39]),
     pb: null,
-    marketCap: num(f[44]),
+    marketCap: f[44] != null && f[44] !== "" && !isNaN(parseFloat(f[44])) && parseFloat(f[44]) > 0 ? parseFloat(f[44]) * 1e8 : null,
     time: f[30] || null,
   };
 }

@@ -47,7 +47,7 @@ export function extractStockCodes(text: string): string[] {
   }
 
   // 小写热门代码（nvda/tsla等常见输入习惯，白名单防误伤普通英文单词）
-  const HOT_CODES = new Set(["AAPL","NVDA","TSLA","MSFT","GOOG","GOOGL","AMZN","META","AMD","INTC","NFLX","AVGO","TSM","BABA","PDD","JD","BIDU","NIO","XPEV","LI","COIN","MSTR","PLTR","SMCI","MU","QCOM","TXN","ARM","SOFI","RIVN","LCID","F","GM","JPM","GS","BAC","V","MA","DIS","NKE","BA","LMT","XOM","CVX","JNJ","LLY","UNH","WMT","COST","UBER","ABNB","SQ","PYPL","SHOP","SNOW","CRWD","NET","DKNG","RBLX","TTD","ROKU","ZM","PENN","FUTU","BILI","TME","IQ","VIPS","ZK","DASH","SNAP","PINS","SPOT","TSLA"]);
+  const HOT_CODES = new Set(["AAPL","NVDA","TSLA","MSFT","GOOG","GOOGL","AMZN","META","AMD","INTC","NFLX","AVGO","TSM","BABA","PDD","JD","BIDU","NIO","XPEV","LI","COIN","MSTR","PLTR","SMCI","MU","QCOM","TXN","ARM","SOFI","RIVN","LCID","F","GM","JPM","GS","BAC","V","MA","DIS","NKE","BA","LMT","XOM","CVX","JNJ","LLY","UNH","WMT","COST","UBER","ABNB","SQ","PYPL","SHOP","SNOW","CRWD","NET","DKNG","RBLX","TTD","ROKU","ZM","PENN","FUTU","BILI","TME","IQ","VIPS","ZK","DASH","SNAP","PINS","SPOT"]);
   const lowerMatches = normalizedText.match(/(?<![a-zA-Z])([a-z]{2,5})(?![a-zA-Z])/g);
   if (lowerMatches) {
     lowerMatches.forEach((w) => {
@@ -112,18 +112,25 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
               high = f[33] !== "" && f[33] !== undefined ? parseFloat(f[33]) : null;
               low = f[34] !== "" && f[34] !== undefined ? parseFloat(f[34]) : null;
               pe = pPE > 0 ? pPE : null;
-              marketCap = f[44] !== "" && parseFloat(f[44]) > 0 ? parseFloat(f[44]) : null;
-              // D1新鲜度：f[30]=行情时间(美东MM/DD HH:MM)，算数据年龄（用Intl拿纽约当前时刻，自动处理夏冬令时）
-              const tm = (f[30] || "").match(/(\d{2}):(\d{2}):(\d{2})/);
+              marketCap = f[44] !== "" && parseFloat(f[44]) > 0 ? parseFloat(f[44]) * 1e8 : null;
+              // D1新鲜度：f[30]=美东完整时间"YYYY-MM-DD HH:MM:SS"。日期不同(周末/隔夜)→收盘；同日按分钟差算年龄
+              const tm = (f[30] || "").match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
               if (tm) {
                 try {
-                  const nyNow = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
-                  const [nh, nm] = nyNow.split(":").map(Number);
-                  const qMin = parseInt(tm[1]) * 60 + parseInt(tm[2]);
+                  const nowFull = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()).replace(",", "");
+                  const [nDate, nTime] = nowFull.split(" ");
+                  const [nh, nm] = nTime.split(":").map(Number);
+                  const qDate = `${tm[1]}-${tm[2]}-${tm[3]}`;
+                  const qMin = parseInt(tm[4]) * 60 + parseInt(tm[5]);
                   const nMin = nh * 60 + nm;
-                  const ageMin = (nMin - qMin + 1440) % 1440;
-                  qtTimestamp = ageMin < 5 ? "实时" : ageMin < 30 ? `延迟${ageMin}分钟` : `数据时间${tm[1]}:${tm[2]}美东(非实时,可能为收盘)`;
-                } catch { qtTimestamp = `数据时间${tm[1]}:${tm[2]}美东`; }
+                  if (qDate !== nDate) {
+                    // 非同一天：跨夜/周末，直接标收盘
+                    qtTimestamp = `${tm[2]}/${tm[3]}收盘数据（非实时）`;
+                  } else {
+                    const ageMin = (nMin - qMin + 1440) % 1440;
+                    qtTimestamp = ageMin < 5 ? "实时" : ageMin < 30 ? `延迟${ageMin}分钟` : `数据时间${tm[4]}:${tm[5]}美东(非实时,可能为收盘)`;
+                  }
+                } catch { qtTimestamp = `数据时间${tm[4]}:${tm[5]}美东`; }
               }
             }
           }
