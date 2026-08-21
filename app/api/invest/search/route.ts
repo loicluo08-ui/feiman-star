@@ -28,9 +28,42 @@ async function getIndustry(symbol: string, token: string): Promise<string> {
 }
 
 /**
- * 美股搜索代理（Yahoo Finance search）
+ * 美股搜索代理（Finnhub search，Yahoo兜底）
  * GET /api/invest/search?q=apple
  */
+
+// Yahoo搜索兜底（Finnhub search产线异常时）
+async function yahooSearchFallback(q: string): Promise<Array<{ code: string; name: string; exchange: string | null; type: string }>> {
+  const browserHeaders: Record<string, string> = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "application/json,text/plain,*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://finance.yahoo.com/",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-site",
+  };
+  try {
+    const res = await fetch(
+      `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0`,
+      { headers: browserHeaders, signal: AbortSignal.timeout(6000) },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { quotes?: Array<{ symbol?: string; shortname?: string; longname?: string; exchDisp?: string; quoteType?: string }> };
+    return (data.quotes ?? [])
+      .filter((it) => it.symbol && /^[A-Z]{1,5}(\.[A-Z])?$/.test(it.symbol) && (it.exchDisp === "NMS" || it.exchDisp === "NYQ" || it.exchDisp === "NGM" || !it.exchDisp))
+      .slice(0, 8)
+      .map((it) => ({
+        code: it.symbol as string,
+        name: it.shortname || it.longname || (it.symbol as string),
+        exchange: it.exchDisp ?? null,
+        type: it.quoteType === "ETF" ? "ETF" : "EQUITY",
+      }));
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "search", RATE_LIMITS.search);
   if (limited) {
@@ -74,6 +107,12 @@ export async function GET(request: NextRequest) {
         type: "EQUITY",
       }))
       .slice(0, 12);
+
+    if (filtered.length === 0) {
+      // Finnhub search产线异常恒空 → Yahoo兜底
+      const yahooResults = await yahooSearchFallback(q);
+      return NextResponse.json({ data: yahooResults });
+    }
 
     const enriched = await Promise.all(
       filtered.map(async (result) => ({
