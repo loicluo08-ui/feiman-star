@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -201,7 +202,10 @@ function getCachedFallback(): FlashItem[] {
 // 主函数：金十为主，华尔街见闻+财联社补充
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export async function GET() {
+export async function GET(request: Request) {
+  const limited = await enforceRateLimitAsync(request, "flash", RATE_LIMITS.flash);
+  if (limited) return limited;
+
   const [jin10Items, wscnItems] = await Promise.all([
     fetchJin10(),
     fetchWallstreetCN(),

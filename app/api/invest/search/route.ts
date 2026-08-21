@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,9 @@ async function getIndustry(symbol: string, token: string): Promise<string> {
  * GET /api/invest/search?q=apple
  */
 export async function GET(request: NextRequest) {
+  const limited = await enforceRateLimitAsync(request, "search", RATE_LIMITS.search);
+  if (limited) return limited;
+
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim();
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AIRequestError, callAI } from "@/lib/ai";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,9 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const limited = await enforceRateLimitAsync(request, "reviewSummary", RATE_LIMITS.reviewSummary);
+  if (limited) return limited;
+
   const body = await request.json().catch(() => null);
   const input = requestSchema.safeParse(body);
   if (!input.success) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getQtStocks } from "@/lib/qt";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +49,9 @@ async function fetchYahooCloses(symbol: string): Promise<number[]> {
  * GET /api/invest/market-pulse
  */
 export async function GET(request: NextRequest) {
+  const limited = await enforceRateLimitAsync(request, "marketPulse", RATE_LIMITS.marketPulse);
+  if (limited) return limited;
+
   // 检查缓存
   if (cache && cache.expiresAt > Date.now()) {
     return NextResponse.json(

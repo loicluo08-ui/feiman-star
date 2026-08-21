@@ -11,6 +11,9 @@ export const RATE_LIMITS = {
   flash: { maxRequests: 120, windowMs: 60_000 },  // 120次/分（免费源，只防恶意脚本）
   stock: { maxRequests: 120, windowMs: 60_000 },  // 120次/分（腾讯免费源，宽松）
   search: { maxRequests: 120, windowMs: 60_000 }, // 120次/分
+  parseTrades: { maxRequests: 30, windowMs: 60_000 },   // 调DeepSeek
+  reviewSummary: { maxRequests: 30, windowMs: 60_000 }, // 调DeepSeek
+  marketPulse: { maxRequests: 60, windowMs: 60_000 },   // 免费源聚合，中等
 } as const;
 
 /** KV限流（如果配置了KV环境变量则启用全局限流，否则降级为内存限流）
