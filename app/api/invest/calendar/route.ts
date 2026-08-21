@@ -60,7 +60,7 @@ async function getCompanyProfile(symbol: string): Promise<{ name: string; market
 
 /** GET /api/invest/calendar?weekOffset=0 - 指定周的美股盈利日历 */
 export async function GET(request: NextRequest) {
-  const limited = enforceRateLimit(request, "chat", RATE_LIMITS.chat);
+  const limited = enforceRateLimit(request, "search", RATE_LIMITS.search);
   if (limited) {
     return NextResponse.json(
       { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },

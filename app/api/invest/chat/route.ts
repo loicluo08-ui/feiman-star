@@ -37,19 +37,7 @@ const messageSchema = z.object({
 
 const requestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(20),
-  style: z.enum([
-    "balanced",
-    "value",
-    "growth",
-    "quant",
-    "technical",
-    "芒格思维",
-    "巴菲特",
-    "利弗莫尔",
-    "段永平",
-    "索罗斯",
-    "马斯克",
-  ]).optional().default("balanced"),
+  style: z.enum(["balanced", "value", "growth", "quant"]).optional().default("balanced"),
 });
 
 const CROSS_VALIDATION_BLOCK = [

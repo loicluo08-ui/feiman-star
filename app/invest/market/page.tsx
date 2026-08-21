@@ -83,12 +83,12 @@ export default function MarketPage() {
     try {
       const q = symbols.slice(0, 20).map((s) => `us${s}`).join(",");
       const res = await fetch(`https://qt.gtimg.cn/q=${q}`, { cache: "no-store" });
-      if (!res.ok) return;
+      if (!res.ok) throw new Error("network_error");
       const text = new TextDecoder("gbk").decode(await res.arrayBuffer());
       setQuotes((prev) => {
         const next = { ...prev };
         for (const line of text.split(";")) {
-          const m = line.trim().match(/v_us(\w+)="([^"]*)"/);
+          const m = line.trim().match(/v_us([\w.]+)="([^"]*)"/);
           if (!m) continue;
           const f = m[2].split("~");
           if (f.length < 35) continue;
