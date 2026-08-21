@@ -36,6 +36,7 @@ interface FinnhubCandles {
 
 interface YahooChartResult {
   meta?: {
+    instrumentType?: string;
     longName?: string;
     shortName?: string;
     exchangeName?: string;
@@ -394,10 +395,13 @@ export async function GET(request: NextRequest) {
     }
 
     // 检测是否为ETF（有价格指标但没有PE/PB/ROE等个股指标）
-    const isETF = metrics != null && 
+    // ETF判定：Yahoo instrumentType最可靠；Finnhub metrics形状启发式（pe/roe空+beta存在）兜底
+    const yahooIsETF = yahooResult?.meta?.instrumentType === "ETF";
+    const finnhubIsETF = metrics != null && 
       metrics.peNormalizedAnnual == null && 
       metrics.roeRfy == null &&
       (metrics.beta != null || metrics["52WeekHigh"] != null);
+    const isETF = yahooIsETF || finnhubIsETF;
 
     const financials: Record<string, unknown> | null = metrics
       ? {
