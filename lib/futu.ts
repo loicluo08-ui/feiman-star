@@ -35,15 +35,20 @@ async function fetchWafToken(): Promise<string | null> {
 }
 
 /** 获取有效wafToken（带缓存，25分钟刷新避免30分钟过期） */
+// 负缓存：Vercel(AWS出口)上Futu永远失败，失败后10分钟内不再重试（省外呼+避免盾页请求挂进Promise.all）
+let failedUntil = 0;
+
 export async function getFutuToken(): Promise<string | null> {
   const now = Date.now();
   if (cachedToken && now < cachedToken.expireAt) return cachedToken.token;
+  if (now < failedUntil) return null;
   const token = await fetchWafToken();
   if (token) {
     cachedToken = { token, expireAt: now + 25 * 60 * 1000 };
     return token;
   }
   cachedToken = null;
+  failedUntil = now + 10 * 60 * 1000;
   return null;
 }
 
