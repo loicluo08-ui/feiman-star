@@ -4,23 +4,11 @@ import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
-const PROFILE_CACHE_TTL = 12 * 60 * 60 * 1000;
-const profileCache = new Map<string, { name: string; marketCap: number | null; expiresAt: number }>();
-
-type FinnhubEarning = {
-  date?: string;
-  epsEstimate?: number | null;
-  hour?: string;
-  symbol?: string;
-  name?: string;
-};
-
 function formatDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function getWeek(weekOffset: number) {
+function getWeekdays(weekOffset: number) {
   const now = new Date();
   const day = now.getUTCDay();
   const mondayOffset = day === 0 ? -6 : 1 - day;
@@ -29,36 +17,62 @@ function getWeek(weekOffset: number) {
     now.getUTCMonth(),
     now.getUTCDate() + mondayOffset + weekOffset * 7,
   ));
-  const sunday = new Date(monday);
-  sunday.setUTCDate(monday.getUTCDate() + 6);
-  return { from: formatDate(monday), to: formatDate(sunday) };
+  // 周一~周五（财报不会安排在周末）
+  return Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(monday);
+    d.setUTCDate(monday.getUTCDate() + i);
+    return formatDate(d);
+  });
 }
 
-async function getCompanyProfile(symbol: string): Promise<{ name: string; marketCap: number | null }> {
-  const cached = profileCache.get(symbol);
-  if (cached && cached.expiresAt > Date.now()) {
-    return { name: cached.name, marketCap: cached.marketCap };
-  }
+// Nasdaq返回的时间标识 → 前端约定的bmo/amc/dmh
+function mapTime(t: string | undefined): string {
+  if (t === "time-pre-market") return "bmo";
+  if (t === "time-after-hours") return "amc";
+  if (t === "time-market-hours") return "dmh";
+  return "";
+}
 
+// "$128,390,360,872" / "($0.07)" → number | null
+function parseMoney(raw: string | undefined): number | null {
+  if (!raw || raw === "N/A") return null;
+  const neg = raw.startsWith("(");
+  const cleaned = raw.replace(/[$,()\s]/g, "");
+  const n = parseFloat(cleaned);
+  if (isNaN(n)) return null;
+  return neg ? -n : n;
+}
+
+type NasdaqRow = {
+  symbol?: string;
+  name?: string;
+  time?: string;
+  marketCap?: string;
+  epsForecast?: string;
+};
+
+/** 拉取Nasdaq单日财报日历 */
+async function fetchNasdaqDay(date: string): Promise<NasdaqRow[]> {
   try {
-    const response = await fetch(
-      `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_KEY}`,
-      { signal: AbortSignal.timeout(3500) },
-    );
-    if (!response.ok) return { name: symbol, marketCap: null };
-    const profile = (await response.json()) as { name?: string; marketCapitalization?: number };
-    const name = profile.name?.trim() || symbol;
-    const marketCap = typeof profile.marketCapitalization === "number" && profile.marketCapitalization > 0
-      ? profile.marketCapitalization * 1_000_000
-      : null;
-    profileCache.set(symbol, { name, marketCap, expiresAt: Date.now() + PROFILE_CACHE_TTL });
-    return { name, marketCap };
+    const res = await fetch(`https://api.nasdaq.com/api/calendar/earnings?date=${date}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        Referer: "https://www.nasdaq.com/",
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data?: { rows?: NasdaqRow[] } };
+    return json.data?.rows ?? [];
   } catch {
-    return { name: symbol, marketCap: null };
+    return [];
   }
 }
 
-/** GET /api/invest/calendar?weekOffset=0 - 指定周的美股盈利日历 */
+/** GET /api/invest/calendar?weekOffset=0 - 指定周的美股盈利日历（Nasdaq源） */
 export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request, "search", RATE_LIMITS.search);
   if (limited) {
@@ -72,45 +86,35 @@ export async function GET(request: NextRequest) {
   const weekOffset = Number.isInteger(rawWeekOffset)
     ? Math.max(-52, Math.min(52, rawWeekOffset))
     : 0;
-  const { from, to } = getWeek(weekOffset);
+  const weekdays = getWeekdays(weekOffset);
+  const from = weekdays[0];
+  const to = weekdays[weekdays.length - 1];
+
   try {
-    const params = new URLSearchParams({ from, to, token: FINNHUB_KEY });
-    const response = await fetch(`https://finnhub.io/api/v1/calendar/earnings?${params}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!response.ok) throw new Error(`finnhub_${response.status}`);
+    // 5个工作日并行拉取
+    const dayResults = await Promise.all(weekdays.map((d) => fetchNasdaqDay(d)));
 
-    const payload = (await response.json()) as { earningsCalendar?: FinnhubEarning[] };
-    const earnings = (payload.earningsCalendar ?? [])
-      .filter((item) => (
-        typeof item.date === "string"
-        && typeof item.symbol === "string"
-        && /^[A-Z][A-Z0-9.-]{0,9}$/.test(item.symbol)
-      ))
-      .sort((a, b) => `${a.date}-${a.symbol}`.localeCompare(`${b.date}-${b.symbol}`))
-      .slice(0, 120);
-
-    const symbolsToResolve = Array.from(new Set(
-      earnings.slice(0, 48).map((item) => item.symbol as string),
-    ));
-    const resolvedProfiles = new Map(
-      await Promise.all(symbolsToResolve.map(async (symbol) => [symbol, await getCompanyProfile(symbol)] as const)),
+    const earnings = dayResults.flatMap((rows, idx) =>
+      rows
+        .filter((r) => r.symbol && /^[A-Z][A-Z0-9.-]{0,9}$/.test(r.symbol))
+        .map((r) => ({
+          date: weekdays[idx],
+          symbol: r.symbol as string,
+          name: (r.name || "").trim() || (r.symbol as string),
+          marketCap: parseMoney(r.marketCap),
+          epsEstimate: parseMoney(r.epsForecast),
+          hour: mapTime(r.time),
+        })),
     );
+
+    earnings.sort((a, b) => `${a.date}-${a.symbol}`.localeCompare(`${b.date}-${b.symbol}`));
 
     return NextResponse.json({
       data: {
         from,
         to,
         weekOffset,
-        earnings: earnings.map((item) => ({
-          date: item.date,
-          symbol: item.symbol,
-          name: item.name?.trim() || resolvedProfiles.get(item.symbol as string)?.name || item.symbol,
-          marketCap: resolvedProfiles.get(item.symbol as string)?.marketCap ?? null,
-          epsEstimate: typeof item.epsEstimate === "number" ? item.epsEstimate : null,
-          hour: item.hour || "",
-        })),
+        earnings: earnings.slice(0, 200),
       },
     });
   } catch (error) {
