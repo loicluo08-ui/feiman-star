@@ -33,7 +33,12 @@ async function getIndustry(symbol: string, token: string): Promise<string> {
  */
 export async function GET(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "search", RATE_LIMITS.search);
-  if (limited) return limited;
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
 
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim();

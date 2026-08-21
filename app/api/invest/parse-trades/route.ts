@@ -27,7 +27,12 @@ const parsedTradeSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "parseTrades", RATE_LIMITS.parseTrades);
-  if (limited) return limited;
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
 
   const body = await request.json().catch(() => null);
   const input = requestSchema.safeParse(body);

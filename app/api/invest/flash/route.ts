@@ -204,7 +204,12 @@ function getCachedFallback(): FlashItem[] {
 
 export async function GET(request: Request) {
   const limited = await enforceRateLimitAsync(request, "flash", RATE_LIMITS.flash);
-  if (limited) return limited;
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
 
   const [jin10Items, wscnItems] = await Promise.all([
     fetchJin10(),

@@ -50,7 +50,12 @@ async function fetchYahooCloses(symbol: string): Promise<number[]> {
  */
 export async function GET(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "marketPulse", RATE_LIMITS.marketPulse);
-  if (limited) return limited;
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
 
   // 检查缓存
   if (cache && cache.expiresAt > Date.now()) {
