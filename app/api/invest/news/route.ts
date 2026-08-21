@@ -95,17 +95,18 @@ export async function GET(request: NextRequest) {
           );
           if (calRes.ok) {
             const cal = (await calRes.json()) as {
-              quoteSummary?: { result?: Array<{ calendarEvents?: { earnings?: { date?: { iso?: string }; epsActual?: { raw?: number }; epsEstimate?: { raw?: number } } } }> };
+              quoteSummary?: { result?: Array<{ calendarEvents?: { earnings?: { earningsDate?: Array<{ raw?: number; fmt?: string }>; earningsAverage?: { raw?: number } } } }> };
             };
             const e = cal.quoteSummary?.result?.[0]?.calendarEvents?.earnings;
-            if (e?.date?.iso) {
-              const ts = new Date(e.date.iso).getTime();
+            const ed = e?.earningsDate?.[0];
+            if (ed && (ed.raw || ed.fmt)) {
+              const ts = ed.raw ? ed.raw * 1000 : new Date(ed.fmt as string).getTime();
               // 只取未来30天内的财报日
               if (ts > Date.now() - 86400000 && ts < Date.now() + 31 * 86400000) {
                 const nyHour = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", hour12: false }).format(new Date(ts));
                 nextEarnings = {
-                  date: e.date.iso.slice(0, 10),
-                  epsEstimate: e.epsEstimate?.raw ?? e.epsActual?.raw ?? null,
+                  date: ed.fmt ?? new Date(ts).toISOString().slice(0, 10),
+                  epsEstimate: e?.earningsAverage?.raw ?? null,
                   hour: parseInt(nyHour) < 12 ? "bmo" : "amc",
                 };
               }
