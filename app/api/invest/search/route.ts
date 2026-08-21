@@ -82,34 +82,36 @@ export async function GET(request: NextRequest) {
 
   try {
     const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
-    if (!FINNHUB_KEY) {
-      return NextResponse.json({ data: [] });
+
+    // Finnhub主源（任何失败形态：无key/HTTP错误/超时/空结果 → 全部落到Yahoo兜底）
+    let filtered: Array<{ code: string; name: string; exchange: string | null; type: string }> = [];
+    if (FINNHUB_KEY) {
+      try {
+        const res = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${FINNHUB_KEY}`, {
+          signal: AbortSignal.timeout(6000),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const results: Array<Record<string, unknown>> = json.result ?? [];
+          filtered = results
+            .filter((r) => {
+              const sym = r.symbol as string;
+              // 只保留美股代码（含BRK.A类带点）
+              return /^[A-Z]{1,5}(\.[A-Z])?$/.test(sym);
+            })
+            .map((r) => ({
+              code: r.symbol as string,
+              name: (r.description ?? r.symbol) as string,
+              exchange: null,
+              type: "EQUITY",
+            }))
+            .slice(0, 12);
+        }
+      } catch {}
     }
 
-    const res = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${FINNHUB_KEY}`, {
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!res.ok) return NextResponse.json({ data: [] });
-
-    const json = await res.json();
-    const results: Array<Record<string, unknown>> = json.result ?? [];
-
-    const filtered = results
-      .filter((r) => {
-        const sym = r.symbol as string;
-        // 只保留美股代码（纯字母，不含点）
-        return /^[A-Z]{1,6}$/.test(sym);
-      })
-      .map((r) => ({
-        code: r.symbol as string,
-        name: (r.description ?? r.symbol) as string,
-        exchange: null,
-        type: "EQUITY",
-      }))
-      .slice(0, 12);
-
     if (filtered.length === 0) {
-      // Finnhub search产线异常恒空 → Yahoo兜底
+      // Finnhub失败/空 → Yahoo兜底
       const yahooResults = await yahooSearchFallback(q);
       return NextResponse.json({ data: yahooResults });
     }
@@ -125,6 +127,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     console.error(`[invest/search] ${message}`);
-    return NextResponse.json({ data: [] });
+    // 兜底链最后一道：整体异常也尝试Yahoo
+    const yahooResults = await yahooSearchFallback(q).catch(() => []);
+    return NextResponse.json({ data: yahooResults });
   }
 }
