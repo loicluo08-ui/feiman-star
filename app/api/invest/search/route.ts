@@ -58,6 +58,7 @@ async function yahooSearchFallback(q: string): Promise<Array<{ code: string; nam
         name: it.shortname || it.longname || (it.symbol as string),
         exchange: it.exchDisp ?? null,
         type: it.quoteType === "ETF" ? "ETF" : "EQUITY",
+        industry: "行业未知",
       }));
   } catch {
     return [];

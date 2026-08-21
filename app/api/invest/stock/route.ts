@@ -105,6 +105,110 @@ async function getFinnhubProfile(code: string): Promise<FinnhubProfile | null> {
   }
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Yahoo quoteSummary兜底（Finnhub metrics/profile是premium恒空）
+// crumb链：fc.yahoo.com拿cookie → getcrumb → 带认证调quoteSummary
+// Vercel出口IP池可能破坏crumb绑定→尽力而为，失败保持null
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "Accept": "application/json,text/plain,*/*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Referer": "https://finance.yahoo.com/",
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-site",
+};
+
+let yahooCrumb: { crumb: string; cookie: string; expiresAt: number } | null = null;
+
+async function getYahooCrumb(): Promise<{ crumb: string; cookie: string } | null> {
+  if (yahooCrumb && yahooCrumb.expiresAt > Date.now()) {
+    return { crumb: yahooCrumb.crumb, cookie: yahooCrumb.cookie };
+  }
+  try {
+    const cookieRes = await fetch("https://fc.yahoo.com", { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(4000) });
+    const cookies = (cookieRes.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
+    if (!cookies) return null;
+    const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+      headers: { ...BROWSER_HEADERS, Cookie: cookies },
+      signal: AbortSignal.timeout(4000),
+    });
+    const crumb = (await crumbRes.text()).trim();
+    if (!crumb || crumb.length > 32) return null;
+    yahooCrumb = { crumb, cookie: cookies, expiresAt: Date.now() + 5 * 60 * 1000 };
+    return { crumb, cookie: cookies };
+  } catch {
+    return null;
+  }
+}
+
+type YahooVal = { raw?: number } | number | undefined;
+function ynum(v: YahooVal): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return v;
+  return typeof v.raw === "number" ? v.raw : null;
+}
+
+async function getYahooSummary(code: string): Promise<{ metrics: FinnhubMetrics | null; profile: FinnhubProfile | null }> {
+  try {
+    const auth = await getYahooCrumb();
+    if (!auth) return { metrics: null, profile: null };
+    const yahooCode = code.replace(".", "-");
+    const res = await fetch(
+      `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(yahooCode)}?modules=assetProfile,financialData,defaultKeyStatistics&crumb=${encodeURIComponent(auth.crumb)}`,
+      { headers: { ...BROWSER_HEADERS, Cookie: auth.cookie }, signal: AbortSignal.timeout(6000) },
+    );
+    if (!res.ok) return { metrics: null, profile: null };
+    const payload = (await res.json()) as {
+      quoteSummary?: {
+        result?: Array<{
+          assetProfile?: { sector?: string; industry?: string; fullTimeEmployees?: number; longBusinessSummary?: string };
+          financialData?: Record<string, YahooVal>;
+          defaultKeyStatistics?: Record<string, YahooVal>;
+        }>;
+      };
+    };
+    const r = payload.quoteSummary?.result?.[0];
+    if (!r) return { metrics: null, profile: null };
+
+    const fd = r.financialData ?? {};
+    const ks = r.defaultKeyStatistics ?? {};
+    const pct = (v: YahooVal): number | null => {
+      const n = ynum(v);
+      return n == null ? null : n <= 1.5 ? n * 100 : n; // Yahoo比率是小数(0.56)，Finnhub是百分数(56)
+    };
+
+    const metrics: Partial<FinnhubMetrics> = {
+      roeTTM: pct(fd.returnOnEquity) ?? undefined,
+      roaTTM: pct(fd.returnOnAssets) ?? undefined,
+      grossMarginTTM: pct(fd.grossMargins) ?? undefined,
+      operatingMarginTTM: pct(fd.operatingMargins) ?? undefined,
+      netMarginTTM: pct(fd.profitMargins) ?? undefined,
+      "totalDebt/totalEquityAnnual": ynum(fd.debtToEquity) ?? undefined,
+      currentRatioAnnual: ynum(fd.currentRatio) ?? undefined,
+      quickRatioAnnual: ynum(fd.quickRatio) ?? undefined,
+      revenueGrowthQuarterlyYoy: pct(fd.revenueGrowth) ?? undefined,
+      epsGrowthQuarterlyYoy: pct(fd.earningsGrowth) ?? undefined,
+      totalCashAnnual: ynum(fd.totalCash) ?? undefined,
+      totalDebtAnnual: ynum(fd.totalDebt) ?? undefined,
+      freeCashFlowTTM: ynum(fd.freeCashflow) ?? undefined,
+      cashFlowOperatingTTM: ynum(fd.operatingCashflow) ?? undefined,
+      epsForward: ynum(ks.forwardEps) ?? undefined,
+      pegRatio: ynum(ks.pegRatio) ?? undefined,
+      enterpriseValueAnnual: ynum(ks.enterpriseValue) ?? undefined,
+    };
+    const profile: Partial<FinnhubProfile> = {
+      name: undefined,
+      finnhubIndustry: r.assetProfile?.industry ?? r.assetProfile?.sector ?? undefined,
+      employeeTotal: r.assetProfile?.fullTimeEmployees ?? undefined,
+    };
+    return { metrics: metrics as FinnhubMetrics, profile: profile as FinnhubProfile };
+  } catch {
+    return { metrics: null, profile: null };
+  }
+}
+
 async function getFinnhubHistory(code: string) {
   if (!FINNHUB_KEY) return [];
 
@@ -250,7 +354,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // 腾讯为主源（实时免费），富途/Finnhub/Yahoo兜底
-    const [qt, futu, quote, metrics, profile, yahooResult] = await Promise.all([
+    const [qt, futu, quote, fhMetrics, fhProfile, yahooResult] = await Promise.all([
       getQtStock(code),
       getFutuStock(code),
       getFinnhubQuote(code),
@@ -258,6 +362,14 @@ export async function GET(request: NextRequest) {
       getFinnhubProfile(code),
       getYahooChart(code),
     ]);
+    // Finnhub metrics/profile免费层premium恒空 → Yahoo quoteSummary兜底（crumb尽力而为）
+    let metrics = fhMetrics;
+    let profile = fhProfile;
+    if (metrics == null || profile == null) {
+      const ysum = await getYahooSummary(code);
+      if (metrics == null && ysum.metrics) metrics = ysum.metrics;
+      if (profile == null && ysum.profile) profile = ysum.profile;
+    }
 
     const price = qt?.price ?? futu?.price ?? quote?.c ?? yahooResult?.meta?.regularMarketPrice ?? null;
     const previousClose =
