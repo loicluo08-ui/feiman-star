@@ -59,11 +59,15 @@ export function extractStockCodes(text: string): string[] {
   return Array.from(codes).slice(0, 4);
 }
 
+// 历史锚点缓存：Yahoo chart对云IP限流敏感（429），15分钟缓存把重复请求压到最低
+const histCache = new Map<string, { data: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null; expiresAt: number }>();
+
 export async function fetchStockData(codes: string[]): Promise<Array<{
   code: string; name: string; price: number | null; pe: number | null;
   changePct: number | null; marketCap: number | null;
   previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null;
   freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean;
+  history: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null;
 }>> {
   const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
   const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
@@ -166,6 +170,43 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
         }
       } catch {}
     }
+    // 历史锚点：Yahoo chart 3mo日线（免crumb，浏览器headers）。注入后AI可回答"上月多少/涨了多少"类问题
+    let history: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null = null;
+    const cachedHist = histCache.get(code);
+    if (cachedHist && cachedHist.expiresAt > Date.now()) {
+      history = cachedHist.data;
+    } else try {
+      const yhCode = code.replace(".", "-");
+      const yhRes = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yhCode)}?interval=1d&range=3mo`, {
+        headers: {
+          "User-Agent": UA,
+          "Accept": "application/json,text/plain,*/*",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": "https://finance.yahoo.com/",
+          "Sec-Fetch-Dest": "empty",
+          "Sec-Fetch-Mode": "cors",
+          "Sec-Fetch-Site": "same-site",
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (yhRes.ok) {
+        const yh = (await yhRes.json()) as { chart?: { result?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ close?: Array<number | null> }> } }> } };
+        const r0 = yh.chart?.result?.[0];
+        const rawCloses = r0?.indicators?.quote?.[0]?.close ?? [];
+        const closes = rawCloses.filter((c): c is number => c != null);
+        if (closes.length >= 30) {
+          const last20 = closes.slice(-21, -1); // 最近一个月约21个交易日
+          history = {
+            oneMonthAgo: closes[closes.length - 22] ?? null,
+            threeMonthsAgo: closes[0] ?? null,
+            monthHigh: last20.length ? Math.max(...last20) : null,
+            monthLow: last20.length ? Math.min(...last20) : null,
+          };
+        }
+        histCache.set(code, { data: history, expiresAt: Date.now() + 15 * 60 * 1000 });
+      }
+    } catch {}
+
     // D2豁免：腾讯被闸门弃用但Finnhub价格与腾讯原始价一致(±1.5%)→真实极端行情(财报跳空/熔断级波动)，恢复数据
     if (!qtValid && qtRawPrice > 0 && fhPrice != null && fhPrice > 0) {
       if (Math.abs(qtRawPrice - fhPrice) / fhPrice <= 0.015) {
@@ -207,12 +248,12 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
       } catch {}
     }
 
-    return { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume, freshness: qtTimestamp, divergence, anomaly: !qtValid && !qtRealMover && price != null, extremeMove: qtRealMover };
+    return { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume, freshness: qtTimestamp, divergence, anomaly: !qtValid && !qtRealMover && price != null, extremeMove: qtRealMover, history };
   }));
 }
 
 export function buildStockContext(
-  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null; previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null; freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean }>,
+  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null; previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null; freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean; history: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null }>,
 ): string {
   if (stockData.length === 0) return "";
   const lines = stockData.map((s) => {
@@ -238,6 +279,15 @@ export function buildStockContext(
       if (capB > 1) parts.push(`市值:$${capB.toFixed(0)}B`);
     }
     if (s.divergence != null) parts.push(`[两源分歧±${s.divergence.toFixed(2)}%，腾讯vs Finnhub，须呈现两值]`);
+    if (s.history && (s.history.oneMonthAgo != null || s.history.monthHigh != null)) {
+      const h = s.history;
+      const parts2: string[] = [];
+      if (h.oneMonthAgo != null) parts2.push(`1月前:${h.oneMonthAgo.toFixed(2)}`);
+      if (h.threeMonthsAgo != null) parts2.push(`3月前:${h.threeMonthsAgo.toFixed(2)}`);
+      if (h.monthHigh != null) parts2.push(`近1月高:${h.monthHigh.toFixed(2)}`);
+      if (h.monthLow != null) parts2.push(`近1月低:${h.monthLow.toFixed(2)}`);
+      parts.push(`历史锚点[${parts2.join(" | ")}](Yahoo日线)`);
+    }
     return `- ${parts.join(" | ")}`;
   });
   return [
