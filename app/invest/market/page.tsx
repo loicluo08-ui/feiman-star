@@ -87,31 +87,35 @@ export default function MarketPage() {
       const res = await fetch(`https://qt.gtimg.cn/q=${q}`, { cache: "no-store" });
       if (!res.ok) throw new Error("network_error");
       const text = new TextDecoder("gbk").decode(await res.arrayBuffer());
+      // 纯解析：提取行情+最新数据时刻（f[30]美东时间），setState副作用移出updater
       let latestDataTime = "";
+      const parsed: Array<{ symbol: string; price: number; change: number | null; changePct: number | null }> = [];
+      for (const line of text.split(";")) {
+        const m = line.trim().match(/v_us([\w.]+)="([^"]*)"/);
+        if (!m) continue;
+        const f = m[2].split("~");
+        if (f.length < 35) continue;
+        const price = parseFloat(f[3]);
+        const change = parseFloat(f[31]);
+        const changePct = parseFloat(f[32]);
+        if (!Number.isFinite(price) || price <= 0) continue;
+        parsed.push({
+          symbol: m[1],
+          price,
+          change: Number.isFinite(change) ? change : null,
+          changePct: Number.isFinite(changePct) ? changePct : null,
+        });
+        const t30 = f[30] || "";
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(t30) && t30 > latestDataTime) {
+          latestDataTime = t30;
+        }
+      }
+      if (latestDataTime) setDataTime(latestDataTime);
       setQuotes((prev) => {
         const next = { ...prev };
-        for (const line of text.split(";")) {
-          const m = line.trim().match(/v_us([\w.]+)="([^"]*)"/);
-          if (!m) continue;
-          const f = m[2].split("~");
-          if (f.length < 35) continue;
-          const price = parseFloat(f[3]);
-          const change = parseFloat(f[31]);
-          const changePct = parseFloat(f[32]);
-          if (!Number.isFinite(price) || price <= 0) continue;
-          next[m[1]] = {
-            symbol: m[1],
-            price,
-            change: Number.isFinite(change) ? change : null,
-            changePct: Number.isFinite(changePct) ? changePct : null,
-          };
-          // f[30]=美东行情时间"YYYY-MM-DD HH:MM:SS"，多股取最新（D1数据时点标注）
-          const t30 = f[30] || "";
-          if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(t30) && t30 > latestDataTime) {
-            latestDataTime = t30;
-          }
+        for (const p of parsed) {
+          next[p.symbol] = p;
         }
-        if (latestDataTime) setDataTime(latestDataTime);
         return next;
       });
       setLastUpdate(new Date());
