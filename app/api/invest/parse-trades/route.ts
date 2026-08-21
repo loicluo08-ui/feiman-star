@@ -52,7 +52,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const parsed = JSON.parse(answer) as { trades?: unknown } | unknown[];
+    // LLM输出可能裹```json围栏或带前后杂文，先剥离再parse
+    const cleaned = answer.trim().replace(/^[\s\S]*?```(?:json)?\s*\n?/, "").replace(/\n?\s*```[\s\S]*$/, "").trim();
+    const parsed = JSON.parse(cleaned.startsWith("[") || cleaned.startsWith("{") ? cleaned : answer) as { trades?: unknown } | unknown[];
     const candidates = Array.isArray(parsed) ? parsed : parsed.trades;
     if (!Array.isArray(candidates)) throw new Error("invalid_shape");
 

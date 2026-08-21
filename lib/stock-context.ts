@@ -14,7 +14,7 @@ const STOCK_ALIASES: Record<string, string> = {
   "伯克希尔": "BRK.A", "巴菲特": "BRK.A", "美团": "MPNGY", "网易": "NTES", "携程": "TCOM",
 };
 
-const STOP_WORDS = new Set(["PE","PB","ROE","ROA","EPS","CEO","CFO","CTO","IPO","ETF","GDP","CPI","FED","API","JSON","HTTP","URL","USD","USA","AI","ML","PR","IR","IT","AR","VR","PC","GB","TB","CPU","GPU","RAM","SSD","HDD","USB","HDMI","WTO","WHO","NYC","LAX","SFO","DC","LA","SF"]);
+const STOP_WORDS = new Set(["PE","PB","ROE","ROA","EPS","CEO","CFO","CTO","IPO","ETF","GDP","CPI","FED","API","JSON","HTTP","URL","USD","USA","AI","ML","PR","IR","IT","AR","VR","PC","GB","TB","CPU","GPU","RAM","SSD","HDD","USB","HDMI","WTO","WHO","NYC","LAX","SFO","DC","LA","SF","FOMC","PMI","LPR","SEC","IMF","OPEC","REIT","SPAC","NFT","ADR","ICO","DAO","APP","VS","OK","PS","ID","VIX","DXY","BUY","SELL","HOLD","LONG","SHORT","STOP","LOSS","RISK","GAIN","CALL","PUT","ETFs","AMA","FAQ","TL;DR"]);
 
 export function extractStockCodes(text: string): string[] {
   const codes = new Set<string>();
@@ -63,7 +63,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
   code: string; name: string; price: number | null; pe: number | null;
   changePct: number | null; marketCap: number | null;
   previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null;
-  freshness: string | null; divergence: number | null; anomaly: boolean;
+  freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean;
 }>> {
   const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
   const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
@@ -83,6 +83,8 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
     // 腾讯源优先（实时+全套字段+免认证）
     let qtValid = false;
     let qtTimestamp: string | null = null;
+    // D2原始快照：真实大涨大跌（如财报跳空>20%）时腾讯会被闸门弃用，留快照供双源确认后恢复
+    let qtRawPrice = 0, qtRawPrev = 0, qtRawPct = 0, qtRawPE = 0, f44Cap = 0, qtRealMover = false;
     try {
       const qtRes = await fetch(`https://qt.gtimg.cn/q=us${encodeURIComponent(code)}`, {
         headers: { "User-Agent": UA, Referer: "https://gu.qq.com/" },
@@ -99,6 +101,8 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
             const pPct = f[32] !== "" ? parseFloat(f[32]) : 0;
             const pPEraw = f[39] == null ? "" : f[39];
             const pPE = pPEraw !== "" && !isNaN(parseFloat(pPEraw)) ? parseFloat(pPEraw) : 0;
+            qtRawPrice = pPrice; qtRawPrev = pPrev; qtRawPct = pPct; qtRawPE = pPE;
+            f44Cap = f[44] !== "" && !isNaN(parseFloat(f[44])) && parseFloat(f[44]) > 0 ? parseFloat(f[44]) * 1e8 : 0;
             // D2合理性闸门：零负价/异常涨跌/极端PE → 弃用走备用源
             const sane = pPrice > 0 && pPrev > 0 && Math.abs(pPct) <= 20 && (pPE === 0 || (pPE > 0 && pPE < 1000));
             if (sane) {
@@ -113,8 +117,8 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
               low = f[34] !== "" && f[34] !== undefined ? parseFloat(f[34]) : null;
               pe = pPE > 0 ? pPE : null;
               marketCap = f[44] !== "" && parseFloat(f[44]) > 0 ? parseFloat(f[44]) * 1e8 : null;
-              // D1新鲜度：f[30]=美东完整时间"YYYY-MM-DD HH:MM:SS"。日期不同(周末/隔夜)→收盘；同日按分钟差算年龄
-              const tm = (f[30] || "").match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+              // D1新鲜度：f[30]=美东完整时间"YYYY-MM-DD HH:MM:SS"（腾讯偶尔用斜杠分隔，防御兼容）
+              const tm = (f[30] || "").match(/(\d{4})[-/](\d{2})[-/](\d{2}) (\d{2}):(\d{2}):(\d{2})/);
               if (tm) {
                 try {
                   const nowFull = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()).replace(",", "");
@@ -162,6 +166,17 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
         }
       } catch {}
     }
+    // D2豁免：腾讯被闸门弃用但Finnhub价格与腾讯原始价一致(±1.5%)→真实极端行情(财报跳空/熔断级波动)，恢复数据
+    if (!qtValid && qtRawPrice > 0 && fhPrice != null && fhPrice > 0) {
+      if (Math.abs(qtRawPrice - fhPrice) / fhPrice <= 0.015) {
+        qtRealMover = true;
+        price = qtRawPrice;
+        previousClose = qtRawPrev || null;
+        changePct = qtRawPct;
+        pe = qtRawPE > 0 ? qtRawPE : null;
+        if (marketCap == null && f44Cap > 0) marketCap = f44Cap;
+      }
+    }
     // D3：两源都拿到时算分歧
     let divergence: number | null = null;
     if (qtValid && fhPrice != null && fhPrice > 0 && price != null) {
@@ -172,8 +187,9 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
     // Yahoo最后兜底
     if (price == null) {
       try {
+        const yahooCode = code.replace(".", "-");
         const yahooRes = await fetch(
-          `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?interval=1d&range=1d`,
+          `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooCode)}?interval=1d&range=1d`,
           { headers: { "User-Agent": UA, Referer: "https://finance.yahoo.com/" }, signal: AbortSignal.timeout(4000) },
         );
         if (yahooRes.ok) {
@@ -191,12 +207,12 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
       } catch {}
     }
 
-    return { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume, freshness: qtTimestamp, divergence, anomaly: !qtValid && price != null };
+    return { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume, freshness: qtTimestamp, divergence, anomaly: !qtValid && !qtRealMover && price != null, extremeMove: qtRealMover };
   }));
 }
 
 export function buildStockContext(
-  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null; previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null; freshness: string | null; divergence: number | null; anomaly: boolean }>,
+  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null; previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null; freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean }>,
 ): string {
   if (stockData.length === 0) return "";
   const lines = stockData.map((s) => {
@@ -208,6 +224,7 @@ export function buildStockContext(
     }
     if (s.freshness) parts.push(`[${s.freshness}]`);
     if (s.anomaly) parts.push(`[数据异常，经备用源校正]`);
+    if (s.extremeMove) parts.push(`[单日涨跌超20%，腾讯+Finnhub双源一致确认，真实行情非数据错误，按正常数据结合波动风险分析]`);
     if (s.price != null) parts.push(`现价:$${s.price}`);
     if (s.previousClose != null) parts.push(`昨收:$${s.previousClose}`);
     if (s.changePct != null) parts.push(`涨跌:${s.changePct}%`);
