@@ -69,6 +69,8 @@ export default function MarketPage() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  // D1数据时点：腾讯f[30]最新行情时间
+  const [dataTime, setDataTime] = useState<string | null>(null);
   const [sectorPeriod, setSectorPeriod] = useState<SectorPeriod>("1d");
   const lastManualRefreshRef = useRef(0);
 
@@ -85,6 +87,7 @@ export default function MarketPage() {
       const res = await fetch(`https://qt.gtimg.cn/q=${q}`, { cache: "no-store" });
       if (!res.ok) throw new Error("network_error");
       const text = new TextDecoder("gbk").decode(await res.arrayBuffer());
+      let latestDataTime = "";
       setQuotes((prev) => {
         const next = { ...prev };
         for (const line of text.split(";")) {
@@ -102,7 +105,13 @@ export default function MarketPage() {
             change: Number.isFinite(change) ? change : null,
             changePct: Number.isFinite(changePct) ? changePct : null,
           };
+          // f[30]=美东行情时间"YYYY-MM-DD HH:MM:SS"，多股取最新（D1数据时点标注）
+          const t30 = f[30] || "";
+          if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(t30) && t30 > latestDataTime) {
+            latestDataTime = t30;
+          }
         }
+        if (latestDataTime) setDataTime(latestDataTime);
         return next;
       });
       setLastUpdate(new Date());
@@ -263,8 +272,13 @@ export default function MarketPage() {
       <header className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">市场快报</h1>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">自选实时行情+板块轮动+市场情绪</p>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">自选行情+板块轮动+市场情绪</p>
         </div>
+        {dataTime && (
+          <span className="text-xs text-[var(--text-muted)]">
+            行情截至 {dataTime.slice(5, 16)} 美东
+          </span>
+        )}
         <button
           onClick={handleManualRefresh}
           disabled={refreshing}
