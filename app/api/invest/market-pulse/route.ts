@@ -179,13 +179,13 @@ export async function GET(request: NextRequest) {
       })),
       // 板块分批拉取：11个ETF并发Yahoo必限流（429全灭），4个/批+300ms间隔
       (async () => {
-        const results: Array<Record<string, unknown>> = [];
+        const results: Array<typeof sectors[number] & { price: number | null; change: number | null; changePct: number | null; changePct5d: number | null; changePct20d: number | null }> = [];
         for (let i = 0; i < sectors.length; i += 4) {
           const batch = sectors.slice(i, i + 4);
           const batchResults = await Promise.all(batch.map(async (sec) => {
             const q = await fetchQuote(sec.symbol);
             const multiPeriod = await fetchMultiPeriodChange(sec.symbol, q?.price ?? null);
-            return { ...sec, ...q, ...multiPeriod };
+            return { ...sec, ...q, ...multiPeriod } as typeof sectors[number] & { price: number | null; change: number | null; changePct: number | null; changePct5d: number | null; changePct20d: number | null };
           }));
           results.push(...batchResults);
           if (i + 4 < sectors.length) await new Promise(r => setTimeout(r, 300));
