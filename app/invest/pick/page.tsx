@@ -115,7 +115,7 @@ function readWatchlist(): Array<{ symbol: string; name: string }> {
       const value = item as Record<string, unknown>;
       const symbol = typeof value.symbol === "string" ? value.symbol.trim().toUpperCase() : "";
       const name = typeof value.name === "string" ? value.name.trim() : symbol;
-      return /^[A-Z]{1,6}$/.test(symbol) ? [{ symbol, name: name || symbol }] : [];
+      return /^[A-Z]{1,5}(\.[A-Z])?$/.test(symbol) ? [{ symbol, name: name || symbol }] : [];
     }).slice(0, 20);
   } catch {
     return DEFAULT_WATCHLIST;
@@ -358,7 +358,7 @@ export default function PickPage() {
       if (e.key === "Enter") {
         e.preventDefault();
         // 如果输入的是有效代码格式，直接拉取
-        if (/^[A-Z]{1,6}$/.test(query.trim().toUpperCase())) {
+        if (/^[A-Z]{1,5}(\.[A-Z])?$/.test(query.trim().toUpperCase())) {
           fetchStock(query.trim().toUpperCase());
         }
       }
@@ -375,7 +375,7 @@ export default function PickPage() {
       e.preventDefault();
       if (highlightIdx >= 0 && highlightIdx < suggestions.length) {
         handleSuggestionClick(suggestions[highlightIdx]);
-      } else if (/^[A-Z]{1,6}$/.test(query.trim().toUpperCase())) {
+      } else if (/^[A-Z]{1,5}(\.[A-Z])?$/.test(query.trim().toUpperCase())) {
         fetchStock(query.trim().toUpperCase());
       }
     } else if (e.key === "Escape") {
@@ -729,7 +729,7 @@ export default function PickPage() {
           <button
             onClick={() => {
               const c = query.trim().toUpperCase();
-              if (/^[A-Z]{1,6}$/.test(c)) fetchStock(c);
+              if (/^[A-Z]{1,5}(\.[A-Z])?$/.test(c)) fetchStock(c);
             }}
             disabled={loadingData || !query.trim()}
             className="shrink-0 rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"

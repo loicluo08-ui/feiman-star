@@ -36,9 +36,9 @@ export async function POST(request: NextRequest) {
 
   const { content, title, source } = body as { content: string; title?: string; source?: string };
 
-  if (!content || typeof content !== "string" || content.length < 5) {
+  if (!content || typeof content !== "string" || content.length < 5 || content.length > 4000) {
     return new Response(
-      JSON.stringify({ error: "内容过短，无法分析" }),
+      JSON.stringify({ error: content.length > 4000 ? "内容过长（上限4000字）" : "内容过短，无法分析" }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -64,8 +64,8 @@ export async function POST(request: NextRequest) {
 ${FLASH_KB}
 </knowledge_base>`;
 
-  const userPrompt = `快讯来源：${source || "未知"}
-标题：${title || "无标题"}
+  const userPrompt = `快讯来源：${(source || "未知").slice(0, 40)}
+标题：${(title || "无标题").slice(0, 120)}
 内容：${content}
 
 请结合知识库中的QQQ分析框架，分析这条快讯对QQQ的影响。`;

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   const today = new Date();
   const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const fmt = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
   const todayStr = fmt(today);
   const weekAgoStr = fmt(weekAgo);
 
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         headline: n.headline,
         source: n.source,
         url: n.url,
-        date: n.datetime ? new Date(n.datetime * 1000).toISOString().slice(0, 10) : "",
+        date: n.datetime ? fmt(new Date(n.datetime * 1000)) : "",
         summary: (n.summary ?? "").slice(0, 200),
       }));
 

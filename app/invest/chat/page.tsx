@@ -303,8 +303,10 @@ export default function ChatPage() {
     // 历史消息：只保留最近2轮的图片，更早的图片转为文字描述（避免payload过大）
     const recentImageCount = 2;
     let imageCount = 0;
+    // 只发最近20条（后端zod上限20，长对话全发会400）
+    const messagesWindow = currentMessages.slice(-20);
     const apiMessages = [
-      ...currentMessages.map((m) => {
+      ...messagesWindow.map((m) => {
         const previews = m.imagePreviews ?? [];
         const hasImage = previews.length > 0;
         const includeImage = hasImage && imageCount < recentImageCount;
