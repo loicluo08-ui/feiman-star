@@ -139,7 +139,8 @@ async function getFinnhubHistory(code: string) {
 }
 
 async function getYahooChart(code: string): Promise<YahooChartResult | null> {
-  // Yahoo需要完整浏览器headers才能在Vercel上工作
+  // Yahoo需要完整浏览器headers才能在Vercel上工作；带点代码（BRK.A）在Yahoo是横杠（BRK-A）
+  const yahooCode = code.replace(".", "-");
   const browserHeaders = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -158,7 +159,7 @@ async function getYahooChart(code: string): Promise<YahooChartResult | null> {
   for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
     try {
       const response = await fetch(
-        `https://${host}/v8/finance/chart/${encodeURIComponent(code)}?interval=1d&range=3mo`,
+        `https://${host}/v8/finance/chart/${encodeURIComponent(yahooCode)}?interval=1d&range=3mo`,
         { headers: browserHeaders, signal: AbortSignal.timeout(8000) },
       );
       if (!response.ok) continue;
