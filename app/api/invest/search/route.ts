@@ -51,7 +51,7 @@ async function yahooSearchFallback(q: string): Promise<Array<{ code: string; nam
     if (!res.ok) return [];
     const data = (await res.json()) as { quotes?: Array<{ symbol?: string; shortname?: string; longname?: string; exchDisp?: string; quoteType?: string }> };
     return (data.quotes ?? [])
-      .filter((it) => it.symbol && /^[A-Z]{1,5}(\.[A-Z])?$/.test(it.symbol) && (it.exchDisp === "NMS" || it.exchDisp === "NYQ" || it.exchDisp === "NGM" || !it.exchDisp))
+      .filter((it) => it.symbol && /^[A-Z]{1,5}(\.[A-Z])?$/.test(it.symbol) && (!it.exchDisp || ["NASDAQ", "NYSE", "NYSE American", "NMS", "NYQ", "NGM"].includes(it.exchDisp)))
       .slice(0, 8)
       .map((it) => ({
         code: it.symbol as string,
