@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
 
       const answer = await callVisionAI(visionMessages, {
         temperature: 0.4,
-        max_tokens: 3000,
+        max_tokens: 1024, // glm-4v-flash免费版硬上限1024（传超限直接400码1210）
         retry: 1,
       });
 

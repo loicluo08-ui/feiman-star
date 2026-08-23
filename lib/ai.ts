@@ -148,7 +148,8 @@ export async function callVisionAI(
           model: process.env.ZHIPU_VISION_MODEL || "glm-4v-flash",
           messages,
           temperature: options.temperature ?? 0.4,
-          max_tokens: options.max_tokens ?? 3_000,
+          // glm-4v-flash免费版max_tokens硬上限1024，超限报400码1210
+          max_tokens: Math.min(options.max_tokens ?? 1024, 1024),
         }),
         cache: "no-store",
         signal: controller.signal,
