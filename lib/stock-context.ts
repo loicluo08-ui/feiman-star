@@ -61,6 +61,7 @@ export function extractStockCodes(text: string): string[] {
 
 // 历史锚点缓存：Yahoo chart对云IP限流敏感（429），15分钟缓存把重复请求压到最低
 import { getYahooChart, extractHistoryAnchors } from "./yahoo-chart";
+import { fetchSAYahooLikeChart } from "./stockanalysis";
 
 const histCache = new Map<string, { data: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null; expiresAt: number }>();
 
@@ -173,12 +174,15 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
       } catch {}
     }
     // 历史锚点：Yahoo chart 3mo日线（免crumb，浏览器headers）。注入后AI可回答"上月多少/涨了多少"类问题
+    // 2026-08-23：Yahoo对Vercel出口IP全面429，失败时用stockanalysis.com日线兜底
     let history: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null = null;
     const cachedHist = histCache.get(code);
     if (cachedHist && cachedHist.expiresAt > Date.now()) {
       history = cachedHist.data;
     } else try {
-      history = extractHistoryAnchors(await getYahooChart(code, "3mo"));
+      const yahooChart = await getYahooChart(code, "3mo");
+      const chart = yahooChart ?? (await fetchSAYahooLikeChart(code, 90) as Awaited<ReturnType<typeof getYahooChart>>);
+      history = extractHistoryAnchors(chart);
       histCache.set(code, { data: history, expiresAt: Date.now() + 15 * 60 * 1000 });
     } catch {}
 

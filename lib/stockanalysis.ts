@@ -62,6 +62,19 @@ export async function fetchSADaily(
   }
 }
 
+/** SA日线 → YahooChartResult形状适配器（chat历史锚点等消费方无缝切换） */
+export async function fetchSAYahooLikeChart(
+  rawCode: string,
+  maxDays = 90,
+): Promise<{ timestamp: number[]; indicators: { quote: Array<{ close: Array<number | null> }> } } | null> {
+  const rows = await fetchSADaily(rawCode, maxDays);
+  if (rows.length === 0) return null;
+  return {
+    timestamp: rows.map((r) => new Date(r.date + "T00:00:00Z").getTime() / 1000),
+    indicators: { quote: [{ close: rows.map((r) => r.close) }] },
+  };
+}
+
 export interface SASearchResult {
   code: string;
   name: string;
