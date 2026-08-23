@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { callAIStream, callVisionAI, type VisionMessage } from "@/lib/ai";
+import { callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type VisionMessage } from "@/lib/ai";
 import { crossValidate } from "@/lib/cross-validate";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { BASE_SKILLS } from "@/lib/chat-skills";
@@ -238,18 +238,41 @@ export async function POST(request: NextRequest) {
       let fullText = "";
 
       try {
+        const streamMessages: ChatMessage[] = [
+          { role: "system", content: finalSystemPrompt },
+          { role: "system", content: analysisStyle },
+          ...cleanMessages,
+        ];
+
         for await (const chunk of callAIStream(
-          [
-            { role: "system", content: finalSystemPrompt },
-            { role: "system", content: analysisStyle },
-            ...cleanMessages,
-          ],
+          streamMessages,
           { temperature: 0.4, max_tokens: 3000, retry: 1, timeout: 90_000 },
         )) {
           fullText += chunk;
           controller.enqueue(
             encoder.encode(JSON.stringify({ type: "chunk", text: chunk }) + "\n"),
           );
+        }
+
+        // D7: DeepSeek零输出（余额耗尽/连接失败/超时无chunk）→ 智谱glm-4-flash兜底流
+        // 中途断流不重跑（已有部分输出，重跑会造成内容重复）
+        if (!fullText.trim()) {
+          console.warn("[invest/chat] deepseek_empty → zhipu fallback");
+          const notice = "\u3010\u7cfb\u7edf\u63d0\u793a\u3011主引擎无响应，已切换备用引擎继续回答。\n\n";
+          fullText += notice;
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: "chunk", text: notice }) + "\n"),
+          );
+
+          for await (const chunk of callZhipuStream(
+            streamMessages,
+            { temperature: 0.4, max_tokens: 3000, timeout: 60_000 },
+          )) {
+            fullText += chunk;
+            controller.enqueue(
+              encoder.encode(JSON.stringify({ type: "chunk", text: chunk }) + "\n"),
+            );
+          }
         }
 
         if (!fullText.trim()) {
