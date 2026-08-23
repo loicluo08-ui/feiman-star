@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { saSearch } from "@/lib/stockanalysis";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,9 +113,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (filtered.length === 0) {
-      // Finnhub失败/空 → Yahoo兜底
+      // Finnhub失败/空 → Yahoo兜底 → 2026-08-23：Yahoo被Vercel IP限流429，加stockanalysis最终兜底
       const yahooResults = await yahooSearchFallback(q);
-      return NextResponse.json({ data: yahooResults });
+      if (yahooResults.length > 0) {
+        return NextResponse.json({ data: yahooResults });
+      }
+      const saResults = await saSearch(q);
+      return NextResponse.json({
+        data: saResults.map((r) => ({
+          ...r,
+          type: r.type === "etf" ? "ETF" : "EQUITY",
+          industry: "行业未知",
+        })),
+      });
     }
 
     const enriched = await Promise.all(
@@ -128,8 +139,18 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     console.error(`[invest/search] ${message}`);
-    // 兜底链最后一道：整体异常也尝试Yahoo
+    // 兜底链最后一道：整体异常也尝试Yahoo → SA
     const yahooResults = await yahooSearchFallback(q).catch(() => []);
-    return NextResponse.json({ data: yahooResults });
+    if (yahooResults.length > 0) {
+      return NextResponse.json({ data: yahooResults });
+    }
+    const saResults = await saSearch(q).catch(() => []);
+    return NextResponse.json({
+      data: saResults.map((r) => ({
+        ...r,
+        type: r.type === "etf" ? "ETF" : "EQUITY",
+        industry: "行业未知",
+      })),
+    });
   }
 }

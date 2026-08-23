@@ -3,6 +3,7 @@ import { getYahooChart, type YahooChartResult } from "@/lib/yahoo-chart";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getFutuStock } from "@/lib/futu";
 import { getQtStock } from "@/lib/qt";
+import { fetchSADaily } from "@/lib/stockanalysis";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -277,9 +278,15 @@ export async function GET(request: NextRequest) {
         volume: volumes[index] ?? null,
       }))
       .filter((candle) => candle.close != null);
-    const candles = yahooCandles.length > 0 ? yahooCandles : await getFinnhubHistory(code);
+    // 2026-08-23：Yahoo被Vercel出口IP限流429，加stockanalysis日线兜底（Finnhub candle免费版已停403）
+    let candles = yahooCandles.length > 0 ? yahooCandles : await getFinnhubHistory(code);
+    if (candles.length === 0) {
+      candles = await fetchSADaily(code, 180);
+    }
 
-    if (!quote && !yahooResult && candles.length === 0) {
+    // 404判定修正：腾讯/富途已返回价格时不应误报"未找到"（2026-08-23，QQQ线上误报404修复）
+    const hasLivePrice = price != null;
+    if (!quote && !yahooResult && candles.length === 0 && !hasLivePrice) {
       return NextResponse.json({ error: `未找到股票代码 ${code}` }, { status: 404 });
     }
 

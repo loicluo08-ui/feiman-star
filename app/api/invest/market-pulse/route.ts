@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getQtStocks } from "@/lib/qt";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { fetchSACloses } from "@/lib/stockanalysis";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
-const YAHOO_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 // 30秒内存缓存，避免频繁请求腾讯+Yahoo+Finnhub
 let cache: { data: unknown; expiresAt: number } | null = null;
@@ -20,44 +20,16 @@ async function fetchYahooCloses(symbol: string): Promise<number[]> {
   if (cached && cached.expiresAt > Date.now() && cached.closes.length > 0) {
     return cached.closes;
   }
-  const result = await fetchYahooClosesUncached(symbol);
+  // 2026-08-23：Yahoo 对 Vercel 出口 IP 全面 429，日线切 stockanalysis.com（云端实测稳定）
+  const result = await fetchSACloses(symbol, 60);
   if (result.length > 0) {
     closesCache.set(symbol, { closes: result, expiresAt: Date.now() + 60 * 60 * 1000 });
   }
   return result;
 }
 
-async function fetchYahooClosesUncached(symbol: string): Promise<number[]> {
-  // query2优先+完整浏览器headers（stock route同款已验证配置；query1裸请求会被限）
-  const browserHeaders: Record<string, string> = {
-    "User-Agent": YAHOO_UA,
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Referer": "https://finance.yahoo.com/",
-  };
-  for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
-    try {
-      const response = await fetch(`https://${host}/v8/finance/chart/${symbol}?interval=1d&range=3mo`, {
-        headers: browserHeaders,
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!response.ok) continue;
-      const payload = (await response.json()) as {
-        chart?: { result?: Array<{ indicators?: { quote?: Array<{ close?: Array<number | null> }> } }> };
-      };
-      const closes = (payload.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [])
-        .filter((value): value is number => typeof value === "number" && value > 0);
-      if (closes.length > 0) return closes;
-    } catch {
-      // 换下一个host
-    }
-  }
-  return [];
-}
+// 2026-08-23：Yahoo query1/query2 对 Vercel 出口 IP 全面 429（云端实测三连挂），
+// 原Yahoo日线函数已删，日线唯一来源=stockanalysis.com（lib/stockanalysis.ts，带60分钟缓存）
 
 /**
  * 市场脉搏：大盘指数+板块ETF+波动率
