@@ -207,7 +207,12 @@ export async function POST(request: NextRequest) {
       });
 
       if (!answer) {
-        return NextResponse.json({ error: "AI服务暂时不可用" }, { status: 503 });
+        const detail =
+          ((globalThis as Record<string, unknown>).__lastZhipuError as string) || "unknown";
+        return NextResponse.json(
+          { error: "AI服务暂时不可用", detail },
+          { status: 503, headers: { "Cache-Control": "no-store" } },
+        );
       }
 
       const validation = crossValidate(answer);

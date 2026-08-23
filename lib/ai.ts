@@ -158,7 +158,13 @@ export async function callVisionAI(
         const content = extractMessageContent(await response.json());
         if (content) return content;
       } else {
-        console.error(`[ai] zhipu_status=${response.status} attempt=${attempt}`);
+        const errBody = await response.text().catch(() => "");
+        console.error(
+          `[ai] zhipu_status=${response.status} attempt=${attempt} body=${errBody.slice(0, 200)}`,
+        );
+        // 透传最后一次失败原因给调用方（诊断503根因：402欠费/429限流/401权限/500服务端）
+        (globalThis as Record<string, unknown>).__lastZhipuError =
+          `zhipu_${response.status}: ${errBody.slice(0, 120)}`;
         if (response.status >= 400 && response.status < 500 && response.status !== 429) {
           return null;
         }
