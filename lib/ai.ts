@@ -145,7 +145,7 @@ export async function callVisionAI(
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: "glm-4v-plus-0111",
+          model: process.env.ZHIPU_VISION_MODEL || "glm-4v-flash",
           messages,
           temperature: options.temperature ?? 0.4,
           max_tokens: options.max_tokens ?? 3_000,
