@@ -442,27 +442,33 @@ export default function FlashPage() {
                 </button>
               </div>
 
-              {/* 原文 */}
-              <div className="border-b border-[var(--border)] px-4 py-3">
-                <div className="mb-2 flex items-center gap-2 text-[10px]">
-                  <span className="font-mono text-[var(--text-muted)]">{selectedItem.time_str}</span>
-                  {selectedItem.is_important && (
-                    <span className="rounded bg-[var(--warning)] px-1.5 py-0.5 font-medium text-white">重要</span>
+              {/* 原文（默认折叠，点开查看） */}
+              <details className="border-b border-[var(--border)] px-4 py-3">
+                <summary className="cursor-pointer select-none text-xs font-bold text-[var(--text-muted)]">
+                  查看快讯原文
+                </summary>
+                <div className="mt-2">
+                  <div className="mb-2 flex items-center gap-2 text-[10px]">
+                    <span className="font-mono text-[var(--text-muted)]">{selectedItem.time_str}</span>
+                    {selectedItem.is_important && (
+                      <span className="rounded bg-[var(--warning)] px-1.5 py-0.5 font-medium text-white">重要</span>
+                    )}
+                    <span className="rounded bg-orange-100 px-1.5 py-0.5 font-medium text-orange-700 dark:bg-orange-900 dark:text-orange-300">
+                      {selectedItem.source}
+                    </span>
+                  </div>
+                  {selectedItem.title && (
+                    <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{selectedItem.title}</h3>
                   )}
-                  <span className="rounded bg-orange-100 px-1.5 py-0.5 font-medium text-orange-700 dark:bg-orange-900 dark:text-orange-300">
-                    {selectedItem.source}
-                  </span>
+                  <p className="text-xs leading-5 text-[var(--text-secondary)] whitespace-pre-line">
+                    {selectedItem.content_text}
+                  </p>
                 </div>
-                {selectedItem.title && (
-                  <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{selectedItem.title}</h3>
-                )}
-                <p className="text-xs leading-5 text-[var(--text-secondary)] whitespace-pre-line">
-                  {selectedItem.content_text}
-                </p>
-              </div>
+              </details>
 
               {/* AI分析内容 */}
               <div className="flex-1 overflow-y-auto px-4 py-3">
+                <div className="mb-1 text-xs font-bold text-[var(--accent)]">AI 分析结果</div>
                 {aiLoading && !aiAnalysis && (
                   <div className="flex items-center gap-2 py-4">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
