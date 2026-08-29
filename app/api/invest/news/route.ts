@@ -53,7 +53,7 @@ async function getYahooNews(code: string): Promise<Array<{ headline: string; sou
 }
 
 export async function GET(request: NextRequest) {
-  const limited = enforceRateLimit(request, "news", { maxRequests: 60, windowMs: 60_000 });
+  const limited = enforceRateLimit(request, "news", RATE_LIMITS.news);
   if (limited) {
     return NextResponse.json(
       { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },

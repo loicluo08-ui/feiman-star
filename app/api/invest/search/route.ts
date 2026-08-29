@@ -9,6 +9,11 @@ const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
 const PROFILE_CACHE_TTL = 6 * 60 * 60 * 1000;
 const profileCache = new Map<string, { industry: string; expiresAt: number }>();
 
+// 搜索结果缓存：Finnhub免费层60次/分是硬配额，同一query 10分钟内直接回缓存
+// 大量使用场景下重复搜索占比高，缓存把上游压力压到近零
+const searchCache = new Map<string, { data: unknown; expiresAt: number }>();
+const SEARCH_CACHE_TTL = 10 * 60 * 1000;
+
 async function getIndustry(symbol: string, token: string): Promise<string> {
   const cached = profileCache.get(symbol);
   if (cached && cached.expiresAt > Date.now()) return cached.industry;
@@ -82,6 +87,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: [] });
   }
 
+  // 结果缓存命中（key=归一化query，大小写不敏感）
+  const cacheKey = q.toLowerCase();
+  const cached = searchCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return NextResponse.json({ data: cached.data, cached: true });
+  }
+
+  // 所有返回路径统一写缓存（含兜底结果——上游故障期间缓存兜底数据，10分钟后自动恢复探测）
+  const respondWithCache = (data: unknown) => {
+    searchCache.set(cacheKey, { data, expiresAt: Date.now() + SEARCH_CACHE_TTL });
+    return NextResponse.json({ data });
+  };
+
   try {
     const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
 
@@ -116,16 +134,14 @@ export async function GET(request: NextRequest) {
       // Finnhub失败/空 → Yahoo兜底 → 2026-08-23：Yahoo被Vercel IP限流429，加stockanalysis最终兜底
       const yahooResults = await yahooSearchFallback(q);
       if (yahooResults.length > 0) {
-        return NextResponse.json({ data: yahooResults });
+        return respondWithCache(yahooResults);
       }
       const saResults = await saSearch(q);
-      return NextResponse.json({
-        data: saResults.map((r) => ({
-          ...r,
-          type: r.type === "etf" ? "ETF" : "EQUITY",
-          industry: "行业未知",
-        })),
-      });
+      return respondWithCache(saResults.map((r) => ({
+        ...r,
+        type: r.type === "etf" ? "ETF" : "EQUITY",
+        industry: "行业未知",
+      })));
     }
 
     const enriched = await Promise.all(
@@ -135,22 +151,20 @@ export async function GET(request: NextRequest) {
       })),
     );
 
-    return NextResponse.json({ data: enriched });
+    return respondWithCache(enriched);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     console.error(`[invest/search] ${message}`);
     // 兜底链最后一道：整体异常也尝试Yahoo → SA
     const yahooResults = await yahooSearchFallback(q).catch(() => []);
     if (yahooResults.length > 0) {
-      return NextResponse.json({ data: yahooResults });
+      return respondWithCache(yahooResults);
     }
     const saResults = await saSearch(q).catch(() => []);
-    return NextResponse.json({
-      data: saResults.map((r) => ({
-        ...r,
-        type: r.type === "etf" ? "ETF" : "EQUITY",
-        industry: "行业未知",
-      })),
-    });
+    return respondWithCache(saResults.map((r) => ({
+      ...r,
+      type: r.type === "etf" ? "ETF" : "EQUITY",
+      industry: "行业未知",
+    })));
   }
 }

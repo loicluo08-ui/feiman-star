@@ -1,19 +1,23 @@
 /** RATE_LIMITS 配置
- * 8/21策略：大幅放开（自用阶段），只保留防滥用的底线——防的是脚本刷爆DeepSeek余额和外部API配额，
- * 不限制正常人类使用（连续快速使用也不会触线）。
- * DeepSeek侧还有自己的并发限制做第二道保护。
+ * 8/29策略：面向大量使用场景（多用户/高频）全面放宽。
+ * 保护逻辑分两层：
+ * 1. AI端点（chat/pick/review/parseTrades/reviewSummary/flash-analyze）——钱包保护。
+ *    放宽后脚本刷量敞口变大，硬顶靠DeepSeek自身并发限制+账户余额；上线KV全局限流前数字为多实例下的下限。
+ * 2. 数据端点——上游配额保护。flash/marketPulse/news/calendar均有服务端缓存，
+ *    用户请求被缓存吸收，放宽不影响上游；stock(腾讯)/search(Finnhub+Yahoo兜底)上游宽松或有兜底。
  */
-
 export const RATE_LIMITS = {
-  chat: { maxRequests: 60, windowMs: 60_000 },    // 60次/分（防脚本刷DeepSeek余额）
-  pick: { maxRequests: 30, windowMs: 60_000 },    // 30次/分（每次调DeepSeek，防刷）
-  review: { maxRequests: 30, windowMs: 60_000 },  // 30次/分（同上）
-  flash: { maxRequests: 120, windowMs: 60_000 },  // 120次/分（免费源，只防恶意脚本）
-  stock: { maxRequests: 120, windowMs: 60_000 },  // 120次/分（腾讯免费源，宽松）
-  search: { maxRequests: 120, windowMs: 60_000 }, // 120次/分
-  parseTrades: { maxRequests: 30, windowMs: 60_000 },   // 调DeepSeek
-  reviewSummary: { maxRequests: 30, windowMs: 60_000 }, // 调DeepSeek
-  marketPulse: { maxRequests: 60, windowMs: 60_000 },   // 免费源聚合，中等
+  chat: { maxRequests: 300, windowMs: 60_000 },   // 300次/分（AI，正常使用不可能触线，防脚本底线）
+  pick: { maxRequests: 120, windowMs: 60_000 },   // 120次/分（AI）
+  review: { maxRequests: 120, windowMs: 60_000 }, // 120次/分（AI）
+  flash: { maxRequests: 300, windowMs: 60_000 },  // 300次/分（金十+华尔街，服务端缓存挡上游）
+  stock: { maxRequests: 300, windowMs: 60_000 },  // 300次/分（腾讯源宽松+15分钟锚点缓存）
+  search: { maxRequests: 240, windowMs: 60_000 }, // 240次/分（Finnhub免费60/分，10分钟结果缓存吸收）
+  parseTrades: { maxRequests: 120, windowMs: 60_000 },   // AI
+  reviewSummary: { maxRequests: 120, windowMs: 60_000 }, // AI
+  marketPulse: { maxRequests: 180, windowMs: 60_000 },   // 30秒缓存+60分钟日线缓存挡上游
+  news: { maxRequests: 180, windowMs: 60_000 },          // 10分钟缓存挡上游
+  flashAnalyze: { maxRequests: 60, windowMs: 60_000 },   // AI（快讯单条分析）
 } as const;
 
 /** KV限流（如果配置了KV环境变量则启用全局限流，否则降级为内存限流）

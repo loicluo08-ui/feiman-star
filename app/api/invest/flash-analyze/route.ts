@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { FLASH_KB } from "@/lib/flash-kb";
-import { enforceRateLimitAsync } from "@/lib/rate-limit";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { callAIStream, callZhipuStream, type ChatMessage } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const limited = await enforceRateLimitAsync(request, "flash-analyze", { maxRequests: 10, windowMs: 60_000 });
+  const limited = await enforceRateLimitAsync(request, "flash-analyze", RATE_LIMITS.flashAnalyze);
   if (limited) {
     return new Response(
       JSON.stringify({ error: `请求过于频繁，请${limited.retryAfter}秒后重试` }),
