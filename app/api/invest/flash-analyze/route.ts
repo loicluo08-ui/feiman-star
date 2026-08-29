@@ -82,7 +82,8 @@ ${FLASH_KB}
             "Authorization": `Bearer ${DEEPSEEK_KEY}`,
           },
           body: JSON.stringify({
-            model: "deepseek-chat",
+            // 与lib/ai.ts保持同源：deepseek-chat已进入弃用阶段，走环境变量+统一默认
+            model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
