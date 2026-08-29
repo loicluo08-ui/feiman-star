@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,11 @@ const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
  * 公司新闻+盈利日历
  * GET /api/invest/news?code=AAPL
  */
+
+// 服务端缓存：全链路最多5次串行外部请求（Finnhub→cookie→crumb→quoteSummary→Yahoo兜底）
+// 新闻/财报日期数据频率低，10分钟TTL在新鲜度和成本间取平衡
+const newsCache = new Map<string, { data: unknown; expiresAt: number }>();
+const NEWS_TTL = 10 * 60 * 1000;
 
 const BROWSER_HEADERS: Record<string, string> = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -47,11 +53,24 @@ async function getYahooNews(code: string): Promise<Array<{ headline: string; sou
 }
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, "news", { maxRequests: 60, windowMs: 60_000 });
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code")?.trim().toUpperCase();
 
   if (!code || !/^[A-Z]{1,5}(\.[A-Z])?$/.test(code)) {
     return NextResponse.json({ error: "无效的股票代码" }, { status: 400 });
+  }
+
+  const cached = newsCache.get(code);
+  if (cached && cached.expiresAt > Date.now()) {
+    return NextResponse.json({ data: cached.data, cached: true });
   }
 
   const today = new Date();
@@ -122,7 +141,10 @@ export async function GET(request: NextRequest) {
       finalNews = await getYahooNews(code);
     }
 
-    return NextResponse.json({ data: { news: finalNews, nextEarnings } });
+    const data = { news: finalNews, nextEarnings };
+    newsCache.set(code, { data, expiresAt: Date.now() + NEWS_TTL });
+
+    return NextResponse.json({ data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     console.error(`[invest/news] ${code} ${message}`);

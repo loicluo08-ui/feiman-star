@@ -72,6 +72,11 @@ async function fetchNasdaqDay(date: string): Promise<NasdaqRow[]> {
   }
 }
 
+// 财报日历服务端缓存：Nasdaq源单次全链路约3s（5工作日并行），数据一天只变几次
+// 30分钟TTL把重复查询压到近零成本，冷启动自动失效
+const calendarCache = new Map<number, { data: unknown; expiresAt: number }>();
+const CALENDAR_TTL = 30 * 60 * 1000;
+
 /** GET /api/invest/calendar?weekOffset=0 - 指定周的美股盈利日历（Nasdaq源） */
 export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request, "search", RATE_LIMITS.search);
@@ -86,6 +91,12 @@ export async function GET(request: NextRequest) {
   const weekOffset = Number.isInteger(rawWeekOffset)
     ? Math.max(-52, Math.min(52, rawWeekOffset))
     : 0;
+
+  const cached = calendarCache.get(weekOffset);
+  if (cached && cached.expiresAt > Date.now()) {
+    return NextResponse.json({ data: cached.data, cached: true });
+  }
+
   const weekdays = getWeekdays(weekOffset);
   const from = weekdays[0];
   const to = weekdays[weekdays.length - 1];
@@ -109,14 +120,16 @@ export async function GET(request: NextRequest) {
 
     earnings.sort((a, b) => `${a.date}-${a.symbol}`.localeCompare(`${b.date}-${b.symbol}`));
 
-    return NextResponse.json({
-      data: {
-        from,
-        to,
-        weekOffset,
-        earnings: earnings.slice(0, 200),
-      },
-    });
+    const data = {
+      from,
+      to,
+      weekOffset,
+      earnings: earnings.slice(0, 200),
+    };
+
+    calendarCache.set(weekOffset, { data, expiresAt: Date.now() + CALENDAR_TTL });
+
+    return NextResponse.json({ data });
   } catch (error) {
     console.error("[invest/calendar]", error);
     return NextResponse.json({ error: "财报日历暂时不可用" }, { status: 503 });

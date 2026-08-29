@@ -1,12 +1,10 @@
 import { NextRequest } from "next/server";
 import { FLASH_KB } from "@/lib/flash-kb";
 import { enforceRateLimitAsync } from "@/lib/rate-limit";
+import { callAIStream, callZhipuStream, type ChatMessage } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || "";
-const DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "flash-analyze", { maxRequests: 10, windowMs: 60_000 });
@@ -14,13 +12,6 @@ export async function POST(request: NextRequest) {
     return new Response(
       JSON.stringify({ error: `请求过于频繁，请${limited.retryAfter}秒后重试` }),
       { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(limited.retryAfter) } },
-    );
-  }
-
-  if (!DEEPSEEK_KEY) {
-    return new Response(
-      JSON.stringify({ error: "AI分析未配置" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -74,75 +65,51 @@ ${FLASH_KB}
 
   const stream = new ReadableStream({
     async start(controller) {
+      let fullText = "";
+
       try {
-        const response = await fetch(DEEPSEEK_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${DEEPSEEK_KEY}`,
-          },
-          body: JSON.stringify({
-            // 与lib/ai.ts保持同源：deepseek-chat已进入弃用阶段，走环境变量+统一默认
-            model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            stream: true,
-            max_tokens: 1200,
-            temperature: 0.3,
-          }),
-          signal: AbortSignal.timeout(30000),
-        });
+        // 统一AI层：DeepSeek主链（callAIStream内含重试+超时+模型名同源管理）
+        const messages: ChatMessage[] = [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ];
 
-        if (!response.ok) {
-          controller.enqueue(encoder.encode(`分析失败：AI服务异常（${response.status}）`));
-          controller.close();
-          return;
+        for await (const chunk of callAIStream(
+          messages,
+          { temperature: 0.3, max_tokens: 1200, retry: 1, timeout: 30_000 },
+        )) {
+          fullText += chunk;
+          controller.enqueue(encoder.encode(chunk));
         }
 
-        const reader = response.body?.getReader();
-        if (!reader) {
-          controller.enqueue(encoder.encode("分析失败：无响应流"));
-          controller.close();
-          return;
-        }
+        // D7: DeepSeek零输出（余额耗尽/连接失败/超时无chunk）→ 智谱兜底流
+        // 中途断流不重跑（已有部分输出，重跑会造成内容重复）
+        if (!fullText.trim()) {
+          console.warn("[flash-analyze] deepseek_empty → zhipu fallback");
+          const notice = "【系统提示】主引擎无响应，已切换备用引擎继续分析。\n\n";
+          fullText += notice;
+          controller.enqueue(encoder.encode(notice));
 
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || !trimmed.startsWith("data: ")) continue;
-            const data = trimmed.slice(6);
-            if (data === "[DONE]") continue;
-
-            try {
-              const json = JSON.parse(data);
-              const delta = json.choices?.[0]?.delta?.content;
-              if (delta) {
-                controller.enqueue(encoder.encode(delta));
-              }
-            } catch {
-              // 跳过不完整的JSON
-            }
+          for await (const chunk of callZhipuStream(
+            messages,
+            { temperature: 0.3, max_tokens: 1200, timeout: 60_000 },
+          )) {
+            fullText += chunk;
+            controller.enqueue(encoder.encode(chunk));
           }
         }
 
+        if (!fullText.trim()) {
+          controller.enqueue(encoder.encode("分析失败：AI服务暂时不可用，请稍后重试"));
+        }
         controller.close();
-      } catch (error: any) {
-        if (error.name === "AbortError" || error.name === "TimeoutError") {
-          controller.enqueue(encoder.encode("\n\n（分析超时）"));
+      } catch (error) {
+        console.error("[flash-analyze] stream_error", error);
+        // 降级：已有部分输出则保留，否则友好报错
+        if (fullText.trim()) {
+          controller.enqueue(encoder.encode("\n\n---\n\n⚠️ 分析中断，以上为已生成的部分内容。"));
         } else {
-          controller.enqueue(encoder.encode(`\n\n分析出错：${error.message || "未知错误"}`));
+          controller.enqueue(encoder.encode("分析出错：AI服务暂时不可用，请稍后重试"));
         }
         controller.close();
       }
