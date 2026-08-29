@@ -63,8 +63,16 @@ function isEnglishDominant(text: string): boolean {
   return chinese / text.length < 0.15 && letters > 50;
 }
 
-function makeFingerprint(content: string): string {
-  return content.replace(/[\s\W]/g, "").slice(0, 20);
+function normalizeForDedup(content: string): string {
+  // 剥掉金十格式壳：【标题】+ 讯头，否则同事件双源（金十带壳/华尔街纯正文）对不上
+  let t = content.replace(/【[^】]*】/g, "");
+  t = t.replace(/金十数据\d{1,2}月\d{1,2}日讯[，,]?/g, "");
+  // 剥纯英文词：华尔街常插 (CXMT) 等括号注释而金十不写，保留会导致字符错位
+  t = t.replace(/[A-Za-z]+/g, "");
+  // 注意：不能用 \W（ASCII语义）——会把中文全剥掉，指纹退化成纯数字字母
+  // tsconfig target es5 不支持 \p{...} Unicode属性类，用显式中文范围+数字
+  t = t.replace(/[^0-9\u4e00-\u9fff]/g, "");
+  return t;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -233,13 +241,21 @@ export async function GET(request: Request) {
   // 质量过滤 + 英文过滤（金十会推英文原文，同一条新闻通常有中文版）
   const filtered = all.filter((i) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text));
 
-  // 指纹去重
-  const seen = new Set<string>();
+  // 去重：前30个归一化字符全等，或一方为另一方前缀且重合≥12字（处理两源详略不同）
+  // 归一化后<6字的短讯（剥壳剩空壳）直接保留不参与判重，防误杀
+  const normTexts: string[] = [];
   const deduped: FlashItem[] = [];
   for (const item of filtered.sort((a, b) => b.timestamp - a.timestamp)) {
-    const fp = makeFingerprint(item.content);
-    if (seen.has(fp)) continue;
-    seen.add(fp);
+    const t = normalizeForDedup(item.content);
+    const isDup =
+      t.length >= 6 &&
+      normTexts.some((prev) => {
+        if (prev === t) return true;
+        if (prev.startsWith(t) || t.startsWith(prev)) return Math.min(prev.length, t.length) >= 12;
+        return prev.slice(0, 30) === t.slice(0, 30);
+      });
+    if (isDup) continue;
+    normTexts.push(t);
     deduped.push(item);
   }
 
