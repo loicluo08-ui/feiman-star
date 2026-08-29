@@ -16,6 +16,30 @@ const STOCK_ALIASES: Record<string, string> = {
 
 const STOP_WORDS = new Set(["PE","PB","ROE","ROA","EPS","CEO","CFO","CTO","IPO","ETF","GDP","CPI","FED","API","JSON","HTTP","URL","USD","USA","AI","ML","PR","IR","IT","AR","VR","PC","GB","TB","CPU","GPU","RAM","SSD","HDD","USB","HDMI","WTO","WHO","NYC","LAX","SFO","DC","LA","SF","FOMC","PMI","LPR","SEC","IMF","OPEC","REIT","SPAC","NFT","ADR","ICO","DAO","APP","VS","OK","PS","ID","VIX","DXY","BUY","SELL","HOLD","LONG","SHORT","STOP","LOSS","RISK","GAIN","CALL","PUT","ETFs","AMA","FAQ","TL;DR"]);
 
+// 加密资产符号：不作为股票代码拉行情（Yahoo/腾讯会把BTC解析成Grayscale ETF等同名美股产品，
+// 价格与加密现货量级完全不同，注入后模型会拿ETF价格冒充币价——比编造更隐蔽的误导）
+const CRYPTO_SYMBOLS = new Set([
+  "BTC","ETH","SOL","DOGE","XRP","ADA","BNB","AVAX","DOT","MATIC","LTC","SHIB",
+  "TRX","LINK","ATOM","ETC","FIL","NEAR","APT","ARB","SUI","PEPE","USDT","USDC",
+]);
+
+const CRYPTO_ALIASES: Record<string, string> = {
+  "比特币": "BTC", "大饼": "BTC", "以太坊": "ETH", "以太币": "ETH", "狗狗币": "DOGE",
+  "瑞波币": "XRP", "莱特币": "LTC", "索拉纳": "SOL", "泰达币": "USDT",
+};
+
+// 提取加密资产符号（用于注入数据边界声明），中英文都认
+export function extractCryptoSymbols(text: string): string[] {
+  const found = new Set<string>();
+  const upper = text.toUpperCase();
+  const symMatches = upper.match(/(?<![A-Z0-9])([A-Z]{2,5})(?![A-Z0-9])/g);
+  if (symMatches) symMatches.forEach((c) => { if (CRYPTO_SYMBOLS.has(c)) found.add(c); });
+  for (const [alias, sym] of Object.entries(CRYPTO_ALIASES)) {
+    if (text.includes(alias)) found.add(sym);
+  }
+  return Array.from(found).slice(0, 4);
+}
+
 export function extractStockCodes(text: string): string[] {
   const codes = new Set<string>();
   const normalizedText = text.trim();
@@ -56,7 +80,7 @@ export function extractStockCodes(text: string): string[] {
     });
   }
 
-  return Array.from(codes).slice(0, 4);
+  return Array.from(codes).filter((c) => !CRYPTO_SYMBOLS.has(c)).slice(0, 4);
 }
 
 // 历史锚点缓存：Yahoo chart对云IP限流敏感（429），15分钟缓存把重复请求压到最低

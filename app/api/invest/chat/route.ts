@@ -6,7 +6,7 @@ import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { loadKnowledgeBase } from "@/lib/knowledge";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
-import { extractStockCodes, buildStockContext, fetchStockData } from "@/lib/stock-context";
+import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData } from "@/lib/stock-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -172,9 +172,16 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // 加密资产识别：提取符号但不拉股票行情（同名ticker是美股产品不是币），注入数据边界声明
+  const cryptoSymbols = extractCryptoSymbols(combinedText);
+  let cryptoContext = "";
+  if (cryptoSymbols.length > 0) {
+    cryptoContext = `\n\n⚠️ 加密资产数据边界（必须遵守）：用户提到加密资产[${cryptoSymbols.join("、")}]。费曼星行情源仅覆盖股票，本次未注入任何加密货币行情数据。注意：BTC/ETH等符号在美股存在同名产品（如BTC=Grayscale比特币ETF），那是基金份额价格，与加密货币现货价格量级完全不同，严禁引用为币价。对加密资产只能做定性框架分析（波动率/仓位纪律/损失厌恶/流动性风险），引用时标注[框架]或[经验]，明确告知用户"无法提供加密货币实时行情"，具体现货价格一律不写。`;
+  }
+
   const finalSystemPrompt = stockContext
-    ? `${systemPrompt}\n${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。`
-    : systemPrompt;
+    ? `${systemPrompt}\n${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。${cryptoContext}`
+    : `${systemPrompt}${cryptoContext}`;
 
   // 图片路径：保持非流式，由GLM-4V处理。
   if (hasImage) {
