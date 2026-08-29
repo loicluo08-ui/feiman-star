@@ -202,6 +202,8 @@ const CACHE_TTL = 5 * 60 * 1000;
 let throttleCache: FlashItem[] = [];
 let throttleTime = 0;
 const THROTTLE_TTL = 10 * 1000;
+// 节流命中时也返回完整顶层字段，保持响应结构一致
+let throttleSource = "";
 
 function getCachedFallback(): FlashItem[] {
   if (Date.now() - lastSuccessTime < CACHE_TTL && lastSuccessCache.length > 0) {
@@ -225,7 +227,11 @@ export async function GET(request: Request) {
 
   // 10秒节流缓存命中→直接返回（前端5秒轮询，快讯分钟级更新，用户零感知）
   if (Date.now() - throttleTime < THROTTLE_TTL && throttleCache.length > 0) {
-    return NextResponse.json({ data: throttleCache });
+    return NextResponse.json({
+      data: throttleCache,
+      timestamp: new Date().toISOString(),
+      source: throttleSource || "金十数据",
+    });
   }
 
   const [jin10Items, wscnItems] = await Promise.all([
@@ -291,10 +297,12 @@ export async function GET(request: Request) {
   if (jin10Items.length > 0) sources.push("金十数据");
   if (wscnItems.some((i) => i.timestamp > (jin10Items[0]?.timestamp || 0))) sources.push("华尔街见闻");
 
+  throttleSource = sources.join("+") || "金十数据";
+
   return NextResponse.json({
     data: items,
     timestamp: new Date().toISOString(),
-    source: sources.join("+") || "金十数据",
+    source: throttleSource,
     stats: {
       total: items.length,
       jin10: jin10Items.length,

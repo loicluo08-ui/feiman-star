@@ -36,7 +36,8 @@ print("=" * 60)
 # ── 1. API可用性 ──
 print("\n[1] API可用性")
 try:
-    r = requests.get(f"{BASE}/api/invest/flash", timeout=15)
+    # cache-buster绕开10秒节流缓存，保证测的是完整拉取+去重链路
+    r = requests.get(f"{BASE}/api/invest/flash?_={int(time.time() * 1000)}", timeout=15)
     check("API返回200", r.status_code == 200, f"status={r.status_code}")
     data = r.json()
 except Exception as e:
