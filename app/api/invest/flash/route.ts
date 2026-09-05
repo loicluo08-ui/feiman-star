@@ -248,16 +248,19 @@ export async function GET(request: Request) {
   const filtered = all.filter((i) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text));
 
   // 去重：前30个归一化字符全等，或一方为另一方前缀且重合≥12字（处理两源详略不同）
+  // + 开头14字被已入库条目包含：同事件跨源文案（官方通稿标题两源趋同，但金十壳内标题/正文重复+带日期、
+  //   华尔街title独立存content无标题——仅比对content会开头错位漏判，故输入改用content_text并加此兜底）
   // 归一化后<6字的短讯（剥壳剩空壳）直接保留不参与判重，防误杀
   const normTexts: string[] = [];
   const deduped: FlashItem[] = [];
   for (const item of filtered.sort((a, b) => b.timestamp - a.timestamp)) {
-    const t = normalizeForDedup(item.content);
+    const t = normalizeForDedup(item.content_text);
     const isDup =
       t.length >= 6 &&
       normTexts.some((prev) => {
         if (prev === t) return true;
         if (prev.startsWith(t) || t.startsWith(prev)) return Math.min(prev.length, t.length) >= 12;
+        if (t.length >= 14 && prev.includes(t.slice(0, 14))) return true;
         return prev.slice(0, 30) === t.slice(0, 30);
       });
     if (isDup) continue;
