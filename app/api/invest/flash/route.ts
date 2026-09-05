@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isLowQuality, isEnglishDominant } from "@/lib/flash-filter";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -45,22 +46,6 @@ function formatRelativeTime(ts: number): string {
   if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
   return new Date(ts * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
-}
-
-function isLowQuality(content: string): boolean {
-  if (!content || content.length < 8) return true;
-  const lower = content.toLowerCase();
-  if (/扫码|加微信|进群|限时|优惠|点击链接/.test(content)) return true;
-  if (/笔者认为|我们认为|小编觉得/.test(content)) return true;
-  return false;
-}
-
-function isEnglishDominant(text: string): boolean {
-  if (!text || text.length < 10) return false;
-  const chinese = (text.match(/[\u4e00-\u9fff]/g) || []).length;
-  const letters = (text.match(/[a-zA-Z]/g) || []).length;
-  // 中文字符占比<15%且英文字母≥30 → 英文主导（阈值30：拦截短英文快讯，如49字母的CENTCOM条；中文快讯夹少量英文缩写不受影响）
-  return chinese / text.length < 0.15 && letters >= 30;
 }
 
 function normalizeForDedup(content: string): string {

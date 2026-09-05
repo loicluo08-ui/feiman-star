@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { filterFlashItems } from "@/lib/flash-filter";
 
 interface FlashItem {
   id: string;
@@ -171,7 +172,7 @@ export default function FlashPage() {
       ]);
 
       // 金十客户端数据为主源，服务端数据全量合并（华尔街见闻无CDN缓存，实时性好）
-      let allItems: FlashItem[] = [...jin10Items, ...serverData.data];
+      let allItems: FlashItem[] = filterFlashItems([...jin10Items, ...serverData.data]);
 
       // 去重（content前30字符指纹）
       const seen = new Map<string, number>();
