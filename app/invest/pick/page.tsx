@@ -1016,7 +1016,7 @@ export default function PickPage() {
       ) : null}
 
       <p className="mt-10 text-xs text-[var(--text-muted)]">
-        行情来自腾讯实时接口。本工具仅供研究参考，不构成投资建议。
+        行情来自实时接口。本工具仅供研究参考，不构成投资建议。
       </p>
     </div>
   );

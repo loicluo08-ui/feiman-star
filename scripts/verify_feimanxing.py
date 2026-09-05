@@ -26,7 +26,7 @@ def is_english_dominant(text):
         return False
     chinese = len(re.findall(r'[\u4e00-\u9fff]', text))
     letters = len(re.findall(r'[a-zA-Z]', text))
-    return chinese / max(len(text), 1) < 0.15 and letters > 50
+    return chinese / max(len(text), 1) < 0.15 and letters >= 30
 
 print("=" * 60)
 print("费曼星发布前验证")

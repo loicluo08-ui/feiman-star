@@ -59,8 +59,8 @@ function isEnglishDominant(text: string): boolean {
   if (!text || text.length < 10) return false;
   const chinese = (text.match(/[\u4e00-\u9fff]/g) || []).length;
   const letters = (text.match(/[a-zA-Z]/g) || []).length;
-  // 中文字符占比<15%且英文字母>50字符 → 英文主导
-  return chinese / text.length < 0.15 && letters > 50;
+  // 中文字符占比<15%且英文字母≥30 → 英文主导（阈值30：拦截短英文快讯，如49字母的CENTCOM条；中文快讯夹少量英文缩写不受影响）
+  return chinese / text.length < 0.15 && letters >= 30;
 }
 
 function normalizeForDedup(content: string): string {
