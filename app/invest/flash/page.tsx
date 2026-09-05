@@ -188,7 +188,7 @@ export default function FlashPage() {
 
       // 更新source显示
       const sources: string[] = [];
-      if (jin10Items.length > 0) sources.push("金十数据");
+      if (jin10Items.length > 0 || serverData.data.some((i) => i.source === "金十数据")) sources.push("金十数据");
       if (serverData.data.some((i) => i.source === "华尔街见闻")) sources.push("华尔街见闻");
       if (sources.length === 0 && serverData.source) sources.push(serverData.source);
 
@@ -313,14 +313,14 @@ export default function FlashPage() {
               <button
                 onClick={fetchFlash}
                 disabled={refreshing}
-                className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50"
+                className="whitespace-nowrap rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)] disabled:opacity-50"
               >
                 {refreshing ? "⟳ 刷新中…" : "↻ 刷新"}
               </button>
               {/* 自动刷新开关 */}
               <button
                 onClick={() => setAutoRefresh((v) => !v)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   autoRefresh
                     ? "bg-[var(--positive)] text-white"
                     : "bg-[var(--surface-muted)] text-[var(--text-muted)]"
@@ -332,7 +332,7 @@ export default function FlashPage() {
               <button
                 onClick={toggleNotif}
                 title={notifEnabled ? "关闭重要快讯提醒" : "开启重要快讯提醒"}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   notifEnabled
                     ? "bg-orange-500 text-white"
                     : "bg-[var(--surface-muted)] text-[var(--text-muted)]"
@@ -355,7 +355,7 @@ export default function FlashPage() {
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   filter === tab.key
                     ? "bg-[var(--accent)] text-white"
-                    : "bg-[var(--surface-muted)] text-[var(--text-muted)] hover:text-[var(--text)]"
+                    : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:text-[var(--text)]"
                 }`}
               >
                 {tab.label}
