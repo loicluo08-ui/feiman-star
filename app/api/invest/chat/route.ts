@@ -162,39 +162,26 @@ export async function POST(request: NextRequest) {
   const combinedText = userTexts.slice(-2).join(" ");
   const stockCodes = extractStockCodes(combinedText);
 
-  let stockContext = "";
-  if (stockCodes.length > 0 && !hasImage) {
-    try {
-      const stockData = await fetchStockData(stockCodes);
-      stockContext = buildStockContext(stockData);
-    } catch {
-      // D5触发点：整体获取失败也要注入标注，模型才知道走降级路径
-      stockContext = `\n用户提到的股票[${stockCodes.join(", ")}]实时数据获取失败（网络层）。执行D5：明确告知数据获取失败，用知识库做定性框架分析，不编造数字。`;
-    }
-  }
-
-  // 实时讯息注入：与行情拉取并行，命中/未命中都有上下文，拉不到静默跳过（快讯是增强不是依赖）
-  const newsContext = await buildNewsContext(combinedText);
+  // 快讯注入带7秒软超时（getFlashFeed冷路径4-5s；超时=网络层挂死，静默跳过不阻塞首字）
+  // 快讯是增强不是依赖：拉不到照样回答，不要为它付出TTFB代价
+  const fetchNewsWithDeadline = () =>
+    Promise.race([
+      buildNewsContext(combinedText),
+      new Promise<string>((resolve) => setTimeout(() => resolve(""), 7000)),
+    ]);
 
   // 加密资产识别：提取符号但不拉股票行情（同名ticker是美股产品不是币），注入数据边界声明
   const cryptoSymbols = extractCryptoSymbols(combinedText);
-  let cryptoContext = "";
-  if (cryptoSymbols.length > 0) {
-    cryptoContext = `\n\n⚠️ 加密资产数据边界（必须遵守）：用户提到加密资产[${cryptoSymbols.join("、")}]。费曼星行情源仅覆盖股票，本次未注入任何加密货币行情数据。注意：BTC/ETH等符号在美股存在同名产品（如BTC=Grayscale比特币ETF），那是基金份额价格，与加密货币现货价格量级完全不同，严禁引用为币价。对加密资产只能做定性框架分析（波动率/仓位纪律/损失厌恶/流动性风险），引用时标注[框架]或[经验]，明确告知用户"无法提供加密货币实时行情"，具体现货价格一律不写。`;
-  }
-
-  const finalSystemPrompt = [
-    systemPrompt,
-    stockContext ? `${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。` : "",
-    cryptoContext,
-    newsContext,
-  ].filter(Boolean).join("\n");
+  const cryptoContext = cryptoSymbols.length > 0
+    ? `\n\n⚠️ 加密资产数据边界（必须遵守）：用户提到加密资产[${cryptoSymbols.join("、")}]。费曼星行情源仅覆盖股票，本次未注入任何加密货币行情数据。注意：BTC/ETH等符号在美股存在同名产品（如BTC=Grayscale比特币ETF），那是基金份额价格，与加密货币现货价格量级完全不同，严禁引用为币价。对加密资产只能做定性框架分析（波动率/仓位纪律/损失厌恶/流动性风险），引用时标注[框架]或[经验]，明确告知用户"无法提供加密货币实时行情"，具体现货价格一律不写。`
+    : "";
 
   // 图片路径：保持非流式，由GLM-4V处理。
   if (hasImage) {
     try {
+      const visionNewsContext = await fetchNewsWithDeadline();
       const visionMessages: VisionMessage[] = [
-        { role: "system", content: newsContext ? `${visionSystemPrompt}${newsContext}` : visionSystemPrompt },
+        { role: "system", content: visionNewsContext ? `${visionSystemPrompt}${visionNewsContext}` : visionSystemPrompt },
         ...recentMessages.map((message) => {
           if (message.content.type === "text") {
             return { role: message.role, content: message.content.text } as VisionMessage;
@@ -255,8 +242,48 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let fullText = "";
+      const send = (payload: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(JSON.stringify(payload) + "\n"));
+      };
 
       try {
+        // 注入移入流内：响应首字节<100ms，用户立刻看到状态而不是黑盒等待
+        send({ type: "status", text: "正在注入实时数据…" });
+
+        // 行情+快讯并行拉取（原先串行，最坏15s死等；并行后TTFB由慢者决定≈行情拉取时间）
+        const stockTask = (async () => {
+          if (stockCodes.length > 0 && !hasImage) {
+            try {
+              return buildStockContext(await fetchStockData(stockCodes));
+            } catch {
+              // D5触发点：整体获取失败也要注入标注，模型才知道走降级路径
+              return `\n用户提到的股票[${stockCodes.join(", ")}]实时数据获取失败（网络层）。执行D5：明确告知数据获取失败，用知识库做定性框架分析，不编造数字。`;
+            }
+          }
+          return "";
+        })();
+        const [stockContext, newsContext] = await Promise.all([
+          stockTask,
+          fetchNewsWithDeadline(),
+        ]);
+
+        const finalSystemPrompt = [
+          systemPrompt,
+          stockContext ? `${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。` : "",
+          cryptoContext,
+          newsContext,
+        ].filter(Boolean).join("\n");
+
+        const injectedParts: string[] = [];
+        if (stockContext && !stockContext.includes("获取失败")) {
+          injectedParts.push(`实时行情${stockCodes.length}只`);
+        }
+        if (newsContext) injectedParts.push("最新市场快讯");
+        send({
+          type: "status",
+          text: injectedParts.length > 0 ? `已注入${injectedParts.join("、")}，AI生成中…` : "AI生成中…",
+        });
+
         const streamMessages: ChatMessage[] = [
           { role: "system", content: finalSystemPrompt },
           { role: "system", content: analysisStyle },
@@ -268,70 +295,68 @@ export async function POST(request: NextRequest) {
         const trimmedQuestion = lastUserText.trim();
         const chatMaxTokens = trimmedQuestion.length > 0 && trimmedQuestion.length <= 20 ? 800 : 3000;
 
-        for await (const chunk of callAIStream(
-          streamMessages,
-          { temperature: 0.4, max_tokens: chatMaxTokens, retry: 1, timeout: 90_000 },
-        )) {
-          fullText += chunk;
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ type: "chunk", text: chunk }) + "\n"),
-          );
-        }
+        // 心跳：首chunk前每5s推ping防代理空闲断连（40K token prompt的TTFB可达10-20s）
+        let receivedFirstChunk = false;
+        const pingTimer = setInterval(() => {
+          if (!receivedFirstChunk) send({ type: "ping" });
+        }, 5000);
+        // D7兜底通知内容（双引擎全灭判定用）
+        let fallbackNotice = "";
 
-        // D7: DeepSeek零输出（余额耗尽/连接失败/超时无chunk）→ 智谱glm-4-flash兜底流
-        // 中途断流不重跑（已有部分输出，重跑会造成内容重复）
-        if (!fullText.trim()) {
-          console.warn("[invest/chat] deepseek_empty → zhipu fallback");
-          const notice = "\u3010\u7cfb\u7edf\u63d0\u793a\u3011主引擎无响应，已切换备用引擎继续回答。\n\n";
-          fullText += notice;
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ type: "chunk", text: notice }) + "\n"),
-          );
-
-          for await (const chunk of callZhipuStream(
+        try {
+          for await (const chunk of callAIStream(
             streamMessages,
-            { temperature: 0.4, max_tokens: chatMaxTokens, timeout: 60_000 },
+            { temperature: 0.4, max_tokens: chatMaxTokens, retry: 1, timeout: 90_000 },
           )) {
+            if (!receivedFirstChunk) receivedFirstChunk = true;
             fullText += chunk;
-            controller.enqueue(
-              encoder.encode(JSON.stringify({ type: "chunk", text: chunk }) + "\n"),
-            );
+            send({ type: "chunk", text: chunk });
           }
+
+          // D7: DeepSeek零输出（余额耗尽/连接失败/超时无chunk）→ 智谱glm-4-flash兜底流
+          // 中途断流不重跑（已有部分输出，重跑会造成内容重复）
+          if (!fullText.trim()) {
+            console.warn("[invest/chat] deepseek_empty → zhipu fallback");
+            const notice = "\u3010\u7cfb\u7edf\u63d0\u793a\u3011主引擎无响应，已切换备用引擎继续回答。\n\n";
+            fallbackNotice = notice;
+            fullText += notice;
+            send({ type: "chunk", text: notice });
+
+            for await (const chunk of callZhipuStream(
+              streamMessages,
+              { temperature: 0.4, max_tokens: chatMaxTokens, timeout: 60_000 },
+            )) {
+              if (!receivedFirstChunk) receivedFirstChunk = true;
+              fullText += chunk;
+              send({ type: "chunk", text: chunk });
+            }
+          }
+        } finally {
+          clearInterval(pingTimer);
         }
 
-        if (!fullText.trim()) {
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ type: "error", message: "AI服务暂时不可用" }) + "\n"),
-          );
+        // 双引擎全灭（DeepSeek零输出且智谱也零输出）≠空回答——明确报错，不让"已切换备用引擎"通知成为最终答案
+        if (!fullText.trim() || fullText.trim() === fallbackNotice.trim()) {
+          send({ type: "error", message: "AI服务暂时不可用（主引擎与备用引擎均无响应），请稍后重试" });
           return;
         }
 
         const validation = crossValidate(fullText);
         if (validation.cleaned) {
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ type: "patch", text: validation.text }) + "\n"),
-          );
+          send({ type: "patch", text: validation.text });
           console.log(`[invest/chat] cross_validate flags=${validation.flags.join("; ")}`);
         }
 
-        controller.enqueue(
-          encoder.encode(JSON.stringify({ type: "done" }) + "\n"),
-        );
+        send({ type: "done" });
       } catch (error) {
         console.error("[invest/chat] stream_error", error);
         // 降级：如果已有部分输出，补上结束语并正常done；否则发错误
         if (fullText.trim()) {
           const fallback = "\n\n---\n\n⚠️ AI生成中断，以上为已生成的部分内容。如需完整分析请重新提问。";
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ type: "chunk", text: fallback }) + "\n"),
-          );
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ type: "done" }) + "\n"),
-          );
+          send({ type: "chunk", text: fallback });
+          send({ type: "done" });
         } else {
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ type: "error", message: "AI服务暂时不可用，请稍后重试" }) + "\n"),
-          );
+          send({ type: "error", message: "AI服务暂时不可用，请稍后重试" });
         }
       } finally {
         controller.close();

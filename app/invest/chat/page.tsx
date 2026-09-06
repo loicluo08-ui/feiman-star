@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { getTask, startTask, type BackgroundTask } from "@/lib/background-task";
+import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/background-task";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 type AnalysisStyle = "balanced" | "value" | "growth" | "quant";
@@ -121,7 +121,7 @@ const suggestions = [
   { title: "帮我分析这张K线图", desc: "上传截图，AI解读走势" },
   { title: "这份财报的关键数据", desc: "上传财报截图，提取核心指标" },
   { title: "我的持仓合理吗", desc: "上传持仓截图，AI评估" },
-  { title: "美股分红政策对比", desc: "纯文字问答" },
+  { title: "现在美股市场有什么大事？", desc: "AI结合实时快讯作答（自动注入）" },
 ];
 
 const sceneTemplates = [
@@ -144,8 +144,21 @@ export default function ChatPage() {
   const [historyRange, setHistoryRange] = useState<HistoryRange>("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const activeHistoryId = useRef("");
   const mountedRef = useRef(false);
+  // 会话纪元：新对话/切换历史时+1，旧流的迟到结果不再写UI（防串话）
+  const epochRef = useRef(0);
+  // 中止当前AI流
+  const abortRef = useRef<AbortController | null>(null);
+  // 最近一次提交的快照（失败重试用）
+  const lastSubmitRef = useRef<{ text: string; images: string[]; baseMessages: ChatItem[] } | null>(null);
+  // 智能滚动：仅当用户在底部附近才自动跟滚
+  const nearBottomRef = useRef(true);
+  const [nearBottom, setNearBottom] = useState(true);
+  // 流式状态行（后端status事件：注入进度/生成状态）
+  const [statusLine, setStatusLine] = useState("");
+  const [copiedIndex, setCopiedIndex] = useState(-1);
 
   const filteredHistory = useMemo(() => {
     const keyword = historyQuery.trim().toLocaleLowerCase();
@@ -212,13 +225,34 @@ export default function ChatPage() {
     setQuestion((current) => current || `请分析${name ? `${name}（${stock}）` : stock}当前的投资机会、主要风险和仓位建议。`);
   }, []);
 
+  /** 作废进行中的流：中止+清任务+纪元+1+复位loading。新对话/切换历史共用（防旧结果串进新会话） */
+  function invalidateRunningTask() {
+    epochRef.current += 1;
+    abortRef.current?.abort();
+    clearTask(CHAT_TASK_KEY);
+    setStatusLine("");
+    setLoading(false);
+  }
+
+  function startNewConversation() {
+    invalidateRunningTask();
+    activeHistoryId.current = "";
+    lastSubmitRef.current = null;
+    setMessages([]);
+    setError("");
+  }
+
   function loadConversation(record: ChatHistoryRecord) {
+    if (loading) invalidateRunningTask();
     activeHistoryId.current = record.id;
+    lastSubmitRef.current = null;
     setMessages(record.messages);
     setStyle(record.style);
     setShowHistory(false);
     setError("");
-    scrollToBottom();
+    nearBottomRef.current = true;
+    setNearBottom(true);
+    scrollToBottom(true);
   }
 
   function deleteConversation(id: string) {
@@ -234,12 +268,45 @@ export default function ChatPage() {
     if (activeHistoryId.current === id) activeHistoryId.current = "";
   }
 
-  function scrollToBottom() {
+  /** 滚动跟随：用户上滑离开底部后暂停自动跟滚，回到底部附近恢复 */
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (atBottom !== nearBottomRef.current) {
+      nearBottomRef.current = atBottom;
+      setNearBottom(atBottom);
+    }
+  }
+
+  function scrollToBottom(force = false) {
+    if (!force && !nearBottomRef.current) return;
     requestAnimationFrame(() => {
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
     });
+  }
+
+  /** 复制AI回答（https安全上下文下可用，失败静默） */
+  async function copyAnswer(text: string, index: number) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      setTimeout(() => {
+        setCopiedIndex((current) => (current === index ? -1 : current));
+      }, 1500);
+    } catch {
+      // clipboard API不可用（非安全上下文）——静默跳过
+    }
+  }
+
+  /** 输入框自动增高（1~5行），发送后复位 */
+  function autoResizeTextarea() {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }
 
   /** 共用图片入口：校验+读DataURL（文件选择与粘贴复用同一套规则） */
@@ -303,18 +370,40 @@ export default function ChatPage() {
     e.preventDefault();
     const text = question.trim();
     if ((!text && images.length === 0) || loading) return;
+    sendChat(text, images, messages);
+    setQuestion("");
+    setImages([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (textareaRef.current) textareaRef.current.style.height = "";
+  }
 
-    const currentImages = images;
+  /** 失败重试：用上次提交的原始输入重发（消息回滚到提交前状态） */
+  function retrySubmit() {
+    if (loading) return;
+    const last = lastSubmitRef.current;
+    if (!last) return;
+    setError("");
+    sendChat(last.text, last.images, last.baseMessages);
+  }
+
+  /** 停止生成：中止fetch流，已生成部分保留（后端流被断开后任务自行收尾） */
+  function stopGeneration() {
+    abortRef.current?.abort();
+  }
+
+  async function sendChat(text: string, currentImages: string[], baseMessages: ChatItem[]) {
+    const currentStyle = style;
+    const historyId = activeHistoryId.current || `${Date.now()}`;
+    activeHistoryId.current = historyId;
+    const epoch = epochRef.current;
+    lastSubmitRef.current = { text, images: currentImages, baseMessages };
 
     const userItem: ChatItem = {
       role: "user",
       text: text || `（${currentImages.length}张图片）`,
       imagePreviews: currentImages.length > 0 ? currentImages : undefined,
     };
-    const currentMessages = messages;
-    const currentStyle = style;
-    const historyId = activeHistoryId.current || `${Date.now()}`;
-    activeHistoryId.current = historyId;
+    const currentMessages = baseMessages;
 
     // 历史消息：只保留最近2轮的图片，更早的图片转为文字描述（避免payload过大）
     const recentImageCount = 2;
@@ -342,20 +431,24 @@ export default function ChatPage() {
       },
     ];
 
-    setQuestion("");
-    setImages([]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
     setMessages([...currentMessages, userItem, { role: "assistant", text: "" }]);
     setLoading(true);
     setError("");
-    scrollToBottom();
+    setStatusLine("");
+    nearBottomRef.current = true;
+    setNearBottom(true);
+    scrollToBottom(true);
 
     const task: BackgroundTask<ChatTaskResult> = startTask(CHAT_TASK_KEY, async () => {
+      let answer = "";
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
         const res = await fetch("/api/invest/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ messages: apiMessages, style: currentStyle }),
+          signal: controller.signal,
         });
 
         if (!res.ok) {
@@ -364,7 +457,6 @@ export default function ChatPage() {
         }
 
         const contentType = res.headers.get("content-type") || "";
-        let answer = "";
 
         if (contentType.includes("text/event-stream")) {
           if (!res.body) throw new Error("AI服务不可用");
@@ -380,11 +472,13 @@ export default function ChatPage() {
               // 连接断开：如果没收到done事件，补上中断提示
               if (answer && !receivedDone) {
                 answer += "\n\n---\n\n⚠️ 连接中断，以上为已生成的部分内容。如需完整分析请重新提问。";
-                setMessages((items) => {
-                  const updated = [...items];
-                  updated[updated.length - 1] = { role: "assistant", text: answer };
-                  return updated;
-                });
+                if (mountedRef.current && epochRef.current === epoch) {
+                  setMessages([
+                    ...currentMessages,
+                    userItem,
+                    { role: "assistant", text: answer },
+                  ]);
+                }
               }
               break;
             }
@@ -406,16 +500,21 @@ export default function ChatPage() {
                 answer += data.text ?? "";
               } else if (data.type === "patch") {
                 answer = data.text ?? answer;
+              } else if (data.type === "status") {
+                if (mountedRef.current && epochRef.current === epoch) {
+                  setStatusLine(data.text ?? "");
+                }
+                continue; // 状态行不落消息体
               } else if (data.type === "done") {
                 receivedDone = true;
                 break;
               } else if (data.type === "error") {
                 throw new Error(data.message ?? "AI服务不可用");
               } else {
-                continue;
+                continue; // ping等心跳事件静默跳过
               }
 
-              if (mountedRef.current) {
+              if (mountedRef.current && epochRef.current === epoch) {
                 setMessages([
                   ...currentMessages,
                   userItem,
@@ -445,7 +544,26 @@ export default function ChatPage() {
           style: currentStyle,
         };
       } catch (taskError) {
-        const message = taskError instanceof Error ? taskError.message : "AI暂时不可用";
+        // 手动停止且已有部分输出：按成功收尾（保留已生成内容），不进错误分支
+        const isAbort = (taskError as { name?: string } | null)?.name === "AbortError";
+        if (isAbort && answer.trim()) {
+          const stoppedMessages = [
+            ...currentMessages,
+            userItem,
+            { role: "assistant" as const, text: `${answer}\n\n（已停止生成）` },
+          ];
+          const nextHistory = storeConversation(stoppedMessages, currentStyle, historyId);
+          return {
+            messages: stoppedMessages,
+            history: nextHistory,
+            historyId,
+            style: currentStyle,
+          };
+        }
+
+        const message = isAbort
+          ? "已停止生成"
+          : taskError instanceof Error ? taskError.message : "AI暂时不可用";
         const failedMessages = [
           ...currentMessages,
           userItem,
@@ -458,24 +576,29 @@ export default function ChatPage() {
           historyId,
           style: currentStyle,
         });
+      } finally {
+        // 只清理自己创建的controller（防并发任务误清新任务的停止句柄）
+        if (abortRef.current === controller) abortRef.current = null;
       }
     });
 
     void task.promise.then((result) => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || epochRef.current !== epoch) return;
       setMessages(result.messages);
       setHistory(result.history);
       setLoading(false);
       setError("");
+      setStatusLine("");
       scrollToBottom();
     }).catch((taskError: unknown) => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || epochRef.current !== epoch) return;
       if (taskError instanceof ChatTaskError) {
         setMessages(taskError.result.messages);
         setHistory(taskError.result.history);
       }
       setLoading(false);
       setError(taskError instanceof Error ? taskError.message : "AI暂时不可用");
+      setStatusLine("");
       scrollToBottom();
     });
   }
@@ -483,6 +606,10 @@ export default function ChatPage() {
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (loading) {
+        stopGeneration();
+        return;
+      }
       submit(e as unknown as FormEvent);
     }
   }
@@ -494,9 +621,16 @@ export default function ChatPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-lg font-semibold">投资对话 · 支持截图分析</h1>
-            <p className="mt-0.5 text-xs text-[var(--text-muted)]">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek。</p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek（自动注入实时行情与最新快讯）。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={startNewConversation}
+              className="rounded-md border border-[var(--border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
+              title="开始新对话（当前对话自动存入历史）"
+            >
+              新对话
+            </button>
             <button
               onClick={() => setShowHistory((visible) => !visible)}
               className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
@@ -630,13 +764,14 @@ export default function ChatPage() {
       </header>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-6">
+      <div className="relative min-h-0 flex-1">
+        <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto px-5 py-6">
         {messages.length === 0 ? (
           <div className="mx-auto max-w-2xl">
             {loading ? (
               <div className="mb-6 flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text-muted)]">
                 <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text)]" />
-                AI回复中…
+                {statusLine || "AI回复中…"}
               </div>
             ) : null}
             <div className="mb-6 text-center">
@@ -680,7 +815,15 @@ export default function ChatPage() {
                         <MarkdownRenderer content={m.text} />
                         {loading && i === messages.length - 1 ? (
                           <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-[var(--text)] align-text-bottom" />
-                        ) : null}
+                        ) : (
+                          <button
+                            onClick={() => void copyAnswer(m.text, i)}
+                            className="mt-2 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--text)]"
+                            aria-label="复制本条AI回答"
+                          >
+                            {copiedIndex === i ? "已复制 ✓" : "复制"}
+                          </button>
+                        )}
                       </>
                     ) : (
                       <div className="whitespace-pre-wrap leading-6">{m.text}</div>
@@ -688,7 +831,7 @@ export default function ChatPage() {
                   ) : loading && i === messages.length - 1 ? (
                     <div className="flex items-center gap-1 text-sm text-[var(--text-muted)]">
                       <span className="inline-block h-4 w-0.5 animate-pulse bg-[var(--text)]" />
-                      思考中…
+                      {statusLine || "思考中…"}
                     </div>
                   ) : null}
                 </div>
@@ -696,11 +839,41 @@ export default function ChatPage() {
             ))}
           </div>
         )}
+        </div>
+        {/* 用户上滑离开底部时，流式进行中给一个回底入口 */}
+        {loading && !nearBottom && messages.length > 0 ? (
+          <button
+            onClick={() => {
+              nearBottomRef.current = true;
+              setNearBottom(true);
+              scrollToBottom(true);
+            }}
+            className="absolute bottom-4 right-6 flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs text-[var(--text-secondary)] shadow-md transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="4" x2="12" y2="20" />
+              <polyline points="6 14 12 20 18 14" />
+            </svg>
+            回到最新
+          </button>
+        ) : null}
       </div>
 
       {/* Input */}
       <div className="border-t border-[var(--border)] bg-[var(--surface)] px-5 py-4">
-        {error ? <p className="mb-2 text-xs text-[var(--negative)]">{error}</p> : null}
+        {error ? (
+          <div className="mb-2 flex items-center gap-2 text-xs text-[var(--negative)]">
+            <span>{error}</span>
+            {lastSubmitRef.current && !loading ? (
+              <button
+                onClick={retrySubmit}
+                className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
+              >
+                重试
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mx-auto max-w-3xl">
           <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
             {sceneTemplates.map((template) => (
@@ -754,23 +927,31 @@ export default function ChatPage() {
               className="hidden"
             />
             <textarea
+              ref={textareaRef}
               value={question}
-              onChange={(e) => setQuestion(e.target.value)}
+              onChange={(e) => {
+                setQuestion(e.target.value);
+                autoResizeTextarea();
+              }}
               onPaste={handlePaste}
               onKeyDown={handleKeyDown}
               rows={1}
               maxLength={4000}
               placeholder="输入问题，或粘贴/上传截图让AI分析…（Enter发送，Shift+Enter换行）"
-              className="min-h-12 flex-1 resize-none rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none transition-colors focus:border-[var(--text)]"
+              className="min-h-12 flex-1 resize-none self-center overflow-y-auto rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none transition-colors focus:border-[var(--text)]"
             />
             <button
-              onClick={submit}
-              disabled={loading || (!question.trim() && images.length === 0)}
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
-              title="发送"
+              onClick={loading ? stopGeneration : submit}
+              disabled={!loading && !question.trim() && images.length === 0}
+              className={
+                loading
+                  ? "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] text-[var(--text)] transition-opacity hover:opacity-80"
+                  : "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+              }
+              title={loading ? "停止生成" : "发送"}
             >
               {loading ? (
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--primary-foreground)]" />
+                <span className="inline-block h-3 w-3 rounded-[2px] bg-current" aria-label="停止生成" />
               ) : (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13" />
