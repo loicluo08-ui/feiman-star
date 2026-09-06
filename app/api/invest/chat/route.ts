@@ -16,6 +16,7 @@ import { ACTION_PLAN_BLOCK } from "@/lib/chat-action-plan";
 import { PLAN_LIFECYCLE_BLOCK } from "@/lib/chat-plan-lifecycle";
 import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
 import { CHAT_QUALITY_BLOCK } from "@/lib/chat-quality";
+import { verifyNumbers } from "@/lib/number-verify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -140,13 +141,13 @@ export async function POST(request: NextRequest) {
     "0i. 指令有歧义按最可能意图执行，末尾一句话标注其他可能意图，不反问等待。",
     "",
     "规则：",
-    "1. 分析任何标的时，按五维度框架（基本面/水池效应/板块轮动/产业周期/市场情绪）扫描，输出按重要性深挖：最关键的1-2个维度深入（含反转与心理误判检验），其余各1-2句结论——均匀平铺五段等于没有思考",
+    "1. 分析任何标的时，按五维度框架（基本面/水池效应/板块轮动/产业周期/市场情绪）扫描，输出按重要性深挖：最关键的1-2个维度深入（含反转与心理误判检验），其余各1-2句结论——均匀平铺五段等于没有思考。深度档按规则7展开，简洁档按此条压缩。",
     "2. 仓位建议必须参照仓位策略矩阵（4环境×3标的）",
     "3. 期权相关问题必须先过5%规则，再给策略建议",
     "4. 所有判断标注数据来源（费曼星原文/经验值/行业惯例/历史数据）",
     "5. 不确定时明确说明，不编造数据",
     "6. 涉及具体买卖建议时，加上\"仅供参考，不构成投资建议\"",
-    "7. 简洁回答控制在500字以内，完整分析控制在1500字以内；用户明确要求详细/全面/深度分析时上限放宽至2200字（宁可深而长，不要浅而全；2200字上限与3500输出token对齐，宁可分次续写也不浅尝辄止）。用户没要求详细分析时默认简洁回答。短问快答纪律（13:15实测回归修复：熔炉管线误伤短问）：问题≤20字且不含详细/全面/深入/分析/对比/计划/拆解类深度意图词时——跳过风格管线②-⑤的分步展开与五维度逐项扫描，输出四件套：①核心判断（含现价/涨跌幅/一个关键位锚点数字）②一句话归因 ③最强反方一条 ④【追问方向】；总长≤350字。深度管线只属于明确要深度的提问——「苹果现在什么情况」要的是现状速览，不是研究报告。",
+    "7. 输出深度三档（宁深勿浅——本平台用户是专业投资者，深度不足的敷衍回答是负资产）：【简洁】单点问题（行情确认/名词解释/是与否判断）500字内直答；【标准】单一标的分析，五维度压缩为关键维度+多空对置+条件分支；【深度】用户要求详细/全面分析、持仓归因、多标的对比、期权策略设计时，五维度逐项+每维度多空论据+条件分支+仓位区间，3000字内说透（宁可分次续写不浅尝辄止）。用户未指明档位时按问题复杂度选档。短问快答纪律（13:15实测回归修复：熔炉管线误伤短问）：问题≤20字且不含详细/全面/深入/分析/对比/计划/拆解类深度意图词时——定为简洁档，跳过风格管线②-⑤的分步展开与五维度逐项扫描，输出四件套：①核心判断（含现价/涨跌幅/一个关键位锚点数字）②一句话归因 ③最强反方一条 ④【追问方向】；总长≤350字。深度管线只属于明确要深度的提问——「苹果现在什么情况」要的是现状速览，不是研究报告。",
     "8. 如果系统在下方注入了实时行情数据或【实时市场快讯】，直接引用，不要说\"无法获取实时数据\"。引用快讯时注明发布时间（如\"14:32快讯\"），并区分快讯（事件事实）与行情（价格数字）。",
     "8a. 用户陈述的行情类前提（大盘/板块/个股涨跌幅、价格、『昨天大跌』类描述）若与注入的实时数据矛盾，第一步先指出矛盾并给出真实数字，再回答。用户前提错误未纠正=整个分析建立在假数据上。注入数据含[交易日状态]行——休市期间用户谈『昨天下跌』时，先核对注入数据的实际交易日。",
     "",
@@ -161,6 +162,7 @@ export async function POST(request: NextRequest) {
     DELIBERATION_ENHANCEMENT,
     ACTION_PLAN_BLOCK,
     PLAN_LIFECYCLE_BLOCK,
+    "25. 失效条件预注册（压力测试）：深度档结论在【追问方向】前用1-2句声明——本结论最依赖哪个假设？该假设被什么数据支撑？假设崩塌时结论如何变化（如\"本判断最依赖'资本开支周期未逆转'，若下周财报指引下修则立场失效\"）。与规则18的芒格逆向互补：逆向列反方论据，这里预注册可证伪条件。简洁档可省。",
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
     CHAT_QUALITY_BLOCK,
@@ -207,12 +209,31 @@ export async function POST(request: NextRequest) {
     : null;
 
   // 纯文字路径：DeepSeek SSE流式输出。
+  // 9/6历史瘦身：assistant历史超过1000字截中段（首600尾400——论据展开在中段，结论与条件分支在首尾），
+  // 最近1条assistant保留完整（追问"你上面说的X"时不失忆）。滚动摘要管窗口外记忆（第13轮起），这里管窗口内token膨胀
+  // （深度档单回答3000字×10条窗口=3万+token稀释模型注意力）。截断规则确定性→前缀缓存不受损
   const cleanMessages = recentMessages
     .map((message) => ({
       role: message.role as "user" | "assistant",
       content: message.content.type === "text" ? message.content.text : "",
     }))
     .filter((message) => message.content.length > 0);
+  let lastAssistantIdx = -1;
+  for (let i = cleanMessages.length - 1; i >= 0; i--) {
+    if (cleanMessages[i]!.role === "assistant") {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+  const compactMessages = cleanMessages.map((message, i) => {
+    if (message.role === "assistant" && i !== lastAssistantIdx && message.content.length > 1000) {
+      return {
+        role: message.role,
+        content: `${message.content.slice(0, 600)}\n…（中间论据展开已省略，保留分析思路与结论/条件分支）…\n${message.content.slice(-400)}`,
+      };
+    }
+    return message;
+  });
 
   const encoder = new TextEncoder();
   // route启动时间戳：兜底引擎的timeout按"平台120s窗口剩余量"动态计算
@@ -427,10 +448,10 @@ export async function POST(request: NextRequest) {
 
         const turnMessage = currentTurnText
           ? { role: "user" as const, content: currentTurnText }
-          : (cleanMessages[cleanMessages.length - 1] ?? null);
+          : (compactMessages[compactMessages.length - 1] ?? null);
         const historyMessages = currentTurnText
-          ? cleanMessages
-          : (turnMessage ? cleanMessages.slice(0, -1) : cleanMessages);
+          ? compactMessages
+          : (turnMessage ? compactMessages.slice(0, -1) : compactMessages);
 
         const streamMessages: ChatMessage[] = [
           { role: "system", content: finalSystemPrompt },
@@ -455,7 +476,9 @@ export async function POST(request: NextRequest) {
         // 9/6实测修正：短问路径800→1400——新五段式+大师会诊格式实测Q4(17字)/Q5(8字)均在
         // 1283字≈800token处被腰斩（截断提示+续写交互，对"苹果什么情况"类快问是体验回退）。
         // 1400≈2200字余量：简洁模式规则仍在（S3①②⑤），约束靠指令不靠截断
-        const chatMaxTokens = wantsLong ? (isBlend ? 6000 : 3500) : 1400;
+        const chatMaxTokens = wantsLong ? (isBlend ? 6000 : 4000) : 1400;
+        // 非blend深度档4000（f677962深度三档对齐）：规则7深度档3000字≈4500+内容token，
+        // flash+thinking思维链与正文共享预算，3500必截断；4000+截断明示+续写=三层防线
         // 9/6质量优化（引擎分层）：详细类问题（非blend）同样开启思维链——
         // flash+thinking推理深度显著提升，成本仅输出3x（¥0.03-0.05/轮 vs 无思考¥0.01）；
         // 短问句保持无思考快路径（省钱+快）。blend是pro+6000 tokens的天花板档：
@@ -486,7 +509,7 @@ export async function POST(request: NextRequest) {
           for await (const chunk of callAIStream(
             streamMessages,
             {
-              temperature: 0.4,
+              temperature: 0.35,
               max_tokens: chatMaxTokens,
               retry: 1,
               ...(isBlend
@@ -644,6 +667,22 @@ export async function POST(request: NextRequest) {
           fullText = numeric.text;
           send({ type: "patch", text: numeric.text });
           console.log(`[invest/chat] numeric_anchor flags=${numeric.flags.join("; ")}`);
+        }
+
+        // 算式回验（9/6深度质量优化）：锚定验证管"引用数字对不对"，这里管"算术对不对"——
+        // S1强制AI展示涨跌幅算式→算式是确定性结构可本地重算，红队case2的AI算数方差在chat路径收口。
+        // 附加提示段（非静默修正）：无可验证算式时静默跳过；校验器自身故障不阻塞回答交付
+        try {
+          const arithmetic = verifyNumbers(fullText, injectedQuotes);
+          if (arithmetic.report) {
+            fullText += arithmetic.report;
+            send({ type: "chunk", text: arithmetic.report });
+            if (arithmetic.issues.length > 0) {
+              console.log(`[invest/chat] number_verify checked=${arithmetic.checkedCount} issues=${arithmetic.issues.map((i) => i.detail).join(" | ")}`);
+            }
+          }
+        } catch (error) {
+          console.error("[invest/chat] number_verify_error", error);
         }
 
         send({ type: "done" });
