@@ -603,8 +603,20 @@ export default function ChatPage() {
                     const statusText = data.text ?? "";
                     setStatusLine(statusText);
                     // 步骤栈：同文本去重（重试/续写轮次间不重复堆叠）
-                    setStatusSteps((prev) =>
-                      prev[prev.length - 1] === statusText ? prev : [...prev, statusText]);
+                    // 思维链透传（"深度思考中…"+链尾滚动，思考期可达几十次）：
+                    // 替换栈顶而非追加——Claude式单行滚动体验，防止思考碎片把
+                    // "已注入行情N只"等关键注入步骤淹没（步骤栈变思考轰炸=体验倒退）
+                    setStatusSteps((prev) => {
+                      const last = prev[prev.length - 1];
+                      const isThinkingFeed = statusText.startsWith("深度思考中");
+                      const lastIsThinkingFeed = last?.startsWith("深度思考中");
+                      if (isThinkingFeed && lastIsThinkingFeed) {
+                        const next = [...prev];
+                        next[next.length - 1] = statusText;
+                        return next;
+                      }
+                      return last === statusText ? prev : [...prev, statusText];
+                    });
                   }
                   continue; // 状态行不落消息体
                 } else if (data.type === "done") {
