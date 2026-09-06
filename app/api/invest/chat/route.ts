@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
     "10. 回复结尾用【追问方向】给出1个针对本次分析的最强反方论据+2个用户可能感兴趣的追问方向（如：\"AAPL的护城河有多宽？\"\"当前估值处于历史什么分位？\"）",
     "11. 如果回答中过滤了绝对化用语或标注了风险边界，在结尾【追问方向】前加一行【已验证】：说明过滤了什么（如：已过滤2处绝对化表述，已标注期权风险边界）",
     "12. 用户发送\"继续\"且上一条回答带有续断标记（因长度上限被截断／已停止生成／AI生成中断——三者语义相同：上文是完整回答被中途截断的部分）时：从上一条回答的断点无缝续写，不重复已写内容，不重新开头（不要重复【分析思路】行），续写完成后正常收尾【追问方向】。",
+    "13. 情绪维度：若注入了【市场情绪指标】，市场情绪判断必须引用VIX具体数值和分档（贪婪/中性/焦虑/恐慌），与模块3情绪策略联动（如VIX恐慌区+基本面完好的标的=模块3“情绪极端+基本面支撑”候选）；未注入VIX时，明确说“当前无情绪数据”，禁止猜测市场情绪。",
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
     "",
@@ -306,6 +307,7 @@ export async function POST(request: NextRequest) {
           injectedParts.push(`实时行情${effectiveStockCodes.length}只`);
         }
         if (newsContext) injectedParts.push("最新市场快讯");
+        if (moodContext) injectedParts.push("VIX情绪");
         send({
           type: "status",
           text: injectedParts.length > 0 ? `已注入${injectedParts.join("、")}，AI生成中…` : "AI生成中…",
@@ -321,6 +323,7 @@ export async function POST(request: NextRequest) {
         const injectedContext = [
           stockContext ? `${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。` : "",
           cryptoContext,
+          moodContext,
           newsContext,
         ].filter(Boolean).join("\n");
 
