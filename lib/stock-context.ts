@@ -316,3 +316,50 @@ export function buildStockContext(
     "涨跌幅计算基准为昨收。执行S1展示算式、D1保留新鲜度标注、D2异常标注不可抹除、D3有分歧标注时必须呈现两源数字。数据未提供的字段写「数据缺失」，禁止编造（S2/D2）。",
   ].join("\n");
 }
+
+
+// ── 市场情绪供给（9/6深水区：VIX真实锚——原先多空论据里情绪维度靠猜） ──
+
+export type MarketMood = { vix: number; vixPrevClose: number; vixHigh5d: number; vixLow5d: number } | null;
+
+export async function fetchVix(): Promise<MarketMood> {
+  try {
+    const chart = await getYahooChart("^VIX", "5d");
+    if (!chart) return null;
+    const price = chart.meta?.regularMarketPrice;
+    const prev = chart.meta?.chartPreviousClose;
+    if (typeof price !== "number" || !Number.isFinite(price)) return null;
+    const closes: number[] = (chart.indicators?.quote?.[0]?.close ?? []).filter(
+      (c: unknown): c is number => typeof c === "number" && Number.isFinite(c),
+    );
+    const high5d = closes.length > 0 ? Math.max(...closes) : price;
+    const low5d = closes.length > 0 ? Math.min(...closes) : price;
+    return {
+      vix: Math.round(price * 100) / 100,
+      vixPrevClose: typeof prev === "number" ? Math.round(prev * 100) / 100 : price,
+      vixHigh5d: Math.round(high5d * 100) / 100,
+      vixLow5d: Math.round(low5d * 100) / 100,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function buildMarketMoodBlock(mood: MarketMood): string {
+  if (!mood) return "";
+  const { vix, vixPrevClose, vixHigh5d, vixLow5d } = mood;
+  const vixChange = vixPrevClose > 0 ? Math.round(((vix - vixPrevClose) / vixPrevClose) * 1000) / 10 : 0;
+  let regime: string;
+  if (vix < 14) regime = "贪婪区（<14）";
+  else if (vix < 20) regime = "中性区（14-20）";
+  else if (vix < 28) regime = "焦虑区（20-28）";
+  else regime = "恐慌区（>=28）";
+  const position = vixHigh5d > vixLow5d
+    ? `5日区间第${Math.round(((vix - vixLow5d) / (vixHigh5d - vixLow5d)) * 10)}/10位`
+    : "5日持平";
+  return [
+    "【市场情绪指标（VIX恐慌指数，实时注入）】",
+    `VIX当前:${vix} | 昨日:${vixPrevClose}(${vixChange >= 0 ? "+" : ""}${vixChange}%) | 5日区间:${vixLow5d}-${vixHigh5d}（当前处${position}）`,
+    `情绪分档：${regime}。此为真实数据非推测——分析市场情绪维度时必须引用本数据，禁止凭感觉猜测情绪状态。`,
+  ].join("\n");
+}
