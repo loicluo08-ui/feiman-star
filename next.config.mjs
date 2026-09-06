@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
+import { fileURLToPath } from "url";
+// workspace root显式锚定（9/6修复）：/home/z下的流浪package-lock.json（8/19遗留）会把
+// Next 15的root推断拉到/home/z，page data阶段报PageNotFoundError: /_document。
+// 显式声明root=本目录，与流浪lockfile解耦
+const projectRoot = fileURLToPath(new URL(".", import.meta.url));
+
 const nextConfig = {
+  outputFileTracingRoot: projectRoot,
   reactStrictMode: true,
   async headers() {
     const scriptPolicy = process.env.NODE_ENV === "development"
