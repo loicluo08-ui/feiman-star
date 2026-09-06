@@ -80,6 +80,9 @@ const ROUTE_RULES: RouteRule[] = [
   { module: 11, pattern: /芒格|巴菲特|利弗莫尔|段永平|索罗斯|马斯克|查理|护城河|反身性|第一性原理|本分|能力圈|内在价值|思维模型|逆向思考|多元思维/i },
 ];
 
+// 大师风格→模块11强制联动（9/6：风格选中时知识必须随车）
+const GURU_STYLE_MODULE = /^(munger|buffett|livermore|duan|soros|musk)$/;
+
 // 股票问题指示：具体标的（代码/公司名/持仓）→估值(1)+财务(2)联动
 // 注意：中文词不能用\b（JS \w只含ASCII，中文不是词字符）——直接子串匹配
 const STOCK_HINT = /(?:^|[^A-Za-z])[A-Z]{2,5}(?:\.[A-Z])?(?:$|[^A-Za-z])|苹果|英伟达|特斯拉|微软|谷歌|亚马逊|Meta|脸书|台积电|阿斯麦|博通|超微|英特尔|AMD|高通|礼来|联合健康|摩根大通|可口可乐|百事|麦当劳|耐克|迪士尼|奈飞|伯克希尔|持仓|股票|个股|自选|买入|卖出|加仓|建仓|清仓|止盈|止损|股票代码|市值|股价|现价|多少钱|怎么看|分析下|分析一下/;
@@ -95,8 +98,15 @@ export interface KBSelection {
 /**
  * 按本轮问题+近期历史选择注入的KB子集。
  * 任何异常返回全量（保险丝）。
+ * 9/6风格联动：大师风格（munger/buffett/livermore/duan/soros/musk）强制注入模块11——
+ * 用户选了芒格风格但问题只写"英伟达怎么看"时，问题文本无大师关键词，模块11会漏路由，
+ * 而风格prompt大量引用模块11内容——风格选中=知识必须随车
  */
-export function selectKBForQuestion(userText: string | null | undefined, recentTexts: string[] | null | undefined): KBSelection {
+export function selectKBForQuestion(
+  userText: string | null | undefined,
+  recentTexts: string[] | null | undefined,
+  style?: string | null,
+): KBSelection {
   const full: KBSelection = {
     kb: FEIMANSTAR_KB,
     includedModules: [0],
@@ -115,6 +125,9 @@ export function selectKBForQuestion(userText: string | null | undefined, recentT
     if (!routeText.trim()) return full;
 
     const wanted = new Set<number>(CORE_MODULES);
+
+    // 风格联动：大师风格锁模块11（风格prompt引用模块11的思维框架）
+    if (style && GURU_STYLE_MODULE.test(style)) wanted.add(11);
 
     ROUTE_RULES.forEach(function (rule) {
       if (rule.pattern.test(routeText)) wanted.add(rule.module);

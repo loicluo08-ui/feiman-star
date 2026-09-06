@@ -4,6 +4,7 @@ import { callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type Vis
 import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
 import { selectKBForQuestion } from "@/lib/kb-router";
 import { BASE_SKILLS } from "@/lib/chat-skills";
+import { getStylePrompt, CHAT_STYLES } from "@/lib/chat-styles";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData, fetchVix, buildMarketMoodBlock } from "@/lib/stock-context";
 import { buildNewsContext } from "@/lib/news-context";
@@ -37,7 +38,7 @@ const messageSchema = z.object({
 
 const requestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(20),
-  style: z.enum(["balanced", "value", "growth", "quant"]).optional().default("balanced"),
+  style: z.enum(CHAT_STYLES).optional().default("balanced"),
 });
 
 const CROSS_VALIDATION_BLOCK = [
@@ -80,13 +81,9 @@ export async function POST(request: NextRequest) {
   // 构建历史对话上下文（最多取最近6轮）
   const recentMessages = messages.slice(-12);
 
-  const stylePrompts: Record<string, string> = {
-    balanced: "你是费曼星投资分析助手，专注于美股投资领域。分析风格：均衡，兼顾基本面和技术面。",
-    value: "你是费曼星投资分析助手，以价值投资视角分析。参考本杰明·格雷厄姆和沃伦·巴菲特的框架：关注安全边际、内在价值、护城河。对高估值成长股持审慎态度。",
-    growth: "你是费曼星投资分析助手，以成长投资视角分析。参考菲利普·费雪和凯瑟琳·伍德的框架：关注TAM、增速、创新壁垒。对传统价值股不过度排斥但强调增长潜力。",
-    quant: "你是费曼星投资分析助手，以量化分析视角分析。所有判断必须有数据支撑，禁止模糊表述。禁用'概率高/大概率/可能性大'等无数字的措辞——要么给概率数值+依据，要么明说'无数据，不判断'。关注统计显著性、回撤、夏普比率、相关性。对无法量化的因素明确标注'定性判断'。",
-  };
-  const analysisStyle = stylePrompts[input.data.style] ?? stylePrompts.balanced;
+  // 风格指令（lib/chat-styles.ts集中管理）：4基础+6大师=10风格。
+  // 大师风格从知识库模块11提炼（罗竹先沉淀的思维框架），执行式步骤+失效边界，仍以费曼星五维度为底层
+  const analysisStyle = getStylePrompt(input.data.style);
 
   // 两段式管线的转述引擎提示词：GLM-4V只做结构化转述不做分析（分析交给DeepSeek全上下文段）
   const extractionSystemPrompt = [
@@ -112,7 +109,8 @@ export async function POST(request: NextRequest) {
     .map((m) => (m.content.type === "text" ? m.content.text : (m.content.text ?? "")))
     .filter((t) => t.length > 0);
   const kbRouteQuestion = kbRouteTexts[kbRouteTexts.length - 1] ?? "";
-  const kbSelection = selectKBForQuestion(kbRouteQuestion, kbRouteTexts);
+  // 风格联动：大师风格强制模块11随车（风格prompt引用模块11思维框架，漏路由=知识断供）
+  const kbSelection = selectKBForQuestion(kbRouteQuestion, kbRouteTexts, input.data.style);
   if (!kbSelection.fullFallback) {
     console.log(`[invest/chat] kb_router modules=${kbSelection.includedModules.join(",")} chars=${kbSelection.selectedChars}/${kbSelection.totalChars}`);
   }
@@ -139,7 +137,7 @@ export async function POST(request: NextRequest) {
     "4. 所有判断标注数据来源（费曼星原文/经验值/行业惯例/历史数据）",
     "5. 不确定时明确说明，不编造数据",
     "6. 涉及具体买卖建议时，加上\"仅供参考，不构成投资建议\"",
-    "7. 简洁回答控制在500字以内，完整分析控制在1500字以内；用户明确要求详细/全面/深度分析时上限放宽至2500字（宁可深而长，不要浅而全）。用户没要求详细分析时默认简洁回答。",
+    "7. 简洁回答控制在500字以内，完整分析控制在1500字以内；用户明确要求详细/全面/深度分析时上限放宽至2200字（宁可深而长，不要浅而全；2200字上限与3500输出token对齐，宁可分次续写也不浅尝辄止）。用户没要求详细分析时默认简洁回答。",
     "8. 如果系统在下方注入了实时行情数据或【实时市场快讯】，直接引用，不要说\"无法获取实时数据\"。引用快讯时注明发布时间（如\"14:32快讯\"），并区分快讯（事件事实）与行情（价格数字）。",
     "",
     "输出格式要求：",
@@ -373,7 +371,7 @@ export async function POST(request: NextRequest) {
           imageTurn !== null
           || /详细|全面|深入|展开|完整|系统性|逐一|对比|多角度|深度分析|长文/.test(trimmedQuestion)
           || trimmedQuestion.length > 20;
-        const chatMaxTokens = wantsLong ? 3000 : 800;
+        const chatMaxTokens = wantsLong ? 3500 : 800;
 
         // 心跳：首chunk前每5s推ping防代理空闲断连（40K token prompt的TTFB可达10-20s）
         let receivedFirstChunk = false;

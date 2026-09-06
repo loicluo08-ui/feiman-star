@@ -84,10 +84,10 @@ export function extractStockCodes(text: string): string[] {
 }
 
 // 历史锚点缓存：Yahoo chart对云IP限流敏感（429），15分钟缓存把重复请求压到最低
-import { getYahooChart, extractHistoryAnchors } from "./yahoo-chart";
+import { getYahooChart, extractHistoryAnchors, type HistoryAnchors } from "./yahoo-chart";
 import { fetchSAYahooLikeChart } from "./stockanalysis";
 
-const histCache = new Map<string, { data: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null; expiresAt: number }>();
+const histCache = new Map<string, { data: HistoryAnchors | null; expiresAt: number }>();
 
 // 行情短期缓存：同会话连续追问同一只股票，90秒内直接回缓存——TTFB从3-8s降到<10ms
 // TTL=90s的实时性代价：盘中价格最多滞后90秒，对对话分析场景可忽略（分析结论不因毫秒级差价改变）
@@ -99,7 +99,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
   changePct: number | null; marketCap: number | null;
   previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null;
   freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean;
-  history: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null;
+  history: HistoryAnchors | null;
 }>> {
   const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
   const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
@@ -210,14 +210,15 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
         }
       } catch {}
     }
-    // 历史锚点：Yahoo chart 3mo日线（免crumb，浏览器headers）。注入后AI可回答"上月多少/涨了多少"类问题
-    // 2026-08-23：Yahoo对Vercel出口IP全面429，失败时用stockanalysis.com日线兜底
-    let history: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null = null;
+    // 历史锚点：Yahoo chart 1y日线（免crumb，浏览器headers）。注入后AI可回答"年内涨跌/52周位置/放量缩量/距高点回撤"类问题
+    // 1y而非3mo：YTD起点+6月前+52周锚点必须1y数据（3mo下meta的52周高低仍在但其余全缺）
+    // 2026-08-23：Yahoo对Vercel出口IP全面429，失败时用stockanalysis.com日线兜底（90天，锚点降级：6月/YTD/52周为null，模型按D2数据未注入处理）
+    let history: HistoryAnchors | null = null;
     const cachedHist = histCache.get(code);
     if (cachedHist && cachedHist.expiresAt > Date.now()) {
       history = cachedHist.data;
     } else try {
-      const yahooChart = await getYahooChart(code, "3mo");
+      const yahooChart = await getYahooChart(code, "1y");
       const chart = yahooChart ?? (await fetchSAYahooLikeChart(code, 90) as Awaited<ReturnType<typeof getYahooChart>>);
       history = extractHistoryAnchors(chart);
       histCache.set(code, { data: history, expiresAt: Date.now() + 15 * 60 * 1000 });
@@ -272,7 +273,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
 }
 
 export function buildStockContext(
-  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null; previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null; freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean; history: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null }>,
+  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null; previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null; freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean; history: HistoryAnchors | null }>,
 ): string {
   if (stockData.length === 0) return "";
   const lines = stockData.map((s) => {
@@ -291,7 +292,11 @@ export function buildStockContext(
     if (s.open != null) parts.push(`开:$${s.open}`);
     if (s.high != null) parts.push(`高:$${s.high}`);
     if (s.low != null) parts.push(`低:$${s.low}`);
-    if (s.volume != null) parts.push(`量:${(s.volume / 1e6).toFixed(2)}亿股`);
+    if (s.volume != null) {
+      // 9/6质量修复：原`/1e6标"亿股"`单位错位100倍（5363万股→"53.63亿股"）——≥1亿显示亿股，否则万股
+      const volYi = s.volume / 1e8;
+      parts.push(volYi >= 1 ? `量:${volYi.toFixed(2)}亿股` : `量:${Math.round(s.volume / 1e4)}万股`);
+    }
     if (s.pe != null) parts.push(`PE:${s.pe}`);
     if (s.marketCap != null) {
       const capB = s.marketCap / 1e9;
@@ -303,9 +308,18 @@ export function buildStockContext(
       const parts2: string[] = [];
       if (h.oneMonthAgo != null) parts2.push(`1月前:${h.oneMonthAgo.toFixed(2)}`);
       if (h.threeMonthsAgo != null) parts2.push(`3月前:${h.threeMonthsAgo.toFixed(2)}`);
+      if (h.sixMonthsAgo != null) parts2.push(`6月前:${h.sixMonthsAgo.toFixed(2)}`);
+      if (h.ytdStart != null) parts2.push(`年初:${h.ytdStart.toFixed(2)}`);
       if (h.monthHigh != null) parts2.push(`近1月高:${h.monthHigh.toFixed(2)}`);
       if (h.monthLow != null) parts2.push(`近1月低:${h.monthLow.toFixed(2)}`);
-      parts.push(`历史锚点[${parts2.join(" | ")}](Yahoo日线)`);
+      if (h.fiftyTwoWeekHigh != null) parts2.push(`52周高:${h.fiftyTwoWeekHigh.toFixed(2)}`);
+      if (h.fiftyTwoWeekLow != null) parts2.push(`52周低:${h.fiftyTwoWeekLow.toFixed(2)}`);
+      if (parts2.length > 0) parts.push(`历史锚点[${parts2.join(" | ")}](Yahoo日线)`);
+    }
+    // 量能基线：当日量与近20日均量的比值——放量/缩量判断的唯一依据（无基线时AI只能猜）
+    if (s.history?.avgVolume20 != null && s.volume != null && s.history.avgVolume20 > 0) {
+      const volRatio = s.volume / s.history.avgVolume20;
+      parts.push(`量能:今日量为20日均量的${volRatio.toFixed(1)}倍`);
     }
     return `- ${parts.join(" | ")}`;
   });
@@ -313,7 +327,7 @@ export function buildStockContext(
     "",
     `用户提到的股票实时数据（腾讯行情主源+Finnhub交叉，${new Date().toLocaleString("zh-CN", { timeZone: "America/New_York", hour12: false })} 美东时间）：`,
     ...lines,
-    "涨跌幅计算基准为昨收。执行S1展示算式、D1保留新鲜度标注、D2异常标注不可抹除、D3有分歧标注时必须呈现两源数字。数据未提供的字段写「数据缺失」，禁止编造（S2/D2）。",
+    "涨跌幅计算基准为昨收。历史锚点计算照S1展示算式（如距52周高点回撤=(现价-52周高)/52周高×100，年内涨跌=(现价-年初)/年初×100）。执行S1展示算式、D1保留新鲜度标注、D2异常标注不可抹除、D3有分歧标注时必须呈现两源数字。锚点未注入的字段写「数据缺失」，禁止编造（S2/D2）。",
   ].join("\n");
 }
 

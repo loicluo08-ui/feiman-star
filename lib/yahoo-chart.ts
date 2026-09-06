@@ -69,18 +69,86 @@ export async function getYahooChart(code: string, range = "3mo"): Promise<YahooC
   return null;
 }
 
-// 从chart结果提取历史锚点（1月前/3月前/近1月高低），供chat注入
-export function extractHistoryAnchors(
-  chart: YahooChartResult | null,
-): { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null {
+// 从chart结果提取历史锚点，供chat注入。
+// 纵深设计（9/6输出质量优化）：1月/3月/6月前价格+近1月高低+52周高低+YTD起点+近20日均量
+// ——"年内表现/距52周高点回撤多少/放量还是缩量"类问题是深度分析刚需，缺锚点时AI只能弃答
+// 索引规则：从最后一个有效收盘往回数交易日（3mo数据源下降级自动缺锚，字段null，模型按D2走"数据未注入"路径）
+export interface HistoryAnchors {
+  oneMonthAgo: number | null;
+  threeMonthsAgo: number | null;
+  sixMonthsAgo: number | null;
+  monthHigh: number | null;
+  monthLow: number | null;
+  fiftyTwoWeekHigh: number | null;
+  fiftyTwoWeekLow: number | null;
+  ytdStart: number | null;
+  avgVolume20: number | null;
+}
+
+export function extractHistoryAnchors(chart: YahooChartResult | null): HistoryAnchors | null {
   if (!chart) return null;
-  const closes = (chart.indicators?.quote?.[0]?.close ?? []).filter((c): c is number => c != null);
-  if (closes.length < 30) return null;
-  const last20 = closes.slice(-21, -1); // 最近一个月约21个交易日
+  const quote = chart.indicators?.quote?.[0];
+  const rawCloses = quote?.close ?? [];
+  const rawVolumes = quote?.volume ?? [];
+  const timestamps = chart.timestamp ?? [];
+  if (rawCloses.length < 30) return null;
+
+  // 最后一个有效收盘索引（不filter整数组——filter后与timestamp索引漂移，YTD定位会错位）
+  let lastIdx = -1;
+  for (let i = rawCloses.length - 1; i >= 0; i--) {
+    if (rawCloses[i] != null) { lastIdx = i; break; }
+  }
+  if (lastIdx < 29) return null;
+
+  const closeAt = (tradingDaysBack: number): number | null => {
+    const idx = lastIdx - tradingDaysBack;
+    if (idx < 0) return null;
+    const v = rawCloses[idx];
+    return typeof v === "number" ? v : null;
+  };
+
+  // 近1月高低：最近约21根已收K线（不含最新跳动价，保持原语义）
+  const last20: number[] = [];
+  for (let i = Math.max(0, lastIdx - 20); i < lastIdx; i++) {
+    const v = rawCloses[i];
+    if (typeof v === "number") last20.push(v);
+  }
+
+  // 52周高低：meta自带（Yahoo全区间高低，最准）优先；缺失时1y数据可用closes近似，否则null
+  const meta = chart.meta ?? {};
+  const w52High = typeof meta.fiftyTwoWeekHigh === "number" ? meta.fiftyTwoWeekHigh
+    : (lastIdx >= 199 ? Math.max(...rawCloses.slice(lastIdx - 250, lastIdx + 1).filter((c): c is number => c != null)) : null);
+  const w52Low = typeof meta.fiftyTwoWeekLow === "number" ? meta.fiftyTwoWeekLow
+    : (lastIdx >= 199 ? Math.min(...rawCloses.slice(lastIdx - 250, lastIdx + 1).filter((c): c is number => c != null)) : null);
+
+  // YTD起点：从最新往回找第一个落在去年（ts < 当年1月1日UTC）的K线，其后第一根=今年首个收盘
+  // 交易日ts与UTC年初的比较误差最多1个交易日，对"年初至今涨跌"锚点无实质影响
+  const yearStartSec = Date.UTC(new Date().getUTCFullYear(), 0, 1) / 1000;
+  let ytdIdx = 0;
+  for (let i = lastIdx; i >= 0; i--) {
+    const ts = timestamps[i];
+    if (typeof ts !== "number" || ts < yearStartSec) { ytdIdx = Math.min(i + 1, lastIdx); break; }
+  }
+  const ytdStartRaw = rawCloses[ytdIdx];
+  const ytdStart = typeof ytdStartRaw === "number" ? ytdStartRaw : null;
+
+  // 近20日均量：量能基线——当日量 vs 均量，放量/缩量判断从"无基线"变"有基线"
+  const vols: number[] = [];
+  for (let i = lastIdx; i >= 0 && vols.length < 20; i--) {
+    const v = rawVolumes[i];
+    if (typeof v === "number" && v > 0) vols.push(v);
+  }
+  const avgVolume20 = vols.length >= 10 ? vols.reduce((a, b) => a + b, 0) / vols.length : null;
+
   return {
-    oneMonthAgo: closes[closes.length - 22] ?? null,
-    threeMonthsAgo: closes[0] ?? null,
+    oneMonthAgo: closeAt(21),
+    threeMonthsAgo: closeAt(63),
+    sixMonthsAgo: closeAt(126),
     monthHigh: last20.length ? Math.max(...last20) : null,
     monthLow: last20.length ? Math.min(...last20) : null,
+    fiftyTwoWeekHigh: w52High,
+    fiftyTwoWeekLow: w52Low,
+    ytdStart,
+    avgVolume20,
   };
 }
