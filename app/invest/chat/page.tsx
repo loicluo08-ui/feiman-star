@@ -851,13 +851,30 @@ export default function ChatPage() {
                         {loading && i === messages.length - 1 ? (
                           <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-[var(--text)] align-text-bottom" />
                         ) : (
-                          <button
-                            onClick={() => void copyAnswer(m.text, i)}
-                            className="mt-2 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--text)]"
-                            aria-label="复制本条AI回答"
-                          >
-                            {copiedIndex === i ? "已复制 ✓" : "复制"}
-                          </button>
+                          <div className="mt-2 flex items-center gap-3">
+                            <button
+                              onClick={() => void copyAnswer(m.text, i)}
+                              className="text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--text)]"
+                              aria-label="复制本条AI回答"
+                            >
+                              {copiedIndex === i ? "已复制 ✓" : "复制"}
+                            </button>
+                            {/* 截断/停止/中断的一键续写：后端规则12支持"继续"从断点续写，
+                                只提示打字门槛高——按钮直接发"继续"，baseMessages带完整上下文 */}
+                            {!loading
+                              && i === messages.length - 1
+                              && (m.text.includes("因长度上限被截断")
+                                || m.text.includes("（已停止生成）")
+                                || m.text.includes("AI生成中断")) ? (
+                              <button
+                                onClick={() => void sendChat("继续", [], messages)}
+                                className="text-xs text-[var(--primary)] transition-colors hover:opacity-80"
+                                aria-label="从断点继续生成"
+                              >
+                                继续生成 →
+                              </button>
+                            ) : null}
+                          </div>
                         )}
                       </>
                     ) : (
