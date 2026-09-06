@@ -317,9 +317,19 @@ export function buildStockContext(
       if (parts2.length > 0) parts.push(`历史锚点[${parts2.join(" | ")}](Yahoo日线)`);
     }
     // 量能基线：当日量与近20日均量的比值——放量/缩量判断的唯一依据（无基线时AI只能猜）
+    // 盘中口径护栏：今日量为盘中累计量（未收盘），上午时段除以全天均量必然偏低=误报缩量。
+    // 美股盘中（美东工作日9:30-16:00）时标注盘中语义，收盘数据才直接给倍数
     if (s.history?.avgVolume20 != null && s.volume != null && s.history.avgVolume20 > 0) {
       const volRatio = s.volume / s.history.avgVolume20;
-      parts.push(`量能:今日量为20日均量的${volRatio.toFixed(1)}倍`);
+      const et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+      const day = et.getDay();
+      const minutes = et.getHours() * 60 + et.getMinutes();
+      const inSession = day >= 1 && day <= 5 && minutes >= 570 && minutes < 960; // 9:30-16:00
+      parts.push(
+        inSession
+          ? `量能:今日盘中量为20日均量的${volRatio.toFixed(1)}倍(未收盘，日内扩量中，禁止据此判断缩量)`
+          : `量能:今日量为20日均量的${volRatio.toFixed(1)}倍`,
+      );
     }
     return `- ${parts.join(" | ")}`;
   });
