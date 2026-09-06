@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type VisionMessage } from "@/lib/ai";
-import { crossValidate } from "@/lib/cross-validate";
+import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
@@ -272,10 +272,17 @@ export async function POST(request: NextRequest) {
         const newsQueryText = currentTurnText
           ? `${combinedText} ${currentTurnText.slice(0, 800)}`
           : combinedText;
+        // 数字锚定验证的数据源：保留原始行情数组（buildStockContext只产字符串）
+        let injectedQuotes: Array<import("@/lib/cross-validate").InjectedQuote> = [];
         const stockTask = (async () => {
           if (effectiveStockCodes.length > 0) {
             try {
-              return buildStockContext(await fetchStockData(effectiveStockCodes));
+              const stockData = await fetchStockData(effectiveStockCodes);
+              injectedQuotes = stockData.map((s) => ({
+                code: s.code, name: s.name, price: s.price, previousClose: s.previousClose,
+                open: s.open, high: s.high, low: s.low, changePct: s.changePct, history: s.history,
+              }));
+              return buildStockContext(stockData);
             } catch {
               // D5触发点：整体获取失败也要注入标注，模型才知道走降级路径
               return `\n用户提到的股票[${effectiveStockCodes.join(", ")}]实时数据获取失败（网络层）。执行D5：明确告知数据获取失败，用知识库做定性框架分析，不编造数字。`;
@@ -433,6 +440,15 @@ export async function POST(request: NextRequest) {
         if (validation.cleaned) {
           send({ type: "patch", text: validation.text });
           console.log(`[invest/chat] cross_validate flags=${validation.flags.join("; ")}`);
+        }
+
+        // 数字锚定验证（9/6深度）：D4规则的事后真实闭环——回答数字与注入行情精确比对，
+        // 疑似漂移（±15%区间内但不匹配白名单）→ 末尾附核对警告（只报告不patch，用户口述数字已豁免）
+        const numeric = verifyNumericAnchors(validation.cleaned ? validation.text : fullText, injectedQuotes);
+        if (numeric.verified) {
+          fullText = numeric.text;
+          send({ type: "patch", text: numeric.text });
+          console.log(`[invest/chat] numeric_anchor flags=${numeric.flags.join("; ")}`);
         }
 
         send({ type: "done" });

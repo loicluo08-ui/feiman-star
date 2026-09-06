@@ -56,3 +56,131 @@ export function crossValidate(text: string): CrossValidationResult {
 
   return { text: cleaned, flags, cleaned: flags.length > 0 };
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 9/6 深度优化：数字锚定验证（D4规则的事后闭环）
+// 技能包要求"草稿数字与注入数据逐一核对"，但此前纯靠模型自律——
+// 本层在流完成后真实执行比对：回答中该标的价格类数字与注入行情不符→末尾附核对警告
+// 设计原则：只报告不patch（答案里合法存在用户口述数字如成本价，自动改写有误伤风险）
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export type InjectedQuote = {
+  code: string;
+  name?: string;
+  price: number | null;
+  previousClose: number | null;
+  open?: number | null;
+  high: number | null;
+  low: number | null;
+  changePct: number | null;
+  history?: {
+    oneMonthAgo: number | null;
+    threeMonthsAgo: number | null;
+    monthHigh: number | null;
+    monthLow: number | null;
+  } | null;
+};
+
+/** 数字相同判定：相对容差0.5%（两源行情+四舍五入的自然偏差） */
+function sameNumber(a: number, b: number, tolerance = 0.005): boolean {
+  return Math.abs(a - b) <= Math.abs(b) * tolerance;
+}
+
+/** 提取文本中所有带$的价格数字与裸百分比（while+exec——es5 target下for..of matchAll报TS2802） */
+function extractPriceLike(text: string): number[] {
+  const out: number[] = [];
+  const re = /\$(\d{1,6}(?:\.\d{1,4})?)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) != null) out.push(parseFloat(m[1]));
+  return out;
+}
+function extractPct(text: string): number[] {
+  const out: number[] = [];
+  const re = /([+-]?\d{1,3}(?:\.\d{1,2})?)\s*%/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) != null) out.push(parseFloat(m[1]));
+  return out;
+}
+
+/**
+ * 数字锚定验证。
+ * 仅当回答提及了某注入标的（代码或名称）且回答里存在疑似漂移数字时报告：
+ * 疑似漂移 = 该数字在注入价±15%区间内但精确比对不匹配（0.5%容差），
+ * 且不属于注入白名单（现价/昨收/开/高/低/历史锚点）。
+ * "成本/成本价/买入价"邻近±20字符的$数字视为用户口述，跳过（防误伤）。
+ */
+export function verifyNumericAnchors(
+  text: string,
+  quotes: Array<InjectedQuote>,
+): { text: string; flags: string[]; verified: boolean } {
+  const flags: string[] = [];
+  const warnings: string[] = [];
+
+  if (quotes.length === 0) return { text, flags, verified: false };
+
+  for (const quote of quotes) {
+    const { code, name, price, previousClose, open, high, low, changePct, history } = quote;
+    if (price == null) continue;
+
+    // 标的提及检测（代码精确边界，名称防止"苹果"撞"苹果公司财务"等）
+    const codeRe = new RegExp(`\\b${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    const nameRe = name && name.length >= 2 ? new RegExp(name, "i") : null;
+    if (!codeRe.test(text) && !(nameRe && nameRe.test(text))) continue;
+
+    // 注入白名单数字集（命中任一=合法锚定）
+    const whitelist: number[] = [price, previousClose, open, high, low].filter(
+      (v): v is number => v != null,
+    );
+    if (history) {
+      // 历史锚点字段可空（Yahoo降级路径）——null过滤后再push（直接push会在strict下类型报错）
+      whitelist.push(
+        ...[history.oneMonthAgo, history.threeMonthsAgo, history.monthHigh, history.monthLow].filter(
+          (v): v is number => v != null,
+        ),
+      );
+    }
+
+    // 用户口述数字豁免：成本/买入价语境±20字符内的$数字跳过
+    const userOwned = new Set<number>();
+    const userRe = /\$(\d{1,6}(?:\.\d{1,4})?)/g;
+    let um: RegExpExecArray | null;
+    while ((um = userRe.exec(text)) != null) {
+      const idx = um.index ?? 0;
+      const ctx = text.slice(Math.max(0, idx - 20), idx + 25);
+      if (/成本|买入价|建仓|你的|持仓价/i.test(ctx)) userOwned.add(parseFloat(um[1]));
+    }
+
+    const candidates = extractPriceLike(text).filter(
+      (n) => !userOwned.has(n)
+        && whitelist.every((w) => !sameNumber(n, w))
+        && n >= price * 0.85 && n <= price * 1.15,
+    );
+    if (candidates.length > 0) {
+      const uniq = Array.from(new Set(candidates.map((n) => n))).slice(0, 3);
+      warnings.push(
+        `${code}：回答中出现$${uniq.join("、$")}，与注入实时价$${price.toFixed(2)}（±0.5%）不符，请以上方注入数据为准`,
+      );
+      flags.push(`${code}价格数字疑似漂移:${uniq.join(",")}`);
+    }
+
+    // 涨跌幅漂移：答案百分比 vs 注入changePct（差>0.3且<5=疑似，差≥5多为区间涨跌非当日，跳过）
+    if (changePct != null) {
+      const pcts = extractPct(text).filter(
+        (p) => Math.abs(Math.abs(p) - Math.abs(changePct)) > 0.3
+          && Math.abs(Math.abs(p) - Math.abs(changePct)) < 5,
+      );
+      if (pcts.length > 0) {
+        const uniq = Array.from(new Set(pcts.map((p) => p))).slice(0, 2);
+        warnings.push(
+          `${code}：回答涨跌幅${uniq.map((p) => `${p > 0 ? "+" : ""}${p}%`).join("、")}与注入当日涨跌${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%不一致（若为区间涨跌请核对口径）`,
+        );
+        flags.push(`${code}涨跌幅口径存疑:${uniq.join(",")}`);
+      }
+    }
+  }
+
+  if (warnings.length === 0) return { text, flags, verified: false };
+
+  const note = `\n\n⚠️ **数据核对提示**（系统自动比对注入行情）：${warnings.join("；")}。`;
+  return { text: `${text}${note}`, flags, verified: true };
+}
