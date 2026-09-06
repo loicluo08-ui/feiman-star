@@ -47,12 +47,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        <AppShell>{children}</AppShell>
-        <footer className="border-t border-[var(--border)] px-6 py-4 text-center">
-          <p className="text-xs text-[var(--text-muted)]">
-            费曼星 · 投资分析工具 · 行情实时更新 · 仅供研究参考，不构成投资建议
-          </p>
-        </footer>
+        <AppShell>
+          {children}
+          <footer className="mt-auto border-t border-[var(--border)] px-6 py-4 text-center">
+            <p className="text-xs text-[var(--text-muted)]">
+              费曼星 · 投资分析工具 · 行情实时更新 · 仅供研究参考，不构成投资建议
+            </p>
+          </footer>
+        </AppShell>
       </body>
     </html>
   );

@@ -174,7 +174,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
-      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] px-3 py-5 md:flex">
+      <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] px-3 py-5 md:flex">
         <SidebarContent pathname={pathname} theme={theme} onToggleTheme={toggleTheme} />
       </aside>
 
@@ -217,7 +217,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
-      <main className="min-w-0 flex-1 pt-12 md:pt-0">{children}</main>
+      <main className="flex min-w-0 flex-1 flex-col pt-12 md:pt-0">{children}</main>
     </div>
   );
 }
