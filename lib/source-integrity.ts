@@ -78,26 +78,26 @@ let kbNumbersCache: Set<string> | null = null;
 // ① %形式（模块5阈值"70%"、恐惧贪婪刻度）
 // ② PE/PB/ROE/中值上下文的估值数字（模块1行业表"PE | 20 | 28 | 45+"）
 // ③ X倍形式（"仓位1.5倍上限"）
+// 注：matchAll的for..of在es5 target报TS2802（8/21已知坑）——统一while+exec
 function kbNumbers(): Set<string> {
   if (kbNumbersCache) return kbNumbersCache;
   const set = new Set<string>();
+  const collect = (re: RegExp) => {
+    let m: RegExpExecArray | null;
+    const rx = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    while ((m = rx.exec(FEIMANSTAR_KB)) !== null) {
+      if (m[1]) set.add(normNum(m[1]));
+    }
+  };
   // ① %形式
-  for (const m of FEIMANSTAR_KB.matchAll(/(\d[\d,]*(?:\.\d+)?)\s*%/g)) {
-    set.add(normNum(m[1]));
-  }
+  collect(/(\d[\d,]*(?:\.\d+)?)\s*%/);
   // ② 估值基准数字，两种紧凑形式（±25字符窗口会把"PE | $0.80 × 100 = $120"里的120误收）：
   //    a. markdown表格管道行："| 20 | 28 | 45+"（模块1行业基准表）
   //    b. 标签紧邻："PE 28" / "PB:1.5" / "ROE≈12"（正文叙述形式）
-  for (const m of FEIMANSTAR_KB.matchAll(/\|\s*(\d[\d,]*(?:\.\d+)?)/g)) {
-    set.add(normNum(m[1]));
-  }
-  for (const m of FEIMANSTAR_KB.matchAll(/\b(?:PE|PB|ROE)\s*[:：≈]?\s*(\d[\d,]*(?:\.\d+)?)/g)) {
-    set.add(normNum(m[1]));
-  }
+  collect(/\|\s*(\d[\d,]*(?:\.\d+)?)/);
+  collect(/\b(?:PE|PB|ROE)\s*[:：≈]?\s*(\d[\d,]*(?:\.\d+)?)/);
   // ③ 倍数形式
-  for (const m of FEIMANSTAR_KB.matchAll(/(\d[\d,]*(?:\.\d+)?)\s*倍/g)) {
-    set.add(normNum(m[1]));
-  }
+  collect(/(\d[\d,]*(?:\.\d+)?)\s*倍/);
   kbNumbersCache = set;
   return set;
 }
