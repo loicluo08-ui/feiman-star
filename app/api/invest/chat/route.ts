@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type VisionMessage } from "@/lib/ai";
 import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
-import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
+import { selectKBForQuestion } from "@/lib/kb-router";
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData, fetchVix, buildMarketMoodBlock } from "@/lib/stock-context";
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     balanced: "你是费曼星投资分析助手，专注于美股投资领域。分析风格：均衡，兼顾基本面和技术面。",
     value: "你是费曼星投资分析助手，以价值投资视角分析。参考本杰明·格雷厄姆和沃伦·巴菲特的框架：关注安全边际、内在价值、护城河。对高估值成长股持审慎态度。",
     growth: "你是费曼星投资分析助手，以成长投资视角分析。参考菲利普·费雪和凯瑟琳·伍德的框架：关注TAM、增速、创新壁垒。对传统价值股不过度排斥但强调增长潜力。",
-    quant: "你是费曼星投资分析助手，以量化分析视角分析。所有判断必须有数据支撑，禁止模糊表述。关注统计显著性、回撤、夏普比率、相关性。对无法量化的因素明确标注'定性判断'。",
+    quant: "你是费曼星投资分析助手，以量化分析视角分析。所有判断必须有数据支撑，禁止模糊表述。禁用'概率高/大概率/可能性大'等无数字的措辞——要么给概率数值+依据，要么明说'无数据，不判断'。关注统计显著性、回撤、夏普比率、相关性。对无法量化的因素明确标注'定性判断'。",
   };
   const analysisStyle = stylePrompts[input.data.style] ?? stylePrompts.balanced;
 
@@ -104,7 +104,20 @@ export async function POST(request: NextRequest) {
     "输出：纯结构化文字列表，不加评论、不下结论、不反问。",
   ].join("\n");
 
-  // 纯文字对话将费曼星V4.1知识库全文注入DeepSeek system prompt。
+  // KB选择性注入（成本+TTFB+质量三收）：按本轮问题+近期历史路由模块——
+  // 核心集（方法论+模块3/4/5/7+附录）恒注入；期权/行业/财务/行为/大师模块按需；
+  // 版本记录剔除；任何异常保险丝回退全量（最差=现状）
+  const kbRouteTexts = messages
+    .filter((m) => m.role === "user")
+    .map((m) => (m.content.type === "text" ? m.content.text : (m.content.text ?? "")))
+    .filter((t) => t.length > 0);
+  const kbRouteQuestion = kbRouteTexts[kbRouteTexts.length - 1] ?? "";
+  const kbSelection = selectKBForQuestion(kbRouteQuestion, kbRouteTexts);
+  if (!kbSelection.fullFallback) {
+    console.log(`[invest/chat] kb_router modules=${kbSelection.includedModules.join(",")} chars=${kbSelection.selectedChars}/${kbSelection.totalChars}`);
+  }
+
+  // 纯文字对话将费曼星V4.1知识库注入DeepSeek system prompt（按路由选择子集）。
   const systemPrompt = [
     "你是费曼星投资分析平台的专业投资助手。严格基于费曼星投资框架（罗竹先创立）回答。",
     "",
@@ -126,7 +139,7 @@ export async function POST(request: NextRequest) {
     "4. 所有判断标注数据来源（费曼星原文/经验值/行业惯例/历史数据）",
     "5. 不确定时明确说明，不编造数据",
     "6. 涉及具体买卖建议时，加上\"仅供参考，不构成投资建议\"",
-    "7. 简洁回答控制在500字以内，完整分析控制在1500字以内。用户没要求详细分析时默认简洁回答。",
+    "7. 简洁回答控制在500字以内，完整分析控制在1500字以内；用户明确要求详细/全面/深度分析时上限放宽至2500字（宁可深而长，不要浅而全）。用户没要求详细分析时默认简洁回答。",
     "8. 如果系统在下方注入了实时行情数据或【实时市场快讯】，直接引用，不要说\"无法获取实时数据\"。引用快讯时注明发布时间（如\"14:32快讯\"），并区分快讯（事件事实）与行情（价格数字）。",
     "",
     "输出格式要求：",
@@ -135,11 +148,12 @@ export async function POST(request: NextRequest) {
     "11. 如果回答中过滤了绝对化用语或标注了风险边界，在结尾【追问方向】前加一行【已验证】：说明过滤了什么（如：已过滤2处绝对化表述，已标注期权风险边界）",
     "12. 用户发送\"继续\"且上一条回答带有续断标记（因长度上限被截断／已停止生成／AI生成中断——三者语义相同：上文是完整回答被中途截断的部分）时：从上一条回答的断点无缝续写，不重复已写内容，不重新开头（不要重复【分析思路】行），续写完成后正常收尾【追问方向】。",
     "13. 情绪维度：若注入了【市场情绪指标】，市场情绪判断必须引用VIX具体数值和分档（贪婪/中性/焦虑/恐慌），与模块3情绪策略联动（如VIX恐慌区+基本面完好的标的=模块3“情绪极端+基本面支撑”候选）；未注入VIX时，明确说“当前无情绪数据”，禁止猜测市场情绪。",
+    "14. 技术位/价格位数字必须有来源：支撑压力位/目标价/加仓减仓触发价，要么带[数据]（注入锚点直接引用，如近1月低点$410.12），要么带[推导]（标明推导逻辑，如跌破3月前价$41.64后下一参照位=52周低$X）。无来源支撑的点位（凭空生成的平台/支撑位）严禁输出——宁可写「该价位无数据支撑，无法给出」。",
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
     "",
     "<knowledge_base>",
-    FEIMANSTAR_KB,
+    kbSelection.kb,
     "</knowledge_base>",
   ].join("\n");
 
