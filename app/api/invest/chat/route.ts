@@ -13,6 +13,7 @@ import { buildNewsContext } from "@/lib/news-context";
 import { buildEarningsContext } from "@/lib/chat-earnings-context";
 import { DELIBERATION_BLOCK } from "@/lib/chat-deliberation";
 import { ACTION_PLAN_BLOCK } from "@/lib/chat-action-plan";
+import { PLAN_LIFECYCLE_BLOCK } from "@/lib/chat-plan-lifecycle";
 import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
 import { CHAT_QUALITY_BLOCK } from "@/lib/chat-quality";
 
@@ -159,6 +160,7 @@ export async function POST(request: NextRequest) {
     DELIBERATION_BLOCK,
     DELIBERATION_ENHANCEMENT,
     ACTION_PLAN_BLOCK,
+    PLAN_LIFECYCLE_BLOCK,
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
     CHAT_QUALITY_BLOCK,
@@ -450,7 +452,10 @@ export async function POST(request: NextRequest) {
           imageTurn !== null
           || /详细|全面|深入|展开|完整|系统性|逐一|对比|多角度|深度分析|长文/.test(trimmedQuestion)
           || trimmedQuestion.length > 20;
-        const chatMaxTokens = wantsLong ? (isBlend ? 6000 : 3500) : 800;
+        // 9/6实测修正：短问路径800→1400——新五段式+大师会诊格式实测Q4(17字)/Q5(8字)均在
+        // 1283字≈800token处被腰斩（截断提示+续写交互，对"苹果什么情况"类快问是体验回退）。
+        // 1400≈2200字余量：简洁模式规则仍在（S3①②⑤），约束靠指令不靠截断
+        const chatMaxTokens = wantsLong ? (isBlend ? 6000 : 3500) : 1400;
         // 9/6质量优化（引擎分层）：详细类问题（非blend）同样开启思维链——
         // flash+thinking推理深度显著提升，成本仅输出3x（¥0.03-0.05/轮 vs 无思考¥0.01）；
         // 短问句保持无思考快路径（省钱+快）。blend是pro+6000 tokens的天花板档：
