@@ -605,7 +605,9 @@ export default function ReviewPage() {
                   ? `AI结构化解析结果${unparsedCount > 0 ? `（另有${unparsedCount}条未能结构化，已忽略）` : ""}${tradeStats.sortedByDate ? "；已按日期排序处理" : ""}`
                   : statsSource === "fallback"
                     ? `AI解析失败，已回退本地规则${tradeStats.sortedByDate ? "；已按日期排序处理" : ""}`
-                    : "提交后将先由AI结构化解析"}
+                    : tradeStats.sortedByDate
+                      ? "预览已按日期排序处理；提交后将先由AI结构化解析"
+                      : "提交后将先由AI结构化解析"}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
