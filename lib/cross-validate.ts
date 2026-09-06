@@ -1,7 +1,7 @@
 import "server-only";
 
 const ABSOLUTE_TERMS: Array<{ pattern: RegExp; replacement: string; label: string }> = [
-  { pattern: /永久(?!\s*(?:不|失效|关闭))/g, replacement: "长期", label: "永久→长期" },
+  { pattern: /永久(?!\s*(?:不|失效|关闭|性?损失))/g, replacement: "长期", label: "永久→长期" },
   { pattern: /免费(?!版|额度|试用|方案|层)(?=服务|提供|使用|无限期|永久)/g, replacement: "有限期免费", label: "免费→有限期免费" },
   { pattern: /全自动(?!驾驶|化生产)/g, replacement: "高度自动化", label: "全自动→高度自动化" },
   { pattern: /趋近于\s*0/g, replacement: "极低", label: "趋近于0→极低" },
