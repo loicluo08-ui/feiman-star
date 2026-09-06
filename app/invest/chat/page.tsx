@@ -4,7 +4,18 @@ import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "
 import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/background-task";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
-type AnalysisStyle = "balanced" | "value" | "growth" | "quant";
+// 10风格=4基础+6大师（模块11思维框架库）。route的zod enum与此保持一致
+type AnalysisStyle = "balanced" | "value" | "growth" | "quant" | "munger" | "buffett" | "livermore" | "duan" | "soros" | "musk";
+
+// 大师视角按钮组（默认收起，点「大师视角」展开——4+6全铺开挤占移动端）
+const GURU_STYLES: Array<{ key: AnalysisStyle; label: string; hint: string }> = [
+  { key: "munger", label: "芒格", hint: "多元思维+逆向思考：先问会怎么死" },
+  { key: "buffett", label: "巴菲特", hint: "护城河+内在价值+市场先生" },
+  { key: "livermore", label: "利弗莫尔", hint: "关键点+最小阻力线+止损铁律" },
+  { key: "duan", label: "段永平", hint: "买股票就是买公司+不懂不做" },
+  { key: "soros", label: "索罗斯", hint: "反身性+找市场共识的错误" },
+  { key: "musk", label: "马斯克", hint: "第一性原理：行业的理论最优解" },
+];
 
 type ChatItem = {
   role: "user" | "assistant";
@@ -20,6 +31,8 @@ type ChatHistoryRecord = {
   title: string;
   style: AnalysisStyle;
   messages: ChatItem[];
+  /** 滚动摘要（长对话记忆）：窗口外对话的压缩版，随历史存档，重载会话后恢复 */
+  summary?: string;
 };
 
 type ChatTaskResult = {
@@ -57,6 +70,7 @@ function storeConversation(
   messages: ChatItem[],
   style: AnalysisStyle,
   historyId: string,
+  summaryText?: string,
 ): ChatHistoryRecord[] {
   const textOnlyMessages = messages.map((message) => ({
     role: message.role,
@@ -71,6 +85,8 @@ function storeConversation(
     title: firstQuestion.replace(/\s+/g, " ").slice(0, 48),
     style,
     messages: textOnlyMessages,
+    // 滚动摘要随历史存档：重载会话后loadConversation恢复（长对话跨会话不失忆）
+    ...(summaryText ? { summary: summaryText } : {}),
   };
   const next = [record, ...readChatHistory().filter((item) => item.id !== historyId)].slice(0, 20);
   try {
@@ -142,6 +158,8 @@ export default function ChatPage() {
   const [error, setError] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [style, setStyle] = useState<AnalysisStyle>("balanced");
+  // 大师视角按钮展开态：切到大师风格后保持展开（防「选中项藏在收起组里」的迷失感），关闭新对话不重置
+  const [showGurus, setShowGurus] = useState(false);
   const [history, setHistory] = useState<ChatHistoryRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
@@ -163,6 +181,10 @@ export default function ChatPage() {
   // 流式状态行（后端status事件：注入进度/生成状态）
   const [statusLine, setStatusLine] = useState("");
   const [copiedIndex, setCopiedIndex] = useState(-1);
+  // 长对话滚动摘要（窗口外记忆）：会话级状态，随历史持久化
+  const summaryRef = useRef("");
+  const lastSummarizedCountRef = useRef(0); // 上次摘要时窗口外消息条数（每溢出4条重摘要）
+  const [summary] = useState(() => ({ get: () => summaryRef.current, set: (v: string) => { summaryRef.current = v; } }));
 
   const filteredHistory = useMemo(() => {
     const keyword = historyQuery.trim().toLocaleLowerCase();
@@ -244,6 +266,9 @@ export default function ChatPage() {
     lastSubmitRef.current = null;
     setMessages([]);
     setError("");
+    // 摘要状态随会话重置
+    summary.set("");
+    lastSummarizedCountRef.current = 0;
   }
 
   function loadConversation(record: ChatHistoryRecord) {
@@ -254,6 +279,9 @@ export default function ChatPage() {
     setStyle(record.style);
     setShowHistory(false);
     setError("");
+    // 摘要恢复：历史存档里的summary（无则空，窗口外消息在下次提交时重新触发摘要）
+    summary.set(record.summary ?? "");
+    lastSummarizedCountRef.current = record.summary ? Math.max(0, record.messages.length - 11) : 0;
     nearBottomRef.current = true;
     setNearBottom(true);
     scrollToBottom(true);
@@ -414,9 +442,14 @@ export default function ChatPage() {
 
     // 两段式管线：历史图消息一律降级为转述文本（后端image_analysis事件回存的描述），只有本轮带真实图片
     // 修复：发图后的追问曾被静默降级到GLM-4V直答路径（1024顶/无KB/无框架）——现在追问走DeepSeek全上下文
-    // 只发最近11条+当前1条=后端slice(-12)的完整窗口（后端多收的直接丢弃，发20条=白白多传8条payload）
-    const messagesWindow = currentMessages.slice(-11);
+    // 窗口条数动态：有摘要时10条（摘要占1条头位，总数仍=后端slice(-12)满窗口）
+    const currentSummary = summary.get();
+    const windowSize = currentSummary ? 10 : 11;
+    const messagesWindow = currentMessages.slice(-windowSize);
     const apiMessages = [
+      ...(currentSummary
+        ? [{ role: "user" as const, content: { type: "text" as const, text: `[前情摘要（系统压缩的历史对话记忆，供上下文，数字可信）]\n${currentSummary}` } }]
+        : []),
       ...messagesWindow.map((m) => {
         const previews = m.imagePreviews ?? [];
         if (previews.length > 0) {
@@ -444,6 +477,33 @@ export default function ChatPage() {
           : { type: "text" as const, text },
       },
     ];
+
+    // 滚动摘要维护：窗口外（不含本轮）消息数比上次摘要多≥4条→fire-and-forget更新（本轮用旧摘要，下次生效）
+    // 不阻塞发送：摘要调用2-5s，阻塞=每次发送都加延迟；失败静默（下次再试）
+    const overflowCount = currentMessages.length - windowSize;
+    if (overflowCount > 0 && overflowCount - lastSummarizedCountRef.current >= 4) {
+      const prevSummarized = lastSummarizedCountRef.current;
+      const newPart = currentMessages.slice(Math.max(0, prevSummarized), currentMessages.length - windowSize)
+        .filter((m) => m.text.trim().length > 0)
+        .slice(-8)
+        .map((m) => ({ role: m.role, text: m.text }));
+      lastSummarizedCountRef.current = overflowCount;
+      if (newPart.length > 0) {
+        void fetch("/api/invest/chat-summarize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prevSummary: currentSummary, messages: newPart }),
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((json: { summary?: string } | null) => {
+            if (json?.summary) summary.set(json.summary);
+          })
+          .catch(() => {
+            // 摘要失败回退计数，下次重试
+            lastSummarizedCountRef.current = prevSummarized;
+          });
+      }
+    }
 
     setMessages([...currentMessages, userItem, { role: "assistant", text: "" }]);
     setLoading(true);
@@ -567,7 +627,7 @@ export default function ChatPage() {
           userItem,
           { role: "assistant" as const, text: answer },
         ];
-        const nextHistory = storeConversation(completedMessages, currentStyle, historyId);
+        const nextHistory = storeConversation(completedMessages, currentStyle, historyId, summary.get() || undefined);
         return {
           messages: completedMessages,
           history: nextHistory,
@@ -583,7 +643,7 @@ export default function ChatPage() {
             userItem,
             { role: "assistant" as const, text: `${answer}\n\n（已停止生成）` },
           ];
-          const nextHistory = storeConversation(stoppedMessages, currentStyle, historyId);
+          const nextHistory = storeConversation(stoppedMessages, currentStyle, historyId, summary.get() || undefined);
           return {
             messages: stoppedMessages,
             history: nextHistory,
@@ -710,7 +770,7 @@ export default function ChatPage() {
                 />
               </label>
             </div>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {[
                 { key: "balanced", label: "均衡" },
                 { key: "value", label: "价值" },
@@ -729,6 +789,32 @@ export default function ChatPage() {
                   {s.label}
                 </button>
               ))}
+              <button
+                onClick={() => setShowGurus((v) => !v)}
+                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                  showGurus || GURU_STYLES.some((g) => g.key === style)
+                    ? "border border-[var(--text)] text-[var(--text)]"
+                    : "border border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
+                }`}
+                title="展开6种投资大师视角（基于罗竹先框架的模块11思维框架库）"
+              >
+                大师视角
+              </button>
+              {showGurus &&
+                GURU_STYLES.map((s) => (
+                  <button
+                    key={s.key}
+                    onClick={() => setStyle(s.key as typeof style)}
+                    title={s.hint}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      style === s.key
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
             </div>
           </div>
         </div>

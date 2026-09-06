@@ -78,6 +78,11 @@ export type InjectedQuote = {
     threeMonthsAgo: number | null;
     monthHigh: number | null;
     monthLow: number | null;
+    // 9/6锚点扩展（与HistoryAnchors对齐，全可空——3mo降级路径下为null）
+    sixMonthsAgo?: number | null;
+    ytdStart?: number | null;
+    fiftyTwoWeekHigh?: number | null;
+    fiftyTwoWeekLow?: number | null;
   } | null;
 };
 
@@ -133,10 +138,12 @@ export function verifyNumericAnchors(
     );
     if (history) {
       // 历史锚点字段可空（Yahoo降级路径）——null过滤后再push（直接push会在strict下类型报错）
+      // 9/6锚点扩展：6月前/年初/52周高低进白名单——AI按注入数据引用这些锚点时不得误报"价格漂移"
       whitelist.push(
-        ...[history.oneMonthAgo, history.threeMonthsAgo, history.monthHigh, history.monthLow].filter(
-          (v): v is number => v != null,
-        ),
+        ...[
+          history.oneMonthAgo, history.threeMonthsAgo, history.monthHigh, history.monthLow,
+          history.sixMonthsAgo, history.ytdStart, history.fiftyTwoWeekHigh, history.fiftyTwoWeekLow,
+        ].filter((v): v is number => v != null),
       );
     }
 
@@ -164,13 +171,26 @@ export function verifyNumericAnchors(
     }
 
     // 涨跌幅漂移：答案百分比 vs 注入changePct（差>0.3且<5=疑似，差≥5多为区间涨跌非当日，跳过）
+    // 9/6锚点扩展：区间语义豁免——"年内/年初至今/近1月/近6月/52周回撤"等百分比是区间涨跌，
+    // 幅度小(差<5)时会撞当日口径检测误报。带位置提取，语境含区间词的百分比跳过
     if (changePct != null) {
-      const pcts = extractPct(text).filter(
+      const rangeWord =
+        /年内|年初|至今|YTD|近1月|近3月|近6月|近一月|近三月|近六月|1个月|3个月|6个月|三个月|六个月|52周|一年|1年|回撤|涨了|累计|区间/;
+      const pcts: number[] = [];
+      const pctRe = /([+-]?\d{1,3}(?:\.\d{1,2})?)\s*%/g;
+      let pm: RegExpExecArray | null;
+      while ((pm = pctRe.exec(text)) != null) {
+        const idx = pm.index ?? 0;
+        const ctx = text.slice(Math.max(0, idx - 24), idx + 10);
+        if (rangeWord.test(ctx)) continue; // 区间语义百分比不参与当日口径比对
+        pcts.push(parseFloat(pm[1]));
+      }
+      const suspects = pcts.filter(
         (p) => Math.abs(Math.abs(p) - Math.abs(changePct)) > 0.3
           && Math.abs(Math.abs(p) - Math.abs(changePct)) < 5,
       );
-      if (pcts.length > 0) {
-        const uniq = Array.from(new Set(pcts.map((p) => p))).slice(0, 2);
+      if (suspects.length > 0) {
+        const uniq = Array.from(new Set(suspects.map((p) => p))).slice(0, 2);
         warnings.push(
           `${code}：回答涨跌幅${uniq.map((p) => `${p > 0 ? "+" : ""}${p}%`).join("、")}与注入当日涨跌${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%不一致（若为区间涨跌请核对口径）`,
         );
