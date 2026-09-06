@@ -12,3 +12,6 @@ yarn-error.log*
 *.tsbuildinfo
 .vercel
 .env*
+
+# 单锁文件纪律：Vercel走yarn.lock，npm install会重写它——本地一律用yarn
+package-lock.json
