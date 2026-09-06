@@ -5,7 +5,7 @@ import { crossValidate } from "@/lib/cross-validate";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
-import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData } from "@/lib/stock-context";
+import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData, fetchVix, buildMarketMoodBlock } from "@/lib/stock-context";
 import { buildNewsContext } from "@/lib/news-context";
 
 export const runtime = "nodejs";
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     "9. 回复开头用【分析思路】标注本次分析使用的投资风格和核心维度（1行，如：风格=价值 | 维度=基本面+水池效应）",
     "10. 回复结尾用【追问方向】给出1个针对本次分析的最强反方论据+2个用户可能感兴趣的追问方向（如：\"AAPL的护城河有多宽？\"\"当前估值处于历史什么分位？\"）",
     "11. 如果回答中过滤了绝对化用语或标注了风险边界，在结尾【追问方向】前加一行【已验证】：说明过滤了什么（如：已过滤2处绝对化表述，已标注期权风险边界）",
-    "12. 用户发送\"继续\"且上一条回答带有截断提示（因长度上限被截断）时：从上一条回答的断点无缝续写，不重复已写内容，不重新开头（不要重复【分析思路】行），续写完成后正常收尾【追问方向】。",
+    "12. 用户发送\"继续\"且上一条回答带有续断标记（因长度上限被截断／已停止生成／AI生成中断——三者语义相同：上文是完整回答被中途截断的部分）时：从上一条回答的断点无缝续写，不重复已写内容，不重新开头（不要重复【分析思路】行），续写完成后正常收尾【追问方向】。",
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
     "",
@@ -281,10 +281,23 @@ export async function POST(request: NextRequest) {
           }
           return "";
         })();
-        const [stockContext, newsContext] = await Promise.all([
+        // VIX情绪锚（9/6深水区）：多空论据的情绪维度从"猜"变"真数据"——软增强，5s超时失败静默跳过
+        const vixTask = (async () => {
+          try {
+            return await Promise.race([
+              fetchVix(),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+            ]);
+          } catch {
+            return null;
+          }
+        })();
+        const [stockContext, newsContext, marketMood] = await Promise.all([
           stockTask,
           fetchNewsWithDeadline(newsQueryText),
+          vixTask,
         ]);
+        const moodContext = buildMarketMoodBlock(marketMood);
 
         const finalSystemPrompt = systemPrompt;
 
