@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AIRequestError, callAIStream } from "@/lib/ai";
-import { crossValidate } from "@/lib/cross-validate";
+import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
 import { getRelevantKnowledge } from "@/lib/knowledge";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
@@ -283,11 +283,33 @@ export async function POST(request: NextRequest) {
     "e. 反追问测试：预判用户可能追问的点，确保没有答不上来的声称。",
   ].join("\n");
 
-  // 从marketData JSON里解析sector
+  // 从marketData JSON里解析sector + 数字锚定验证数据源（pick页数字漂移与chat同风险）
   let sector: string | null = null;
+  let injectedQuote: import("@/lib/cross-validate").InjectedQuote | null = null;
   try {
     const parsed = JSON.parse(marketData);
     sector = parsed?.financials?.sector ?? parsed?.sector ?? null;
+    if (parsed && typeof parsed.price === "number" && typeof parsed.code === "string") {
+      injectedQuote = {
+        code: parsed.code,
+        name: typeof parsed.name === "string" ? parsed.name : undefined,
+        price: parsed.price ?? null,
+        previousClose: parsed.previousClose ?? null,
+        open: null,
+        high: null,
+        low: null,
+        changePct: parsed.changePct ?? null,
+        // pick前端结构：52周高低映射扩展锚点（fiftyTwoWeekHigh/Low）
+        history: {
+          oneMonthAgo: null,
+          threeMonthsAgo: null,
+          monthHigh: null,
+          monthLow: null,
+          fiftyTwoWeekHigh: parsed.fiftyTwoWeekHigh ?? null,
+          fiftyTwoWeekLow: parsed.fiftyTwoWeekLow ?? null,
+        },
+      };
+    }
   } catch {}
   const knowledge = getRelevantKnowledge(sector);
 
@@ -367,6 +389,21 @@ export async function POST(request: NextRequest) {
           controller.enqueue(
             encoder.encode(JSON.stringify({ type: "patch", text: validation.text }) + "\n"),
           );
+        }
+
+        // 数字锚定验证（与chat route同模式）：分析中的价格数字与marketData精确比对，
+        // 疑似漂移→末尾⚠️核对警告（只报告不patch，用户口述数字已豁免）
+        if (injectedQuote) {
+          const numeric = verifyNumericAnchors(
+            validation.cleaned ? validation.text : fullText,
+            [injectedQuote],
+          );
+          if (numeric.verified) {
+            console.log(`[invest/pick] numeric_anchor flags=${numeric.flags.join("; ")}`);
+            controller.enqueue(
+              encoder.encode(JSON.stringify({ type: "patch", text: numeric.text }) + "\n"),
+            );
+          }
         }
 
         controller.enqueue(
