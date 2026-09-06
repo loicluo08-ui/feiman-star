@@ -213,11 +213,12 @@ export async function callVisionAI(
 /**
  * 流式调用智谱 GLM 文本模型（DeepSeek 失败时的兜底引擎）。
  * 智谱 chat/completions 兼容 OpenAI SSE 格式。
+ * signal：客户端断开时中止上游连接（与callAIStream同语义——停止生成=停止烧钱）。
  */
 export async function* callZhipuStream(
   messages: ChatMessage[],
-  options: CallAIOptions = {},
-): AsyncGenerator<string> {
+  options: CallAIOptions & { signal?: AbortSignal } = {},
+): AsyncGenerator<StreamChunk> {
   const apiKey = process.env.ZHIPU_API_KEY || "";
   if (!apiKey || messages.length === 0) return;
   if (!consumeAIBudget("callZhipuStream")) return;
@@ -227,6 +228,10 @@ export async function* callZhipuStream(
   const timeoutMs = Math.max(1_000, Math.min(options.timeout ?? 60_000, 90_000));
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const externalSignal = options.signal;
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal?.aborted) controller.abort();
+  else externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -273,7 +278,10 @@ export async function* callZhipuStream(
         try {
           const parsed = JSON.parse(data);
           const delta = parsed.choices?.[0]?.delta?.content;
-          if (delta) yield delta;
+          if (delta) yield { kind: "text", text: delta };
+          // finish_reason=length：max_tokens截断（chat页需要向用户明示）
+          const finishReason = parsed.choices?.[0]?.finish_reason;
+          if (finishReason) yield { kind: "finish", reason: finishReason };
         } catch {
           // 跳过格式异常的 chunk
         }
@@ -281,20 +289,27 @@ export async function* callZhipuStream(
     }
   } catch (error) {
     const reason =
-      error instanceof Error && error.name === "AbortError" ? "timeout" : "stream_failed";
+      error instanceof Error && error.name === "AbortError"
+        ? externalSignal?.aborted ? "user_abort" : "timeout"
+        : "stream_failed";
     console.error(`[ai-stream] zhipu_${reason}`);
   } finally {
     clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", onExternalAbort);
   }
 }
 
 /**
- * 流式调用 DeepSeek，逐 chunk yield 文本。
+ * 流式调用 DeepSeek，逐 chunk yield。
  */
+export type StreamChunk =
+  | { kind: "text"; text: string }
+  | { kind: "finish"; reason: "stop" | "length" | string };
+
 export async function* callAIStream(
   messages: ChatMessage[],
-  options: CallAIOptions = {},
-): AsyncGenerator<string> {
+  options: CallAIOptions & { signal?: AbortSignal } = {},
+): AsyncGenerator<StreamChunk> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey || messages.length === 0) return;
   if (!consumeAIBudget("callAIStream")) return;
@@ -304,6 +319,11 @@ export async function* callAIStream(
   const timeoutMs = Math.max(1_000, Math.min(options.timeout ?? 60_000, 90_000));
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  // 用户点"停止生成"→外部signal联动内部controller，中止上游DeepSeek连接=停止生成停止烧钱
+  const externalSignal = options.signal;
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal?.aborted) controller.abort();
+  else externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -351,7 +371,10 @@ export async function* callAIStream(
         try {
           const parsed = JSON.parse(data);
           const delta = parsed.choices?.[0]?.delta?.content;
-          if (delta) yield delta;
+          if (delta) yield { kind: "text", text: delta };
+          // finish_reason=length：max_tokens截断（chat页需要向用户明示）
+          const finishReason = parsed.choices?.[0]?.finish_reason;
+          if (finishReason) yield { kind: "finish", reason: finishReason };
         } catch {
           // 跳过格式异常的 chunk
         }
@@ -359,9 +382,12 @@ export async function* callAIStream(
     }
   } catch (error) {
     const reason =
-      error instanceof Error && error.name === "AbortError" ? "timeout" : "stream_failed";
+      error instanceof Error && error.name === "AbortError"
+        ? externalSignal?.aborted ? "user_abort" : "timeout"
+        : "stream_failed";
     console.error(`[ai-stream] ${reason}`);
   } finally {
     clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", onExternalAbort);
   }
 }

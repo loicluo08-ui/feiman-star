@@ -79,8 +79,9 @@ ${FLASH_KB}
           messages,
           { temperature: 0.3, max_tokens: 1200, retry: 1, timeout: 30_000 },
         )) {
-          fullText += chunk;
-          controller.enqueue(encoder.encode(chunk));
+          if (chunk.kind === "finish") continue;
+          fullText += chunk.text;
+          controller.enqueue(encoder.encode(chunk.text));
         }
 
         // D7: DeepSeek零输出（余额耗尽/连接失败/超时无chunk）→ 智谱兜底流
@@ -95,8 +96,9 @@ ${FLASH_KB}
             messages,
             { temperature: 0.3, max_tokens: 1200, timeout: 60_000 },
           )) {
-            fullText += chunk;
-            controller.enqueue(encoder.encode(chunk));
+            if (chunk.kind === "finish") continue;
+            fullText += chunk.text;
+            controller.enqueue(encoder.encode(chunk.text));
           }
         }
 

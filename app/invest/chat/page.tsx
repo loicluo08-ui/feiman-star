@@ -10,6 +10,8 @@ type ChatItem = {
   role: "user" | "assistant";
   text: string;
   imagePreviews?: string[];
+  /** GLM-4V转述（两段式管线回存）：追问时以文本复用，图片不再重传 */
+  imageAnalysis?: string;
 };
 
 type ChatHistoryRecord = {
@@ -59,6 +61,8 @@ function storeConversation(
   const textOnlyMessages = messages.map((message) => ({
     role: message.role,
     text: message.text,
+    // 转述随历史存档（预览dataURL仍剥离防localStorage爆容）：重载会话后追问依然能复用图片上下文
+    ...(message.imageAnalysis ? { imageAnalysis: message.imageAnalysis } : {}),
   }));
   const firstQuestion = textOnlyMessages.find((message) => message.role === "user")?.text ?? "投资对话";
   const record: ChatHistoryRecord = {
@@ -374,7 +378,10 @@ export default function ChatPage() {
     setQuestion("");
     setImages([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    if (textareaRef.current) textareaRef.current.style.height = "";
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "";
+      textareaRef.current.focus(); // 连续提问不掉输入焦点
+    }
   }
 
   /** 失败重试：用上次提交的原始输入重发（消息回滚到提交前状态） */
@@ -405,23 +412,30 @@ export default function ChatPage() {
     };
     const currentMessages = baseMessages;
 
-    // 历史消息：只保留最近2轮的图片，更早的图片转为文字描述（避免payload过大）
-    const recentImageCount = 2;
-    let imageCount = 0;
-    // 只发最近20条（后端zod上限20，长对话全发会400）
-    const messagesWindow = currentMessages.slice(-20);
+    // 两段式管线：历史图消息一律降级为转述文本（后端image_analysis事件回存的描述），只有本轮带真实图片
+    // 修复：发图后的追问曾被静默降级到GLM-4V直答路径（1024顶/无KB/无框架）——现在追问走DeepSeek全上下文
+    // 只发最近11条+当前1条=后端slice(-12)的完整窗口（后端多收的直接丢弃，发20条=白白多传8条payload）
+    const messagesWindow = currentMessages.slice(-11);
     const apiMessages = [
       ...messagesWindow.map((m) => {
         const previews = m.imagePreviews ?? [];
-        const hasImage = previews.length > 0;
-        const includeImage = hasImage && imageCount < recentImageCount;
-        if (hasImage) imageCount++;
-        return {
-          role: m.role,
-          content: includeImage
-            ? { type: "image" as const, dataUrls: previews, text: !m.text.startsWith("（") ? m.text : undefined }
-            : { type: "text" as const, text: hasImage ? `${m.text}（之前上传的图片省略）` : m.text }
-        };
+        if (previews.length > 0) {
+          // 本会话内的图消息（发图当轮之后）
+          return {
+            role: m.role,
+            content: m.imageAnalysis
+              ? { type: "text" as const, text: `（用户发送过${previews.length}张图片，视觉引擎转述：\n${m.imageAnalysis}\n）\n${m.text}` }
+              : { type: "text" as const, text: `${m.text}（之前上传的图片省略）` },
+          };
+        }
+        if (m.imageAnalysis) {
+          // 历史重载的图消息（预览已剥离，转述是图片的唯一痕迹）
+          return {
+            role: m.role,
+            content: { type: "text" as const, text: `（用户发送过图片，视觉引擎转述：\n${m.imageAnalysis}\n）\n${m.text}` },
+          };
+        }
+        return { role: m.role, content: { type: "text" as const, text: m.text } };
       }),
       {
         role: "user" as const,
@@ -466,63 +480,80 @@ export default function ChatPage() {
           let buffer = "";
           let receivedDone = false;
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              // 连接断开：如果没收到done事件，补上中断提示
-              if (answer && !receivedDone) {
-                answer += "\n\n---\n\n⚠️ 连接中断，以上为已生成的部分内容。如需完整分析请重新提问。";
-                if (mountedRef.current && epochRef.current === epoch) {
-                  setMessages([
-                    ...currentMessages,
-                    userItem,
-                    { role: "assistant", text: answer },
-                  ]);
-                }
-              }
-              break;
+          // 流式渲染节流：chunk只进answer缓冲，~100ms批量刷UI。
+          // 长回答600+chunk=600+次全量markdown重解析（移动端卡顿源），节流后≈每秒10刷
+          let flushTimer: ReturnType<typeof setTimeout> | null = null;
+          const flushNow = () => {
+            if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+            if (mountedRef.current && epochRef.current === epoch) {
+              setMessages([
+                ...currentMessages,
+                userItem,
+                { role: "assistant", text: answer },
+              ]);
+              scrollToBottom();
             }
+          };
+          const scheduleFlush = () => {
+            if (flushTimer != null) return;
+            flushTimer = setTimeout(() => { flushTimer = null; flushNow(); }, 100);
+          };
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              let data: { type: string; text?: string; message?: string };
-              try {
-                data = JSON.parse(line);
-              } catch {
-                continue;
-              }
-
-              if (data.type === "chunk") {
-                answer += data.text ?? "";
-              } else if (data.type === "patch") {
-                answer = data.text ?? answer;
-              } else if (data.type === "status") {
-                if (mountedRef.current && epochRef.current === epoch) {
-                  setStatusLine(data.text ?? "");
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                // 连接断开：如果没收到done事件，补上中断提示
+                if (answer && !receivedDone) {
+                  answer += "\n\n---\n\n⚠️ 连接中断，以上为已生成的部分内容。如需完整分析请重新提问。";
                 }
-                continue; // 状态行不落消息体
-              } else if (data.type === "done") {
-                receivedDone = true;
+                flushNow();
                 break;
-              } else if (data.type === "error") {
-                throw new Error(data.message ?? "AI服务不可用");
-              } else {
-                continue; // ping等心跳事件静默跳过
               }
 
-              if (mountedRef.current && epochRef.current === epoch) {
-                setMessages([
-                  ...currentMessages,
-                  userItem,
-                  { role: "assistant", text: answer },
-                ]);
-                scrollToBottom();
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() ?? "";
+
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                let data: { type: string; text?: string; message?: string };
+                try {
+                  data = JSON.parse(line);
+                } catch {
+                  continue;
+                }
+
+                if (data.type === "chunk") {
+                  answer += data.text ?? "";
+                } else if (data.type === "patch") {
+                  answer = data.text ?? answer;
+                } else if (data.type === "image_analysis") {
+                  // 两段式管线回存：图片转述挂到本轮用户消息（追问复用+历史存档，见apiMessages降级逻辑）
+                  userItem.imageAnalysis = data.text ?? "";
+                  continue; // 不落消息体，随下一条chunk的重渲染显示
+                } else if (data.type === "status") {
+                  if (mountedRef.current && epochRef.current === epoch) {
+                    setStatusLine(data.text ?? "");
+                  }
+                  continue; // 状态行不落消息体
+                } else if (data.type === "done") {
+                  receivedDone = true;
+                  break;
+                } else if (data.type === "error") {
+                  throw new Error(data.message ?? "AI服务不可用");
+                } else {
+                  continue; // ping等心跳事件静默跳过
+                }
+
+                scheduleFlush();
               }
             }
+            // 最终态同步刷（防最后一次节流未触发）
+            flushNow();
+          } finally {
+            // 清残留定时器：停止/异常路径下晚到的flush会覆盖catch分支已写入的终态消息
+            if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
           }
         } else {
           const json = await res.json();
@@ -808,6 +839,12 @@ export default function ChatPage() {
                         <img key={imageIndex} src={preview} alt={`用户上传 ${imageIndex + 1}`} className="max-h-48 rounded-lg object-cover" />
                       ))}
                     </div>
+                  ) : null}
+                  {m.imageAnalysis ? (
+                    <details className="mb-1 rounded-md bg-[var(--surface-subtle)] px-2 py-1">
+                      <summary className="cursor-pointer text-xs text-[var(--text-muted)]">📎 图片识别摘要（追问时AI会复用）</summary>
+                      <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[var(--text-muted)]">{m.imageAnalysis}</div>
+                    </details>
                   ) : null}
                   {m.text ? (
                     m.role === "assistant" ? (

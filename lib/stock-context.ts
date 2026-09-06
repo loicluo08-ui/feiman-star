@@ -89,6 +89,11 @@ import { fetchSAYahooLikeChart } from "./stockanalysis";
 
 const histCache = new Map<string, { data: { oneMonthAgo: number | null; threeMonthsAgo: number | null; monthHigh: number | null; monthLow: number | null; } | null; expiresAt: number }>();
 
+// 行情短期缓存：同会话连续追问同一只股票，90秒内直接回缓存——TTFB从3-8s降到<10ms
+// TTL=90s的实时性代价：盘中价格最多滞后90秒，对对话分析场景可忽略（分析结论不因毫秒级差价改变）
+const quoteCache = new Map<string, { data: Awaited<ReturnType<typeof fetchStockData>>[number] | null; expiresAt: number }>();
+const QUOTE_CACHE_TTL = 90_000;
+
 export async function fetchStockData(codes: string[]): Promise<Array<{
   code: string; name: string; price: number | null; pe: number | null;
   changePct: number | null; marketCap: number | null;
@@ -99,7 +104,15 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
   const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
   const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
 
+  const now = Date.now();
+  // 缓存整理：顺手清过期项防泄漏（forEach而非for..of——es5 target下Map迭代需downlevelIteration，forEach无此限制且边删边遍历安全）
+  quoteCache.forEach((v, k) => {
+    if (v.expiresAt < now) quoteCache.delete(k);
+  });
+
   return Promise.all(codes.map(async (code) => {
+    const cached = quoteCache.get(code);
+    if (cached && cached.expiresAt > now) return cached.data as Awaited<ReturnType<typeof fetchStockData>>[number];
     let price: number | null = null;
     let changePct: number | null = null;
     let name = code;
@@ -251,7 +264,10 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
       } catch {}
     }
 
-    return { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume, freshness: qtTimestamp, divergence, anomaly: !qtValid && !qtRealMover && price != null, extremeMove: qtRealMover, history };
+    const result = { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume, freshness: qtTimestamp, divergence, anomaly: !qtValid && !qtRealMover && price != null, extremeMove: qtRealMover, history };
+    // 成功获取才缓存（价格有值）；失败结果不缓存，下轮重试上游
+    if (result.price != null) quoteCache.set(code, { data: result, expiresAt: Date.now() + QUOTE_CACHE_TTL });
+    return result;
   }));
 }
 
