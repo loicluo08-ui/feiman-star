@@ -60,7 +60,18 @@ run_q "bal_q1" "$Q1" "balanced" 115
 echo; echo "=== 4. balanced短问 Q5（快路径回归：不能变慢） ==="
 run_q "bal_q5" "$Q5" "balanced" 60
 
-echo; echo "=== 5. 成本核算 ==="
+echo; echo "=== 5. 机器评分（eval_chat_quality五维） ==="
+for tag in blend_q1 blend_q2 bal_q1; do
+  python3 -c "
+import json
+text = open('$OUT/${tag}_text.txt').read()
+q = {'blend_q1':'$Q1','blend_q2':'$Q2','bal_q1':'$Q1'}.get('$tag','$Q1')
+json.dump({'question': q, 'full': text}, open('$OUT/${tag}_eval.json','w'), ensure_ascii=False)
+" && python3 "$(dirname "$0")/eval_chat_quality.py" "$OUT/${tag}_eval.json" 2>/dev/null | tail -9
+done
+
+echo; echo "=== 6. 成本核算 ==="
 curl -s "https://sufve.com/api/invest/balance-check?token=1825f61b2a0c6ee92adf4b0511db6e41" --max-time 10 | python3 -c "import json,sys; print('余额:', json.load(sys.stdin).get('balance'))"
-echo "对照基线（9/6旧版flash无思考）: Q1 2495字/17s | Q2 1568字/11s | 5题成本¥0.43"
+echo "对照基线（9/6 12:50旧版flash无思考）：Q1机器评分66/100 | Q1 2495字/17s | Q2 1568字/11s | 5题成本¥0.43"
+echo "验收线：blend Q1≥80/100 | bal详细Q1≥75/100 | Q5短问≤15s不退化"
 echo; echo "全部采集完成: $OUT/"
