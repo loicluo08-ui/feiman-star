@@ -51,7 +51,7 @@ const tools = [
 
 export default function HomePage() {
   return (
-    <div className="mx-auto max-w-5xl px-5 py-12 sm:px-8 sm:py-16">
+    <div className="mx-auto w-full max-w-5xl px-5 py-12 sm:px-8 sm:py-16">
       {/* Hero */}
       <section className="mb-14">
         <p className="text-sm font-medium text-[var(--text-muted)]">费曼星 · 投资分析</p>

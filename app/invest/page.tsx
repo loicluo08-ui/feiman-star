@@ -35,7 +35,7 @@ const FEATURES = [
 
 export default function InvestHome() {
   return (
-    <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
+    <div className="mx-auto w-full max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">费曼星 · 投资工作台</h1>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">

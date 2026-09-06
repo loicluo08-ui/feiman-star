@@ -100,6 +100,40 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data });
   };
 
+  // 中文常见股映射：Finnhub/Yahoo均不吃中文query，高频中文词直接本地命中（含别名）
+  const zhAlias: Record<string, string> = {
+    苹果: "AAPL", 苹果公司: "AAPL", 特斯拉: "TSLA", 马斯克: "TSLA",
+    英伟达: "NVDA", 英伟达公司: "NVDA", 黄仁勋: "NVDA", 微软: "MSFT",
+    谷歌: "GOOGL", 谷歌a: "GOOGL", 谷歌c: "GOOG", 亚马逊: "AMZN",
+    Meta: "META", meta: "META", 脸书: "META", facebook: "META",
+    奈飞: "NFLX", 网飞: "NFLX", 迪士尼: "DIS", 可口可乐: "KO",
+    百事: "PEP", 麦当劳: "MCD", 星巴克: "SBUX", 耐克: "NKE",
+    可口: "KO", 波音: "BA", 英特尔: "INTC", AMD: "AMD", amd: "AMD",
+    高通: "QCOM", 博通: "AVGO", 台积电: "TSM", 阿斯麦: "ASML",
+    甲骨文: "ORCL", 思科: "CSCO", 戴尔: "DELL", 惠普: "HPQ",
+    摩根大通: "JPM", 高盛: "GS", 花旗: "C", 美国银行: "BAC",
+    富国银行: "WFC", 伯克希尔: "BRK.B", 巴菲特: "BRK.B", 桥水: "BRK.B",
+    礼来: "LLY", 辉瑞: "PFE", 强生: "JNJ", 默沙东: "MRK",
+    联合健康: "UNH", 维萨: "V", 万事达: "MA", 贝宝: "PYPL",
+    特斯拉公司: "TSLA", 超微: "SMCI", 美光: "MU", 应用材料: "AMAT",
+    赛富时: "CRM", 奥多比: "ADBE",拼多多: "PDD", 阿里: "BABA",
+    京东: "JD", 百度: "BIDU", 网易: "NTES", 哔哩: "BILI",
+    理想: "LI", 蔚来: "NIO", 小鹏: "XPEV", 携程: "TCOM",
+    台积: "TSM", 德州仪器: "TXN", 西部数据: "WDC", 希捷: "STX",
+    散户: "GME", 游戏驿站: "GME", AMC: "AMC", amc: "AMC",
+  };
+  const zhHit = zhAlias[q];
+  if (zhHit) {
+    return respondWithCache([
+      { code: zhHit, name: q, exchange: null, type: "EQUITY", industry: "行业未知", zhMatch: true },
+    ]);
+  }
+
+  // 纯中文query且不在映射表 → 提前返回空，不浪费上游配额
+  if (/[\u4e00-\u9fff]/.test(q)) {
+    return respondWithCache([]);
+  }
+
   try {
     const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
 

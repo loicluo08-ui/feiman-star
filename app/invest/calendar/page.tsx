@@ -127,7 +127,7 @@ export default function CalendarPage() {
   }, [data, largeCapOnly, query, searchPool]);
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
+    <div className="mx-auto w-full max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
       <header className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-[var(--text-muted)]">

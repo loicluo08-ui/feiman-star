@@ -251,7 +251,7 @@ export default function MarketPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl px-5 py-12">
+      <div className="mx-auto w-full max-w-4xl px-5 py-12">
         <div className="animate-pulse space-y-4">
           <div className="h-8 w-48 rounded-lg bg-[var(--surface-muted)]" />
           <div className="h-12 rounded-xl bg-[var(--surface-muted)]" />
@@ -272,7 +272,7 @@ export default function MarketPage() {
   );
 
   return (
-    <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
+    <div className="mx-auto w-full max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
       <header className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">市场快报</h1>
