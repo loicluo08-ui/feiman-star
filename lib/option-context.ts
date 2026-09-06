@@ -145,9 +145,23 @@ export async function fetchOptionContext(code: string): Promise<OptionContext | 
     }); // forEach闭包
     if (slices.length === 0) return null;
 
-    slices.sort((a, b) => b.totalOI - a.totalOI); // OI最大=流动性最好的月度链
-    const near = slices[0];
-    const far = slices.length > 1 ? slices[1] : null;
+    // 近月/次月=当月/次月第三个周五（标准月度期权）。（9/6实测两连修：①OI top2把周度选成
+    // "次月"且早于near到期→backwardation误报；②daysOut≥7选到周一到期的周度链。周度链
+    // IV含事件溢价，做期限结构基准会污染备兑/IV判断。月度链找不到（调整假日等）按daysOut降级）
+    const isMonthly = (yyMMdd: string): boolean => {
+      const dd = parseInt(yyMMdd.slice(4, 6), 10);
+      const mm = parseInt(yyMMdd.slice(2, 4), 10);
+      const yy = parseInt(yyMMdd.slice(0, 2), 10);
+      const dow = new Date(Date.UTC(2000 + yy, mm - 1, dd)).getUTCDay();
+      return dow === 5 && Math.floor((dd - 1) / 7) + 1 === 3; // 周五且当月第3个
+    };
+    slices.sort((a, b) => a.daysOut - b.daysOut);
+    const OI_FLOOR = slices.reduce((s, x) => s + x.totalOI, 0) / slices.length / 4; // 均量1/4=残链门槛
+    const monthly = slices.filter((s) => isMonthly(s.expiry) && s.totalOI >= OI_FLOOR);
+    const near = monthly.length > 0 ? monthly[0]
+      : (slices.find((s) => s.daysOut >= 7 && s.totalOI >= OI_FLOOR) ?? slices[0]);
+    const far = monthly.find((s) => s.daysOut > near.daysOut)
+      ?? slices.find((s) => s.daysOut >= near.daysOut + 14 && s.totalOI >= OI_FLOOR) ?? null;
 
     const atmIvOf = (slice: ExpirySlice): number => {
       // ATM IV = 最贴近atmStrike的call与put的iv均值（put-call parity下两者接近，均值抗噪）
