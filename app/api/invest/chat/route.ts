@@ -10,7 +10,9 @@ import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData, fetchVix, buildMarketMoodBlock } from "@/lib/stock-context";
 import { isOptionQuery, fetchOptionContext, buildOptionBlock } from "@/lib/option-context";
 import { buildNewsContext } from "@/lib/news-context";
+import { buildEarningsContext } from "@/lib/chat-earnings-context";
 import { DELIBERATION_BLOCK } from "@/lib/chat-deliberation";
+import { CHAT_QUALITY_BLOCK } from "@/lib/chat-quality";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -155,6 +157,7 @@ export async function POST(request: NextRequest) {
     DELIBERATION_BLOCK,
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
+    CHAT_QUALITY_BLOCK,
     "",
     "<knowledge_base>",
     kbSelection.kb,
@@ -337,11 +340,23 @@ export async function POST(request: NextRequest) {
             return null;
           }
         })();
-        const [stockContext, newsContext, marketMood, optionCtx] = await Promise.all([
+        // 财报日历注入（9/6消息源接入）：持仓/期权/加仓类问题的决策级事件风险——软增强，5s超时失败静默跳过
+        const earningsTask = (async () => {
+          try {
+            return await Promise.race([
+              buildEarningsContext(effectiveStockCodes),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+            ]);
+          } catch {
+            return null;
+          }
+        })();
+        const [stockContext, newsContext, marketMood, optionCtx, earningsContext] = await Promise.all([
           stockTask,
           fetchNewsWithDeadline(newsQueryText),
           vixTask,
           optionTask,
+          earningsTask,
         ]);
         const moodContext = buildMarketMoodBlock(marketMood);
         const optionContextText = optionCtx ? buildOptionBlock(optionCtx) : "";
@@ -355,13 +370,22 @@ export async function POST(request: NextRequest) {
         if (newsContext) injectedParts.push("最新市场快讯");
         if (moodContext) injectedParts.push("VIX情绪");
         if (optionContextText) injectedParts.push("期权链（IV/Greeks/OI）");
+        if (earningsContext) injectedParts.push("财报日历");
+        // 深度推理提示判据（与stream段的wantsLong同判据提前版）：详细类问题开思维链，
+        // 用户等待期status行明示"深度推理中"，防止20-40s静默被当成卡死
+        const wantsLongHint =
+          imageTurn !== null
+          || /详细|全面|深入|展开|完整|系统性|逐一|对比|多角度|深度分析|长文/.test(lastUserText.trim())
+          || lastUserText.trim().length > 20;
         send({
           type: "status",
           text: injectedParts.length > 0
-            ? `已注入${injectedParts.join("、")}，${isBlend ? "大师圆桌深度思考中（约30-60秒，出字后即流式输出）…" : "AI生成中…"}`
+            ? `已注入${injectedParts.join("、")}，${isBlend ? "大师圆桌深度思考中（约30-60秒，出字后即流式输出）…" : wantsLongHint ? "深度推理中（约20-40秒，思维链先行）…" : "AI生成中…"}`
             : isBlend
               ? "大师圆桌深度思考中（约30-60秒，出字后即流式输出）…"
-              : "AI生成中…",
+              : wantsLongHint
+                ? "深度推理中（约20-40秒，思维链先行）…"
+                : "AI生成中…",
         });
 
         // 前缀缓存友好结构（DeepSeek automatic context caching按前缀命中，命中部分价格≈1/10）：
@@ -390,6 +414,7 @@ export async function POST(request: NextRequest) {
           stockContext ? `${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。` : "",
           cryptoContext,
           moodContext,
+          earningsContext ?? "",
           newsContext,
           optionContextText,
         ].filter(Boolean).join("\n");
@@ -422,6 +447,10 @@ export async function POST(request: NextRequest) {
           || /详细|全面|深入|展开|完整|系统性|逐一|对比|多角度|深度分析|长文/.test(trimmedQuestion)
           || trimmedQuestion.length > 20;
         const chatMaxTokens = wantsLong ? (isBlend ? 4000 : 3500) : 800;
+        // 9/6质量优化（引擎分层）：详细类问题（非blend）同样开启思维链——
+        // flash+thinking推理深度显著提升，成本仅输出3x（¥0.03-0.05/轮 vs 无思考¥0.01）；
+        // 短问句保持无思考快路径（省钱+快）。blend仍是pro+4000 tokens的天花板档
+        const deepThinking = isBlend || wantsLong;
 
         // 心跳：首chunk前每5s推ping防代理空闲断连（40K token prompt的TTFB可达10-20s）
         let receivedFirstChunk = false;
@@ -445,7 +474,10 @@ export async function POST(request: NextRequest) {
               retry: 1,
               ...(isBlend
                 ? { model: "deepseek-v4-pro", thinking: "enabled" as const, reasoning_effort: "high" as const, timeout: 110_000 }
-                : { timeout: 90_000 }),
+                : deepThinking
+                  // 详细类问题开flash思维链：推理深度升档，成本仅输出3x；ladder保证被拒时自动退回无思考
+                  ? { thinking: "enabled" as const, reasoning_effort: "high" as const, timeout: 110_000 }
+                  : { timeout: 90_000 }),
               signal: request.signal,
             },
           )) {
@@ -453,6 +485,10 @@ export async function POST(request: NextRequest) {
               if (chunk.reason === "length") truncatedByLength = true;
               continue;
             }
+            // 思维链事件（thinking模式的reasoning_content）：绝不进正文——
+            // 没有此分支时{kind:"reasoning"}掉进默认路径，内部推理原文流进用户答案
+            // 注意：不置receivedFirstChunk——思维链期（可达30-60s）必须继续ping心跳防代理断连
+            if (chunk.kind === "reasoning") continue;
             if (!receivedFirstChunk) receivedFirstChunk = true;
             fullText += chunk.text;
             send({ type: "chunk", text: chunk.text });
@@ -520,7 +556,7 @@ export async function POST(request: NextRequest) {
         const sourcePool = buildSourcePool(
           injectedQuotes,
           marketMood,
-          [stockContext, newsContext, moodContext, optionContextText].filter(Boolean).join("\n"),
+          [stockContext, newsContext, moodContext, optionContextText, earningsContext ?? ""].filter(Boolean).join("\n"),
         );
         const srcLabels = verifySourceLabels(validation.cleaned ? validation.text : fullText, sourcePool);
         if (srcLabels.verified) {
