@@ -95,12 +95,14 @@ function sameNumber(a: number, b: number, tolerance = 0.005): boolean {
   return Math.abs(a - b) <= Math.abs(b) * tolerance;
 }
 
-/** 提取文本中所有带$的价格数字与裸百分比（while+exec——es5 target下for..of matchAll报TS2802） */
+/** 提取文本中所有价格数字（$前缀式与"美元/美金/USD"后缀式）与裸百分比（while+exec——es5 target下for..of matchAll报TS2802） */
+// 9/6 mock电池发现：中文"美元"后缀式价格（"现价200美元"）绕过价格漂移检测——
+// 两写法并列提取，白名单/豁免逻辑共用（防漏检不放宽精度）
 function extractPriceLike(text: string): number[] {
   const out: number[] = [];
-  const re = /\$(\d{1,6}(?:\.\d{1,4})?)/g;
+  const re = /(?:\$(\d{1,6}(?:\.\d{1,4})?)|(\d{1,6}(?:\.\d{1,4})?)\s*(?:美元|美金|USD))/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) != null) out.push(parseFloat(m[1]));
+  while ((m = re.exec(text)) != null) out.push(parseFloat(m[1] ?? m[2]));
   return out;
 }
 function extractPct(text: string): number[] {
@@ -152,19 +154,22 @@ export function verifyNumericAnchors(
       );
     }
 
-    // 用户口述数字豁免：成本/买入价语境±20字符内的$数字跳过
+    // 用户口述数字豁免：成本/买入价/预算语境±20字符内的价格数字跳过
     // 技术位语境豁免：AI做条件分支是核心功能（"回调至20日线附近$210-215"是目标位不是行情引用）
+    // 9/6 mock电池对称修复：美元后缀式进入提取范围后，豁免正则同步扩展（成本/预算/目标价），
+    // 否则"我准备投200美元""目标价250美元"会被误报为价格漂移
     const userOwned = new Set<number>();
-    const userRe = /\$(\d{1,6}(?:\.\d{1,4})?)/g;
+    const userRe = /(?:\$(\d{1,6}(?:\.\d{1,4})?)|(\d{1,6}(?:\.\d{1,4})?)\s*(?:美元|美金|USD))/g;
     let um: RegExpExecArray | null;
     while ((um = userRe.exec(text)) != null) {
+      const val = parseFloat(um[1] ?? um[2]);
       const idx = um.index ?? 0;
       const ctx = text.slice(Math.max(0, idx - 20), idx + 25);
-      if (/成本|买入价|建仓|你的|持仓价/i.test(ctx)) userOwned.add(parseFloat(um[1]));
+      if (/成本|买入价|建仓|你的|持仓价|投[入资]|预算|本金/i.test(ctx)) userOwned.add(val);
       // 技术位词汇窗口更宽（±30字符：目标位描述常常前置长定语"回调至20日均线附近（约$210-215）"）
       const techCtx = text.slice(Math.max(0, idx - 30), idx + 35);
-      if (/均线|回调至|回踩|目标位|支撑位?|压力位?|阻力|买入区间|加仓位?|减仓位?|止盈位?|止损位?|附近|左右|区间|期望|预计|预测|看(涨|跌)到|回到/i.test(techCtx)) {
-        userOwned.add(parseFloat(um[1]));
+      if (/均线|回调至|回踩|目标价?位?|支撑位?|压力位?|阻力|买入区间|加仓位?|减仓位?|止盈位?|止损位?|附近|左右|区间|期望|预计|预测|看(涨|跌)到|回到/i.test(techCtx)) {
+        userOwned.add(val);
       }
     }
 

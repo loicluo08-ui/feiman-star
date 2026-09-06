@@ -86,5 +86,21 @@ check("无涨跌语境裸百分比不比对", !r.flags.some((f) => f.includes("�
 r = verifyNumericAnchors("NVDA今日涨0.03%，现价$230.36。", [nvda]);
 check("真涨跌幅漂移仍抓（今日涨语境）", r.flags.some((f) => f.includes("口径存疑")), JSON.stringify(r.flags));
 
+// 9/6四轮：mock电池发现"美元"后缀式价格绕过检测——提取范围扩展修复
+r = verifyNumericAnchors("英伟达现价200.00美元，处于高位。", [nvda]);
+check("美元后缀式漂移仍抓（mock电池发现的缺口）", r.verified && r.flags[0].includes("价格数字疑似漂移"), JSON.stringify(r.flags));
+
+r = verifyNumericAnchors("英伟达现价230.36美元，PE 29美元口径下偏高。", [nvda]);
+check("美元后缀式白名单价不误报", !r.verified, JSON.stringify(r.flags));
+
+r = verifyNumericAnchors("我准备投200美元买入英伟达，目标价250美元附近。", [nvda]);
+check("预算/目标价美元式豁免（对称修复防误报）", !r.verified, JSON.stringify(r.flags));
+
+r = verifyNumericAnchors("若跌破205美元支撑位则止损，现价230.36美元。", [nvda]);
+check("美元式技术位+现价共存不误报", !r.verified, JSON.stringify(r.flags));
+
+r = verifyNumericAnchors("NVDA市值5342亿美元，现价230.36美元。", [nvda]);
+check("亿美元量级不进候选（亿字阻断提取）", !r.verified, JSON.stringify(r.flags));
+
 console.log(`\n${pass}/${pass + fail}`);
 process.exit(fail > 0 ? 1 : 0);
