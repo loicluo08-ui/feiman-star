@@ -242,27 +242,18 @@ export default function ChatPage() {
     });
   }
 
-  async function handleImageChange(e: FormEvent<HTMLInputElement>) {
-    const input = e.currentTarget;
-    const files = Array.from(input.files ?? []);
-    if (files.length === 0) return;
-
+  /** 共用图片入口：校验+读DataURL（文件选择与粘贴复用同一套规则） */
+  async function addImagesFromFiles(files: File[]): Promise<string> {
+    if (files.length === 0) return "";
     if (images.length + files.length > 3) {
-      setError("一次最多上传3张图片");
-      input.value = "";
-      return;
+      return "一次最多上传3张图片";
     }
     if (files.some((file) => file.size > 4 * 1024 * 1024)) {
-      setError("单张图片不能超过4MB");
-      input.value = "";
-      return;
+      return "单张图片不能超过4MB";
     }
     if (files.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type))) {
-      setError("仅支持 JPG / PNG / WebP 格式");
-      input.value = "";
-      return;
+      return "仅支持 JPG / PNG / WebP 格式";
     }
-
     try {
       const previews = await Promise.all(files.map((file) => new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -272,11 +263,36 @@ export default function ChatPage() {
       })));
       setImages((previous) => [...previous, ...previews].slice(0, 3));
       setError("");
+      return "";
     } catch {
-      setError("图片读取失败，请重新选择");
-    } finally {
-      input.value = "";
+      return "图片读取失败，请重新选择";
     }
+  }
+
+  async function handleImageChange(e: FormEvent<HTMLInputElement>) {
+    const input = e.currentTarget;
+    const files = Array.from(input.files ?? []);
+    const errMsg = await addImagesFromFiles(files);
+    if (errMsg) setError(errMsg);
+    input.value = "";
+  }
+
+  /** 粘贴截图：聊天框内Ctrl+V/长按粘贴直接进预览区（9/6新增，移动端iOS粘贴板图片file.type可能为空，按扩展名兜底） */
+  async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imageFiles = items
+      .filter((item) => item.kind === "file" && (item.type.startsWith("image/") || item.type === ""))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => {
+        if (!file) return false;
+        if (file.type) return file.type.startsWith("image/");
+        // type为空时按文件名扩展名兜底（部分移动端浏览器截图file.type为空字符串）
+        return /\.(jpe?g|png|webp)$/i.test(file.name);
+      });
+    if (imageFiles.length === 0) return; // 纯文本粘贴走默认行为，不拦截
+    e.preventDefault(); // 有图片才拦截默认，避免图片被当URL/文本插入
+    const errMsg = await addImagesFromFiles(imageFiles);
+    if (errMsg) setError(errMsg);
   }
 
   function removeImage(index: number) {
@@ -740,10 +756,11 @@ export default function ChatPage() {
             <textarea
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
+              onPaste={handlePaste}
               onKeyDown={handleKeyDown}
               rows={1}
               maxLength={4000}
-              placeholder="输入问题，或上传截图让AI分析…（Enter发送，Shift+Enter换行）"
+              placeholder="输入问题，或粘贴/上传截图让AI分析…（Enter发送，Shift+Enter换行）"
               className="min-h-12 flex-1 resize-none rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none transition-colors focus:border-[var(--text)]"
             />
             <button
