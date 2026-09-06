@@ -216,13 +216,14 @@ export async function POST(request: NextRequest) {
           const exPing = setInterval(() => send({ type: "ping" }), 5000);
           try {
             const imageCount = imageTurn.dataUrls.length;
-            const question = imageTurn.text ?? "";
+            // 第一阶段不传用户问题：传了会被glm-4v-flash当成"直接答题"指令（实测输出分析而非转述，
+            // 违背两段式设计）。用户问题在第二段由currentTurnText带给DeepSeek。第一阶段=纯抄录任务
             const visionMessages: VisionMessage[] = [
               { role: "system", content: extractionSystemPrompt },
               {
                 role: "user",
                 content: [
-                  { type: "text", text: question || `请逐项转述这${imageCount}张图片的内容` },
+                  { type: "text", text: `请逐项转述这${imageCount}张图片的全部投资相关内容` },
                   ...imageTurn.dataUrls.map((dataUrl) => ({
                     type: "image_url" as const,
                     image_url: { url: dataUrl },
