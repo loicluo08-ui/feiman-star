@@ -595,14 +595,12 @@ export default function ChatPage() {
         const message = isAbort
           ? "已停止生成"
           : taskError instanceof Error ? taskError.message : "AI暂时不可用";
-        const failedMessages = [
-          ...currentMessages,
-          userItem,
-          { role: "assistant" as const, text: `⚠️ ${message}` },
-        ];
-        const nextHistory = storeConversation(failedMessages, currentStyle, historyId);
+        // 失败轮不写历史：⚠️死对话进localStorage=会话列表永久留疤+重载会话后作为assistant
+        // 上下文发给API（污染模型输入+白烧token）。失败原因走error bar展示（下方catch渲染），
+        // UI保留user消息+重试入口；重试成功后完整轮才落历史（storeConversation按historyId覆盖）
+        const nextHistory = readChatHistory();
         throw new ChatTaskError(message, {
-          messages: failedMessages,
+          messages: [...currentMessages, userItem],
           history: nextHistory,
           historyId,
           style: currentStyle,

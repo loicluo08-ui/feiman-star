@@ -153,7 +153,7 @@ export async function callAI(
  */
 export async function callVisionAI(
   messages: VisionMessage[],
-  options: CallAIOptions = {},
+  options: CallAIOptions & { signal?: AbortSignal } = {},
 ): Promise<string | null> {
   const apiKey = process.env.ZHIPU_API_KEY || "";
   if (!apiKey) return null;
@@ -161,10 +161,15 @@ export async function callVisionAI(
 
   const baseUrl = process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";
   const maxRetries = options.retry ?? 1;
+  const externalSignal = options.signal;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // 外部signal联动（与流式引擎同语义）：客户端断开→中止上游请求，不白烧
+    if (externalSignal?.aborted) return null;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 45_000);
+    const onExternalAbort = () => controller.abort();
+    externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 
     try {
       const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -200,10 +205,13 @@ export async function callVisionAI(
         }
       }
     } catch (error) {
+      // 用户主动断开→直接放弃（不重试），区别于超时/失败
+      if (externalSignal?.aborted) return null;
       const reason = error instanceof Error && error.name === "AbortError" ? "timeout" : "request_failed";
       console.error(`[ai] zhipu_${reason} attempt=${attempt}`);
     } finally {
       clearTimeout(timeoutId);
+      externalSignal?.removeEventListener("abort", onExternalAbort);
     }
   }
 

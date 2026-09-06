@@ -158,9 +158,10 @@ export async function POST(request: NextRequest) {
 
   // 快讯注入带7秒软超时（getFlashFeed冷路径4-5s；超时=网络层挂死，静默跳过不阻塞首字）
   // 快讯是增强不是依赖：拉不到照样回答，不要为它付出TTFB代价
-  const fetchNewsWithDeadline = () =>
+  // 查询文本可扩展：图片轮会拼上转述文本（持仓图标的的公司名进快讯匹配域）
+  const fetchNewsWithDeadline = (queryText: string) =>
     Promise.race([
-      buildNewsContext(combinedText),
+      buildNewsContext(queryText),
       new Promise<string>((resolve) => setTimeout(() => resolve(""), 7000)),
     ]);
 
@@ -186,11 +187,21 @@ export async function POST(request: NextRequest) {
     .filter((message) => message.content.length > 0);
 
   const encoder = new TextEncoder();
+  // route启动时间戳：兜底引擎的timeout按"平台120s窗口剩余量"动态计算
+  const routeStart = Date.now();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let fullText = "";
+      // 客户端断开（停止生成/关页面）后controller.enqueue抛错——静默标记跳过后续send，
+      // 上游signal已联动中止、循环很快自然退出；不防护=连环抛错进catch产生假stream_error日志
+      let clientGone = false;
       const send = (payload: Record<string, unknown>) => {
-        controller.enqueue(encoder.encode(JSON.stringify(payload) + "\n"));
+        if (clientGone) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(payload) + "\n"));
+        } catch {
+          clientGone = true;
+        }
       };
 
       try {
@@ -222,6 +233,7 @@ export async function POST(request: NextRequest) {
               temperature: 0.2, // 转述是抄录任务，低温度防发散
               max_tokens: 1024, // glm-4v-flash免费版硬上限1024（传超限直接400码1210）
               retry: 1,
+              signal: request.signal, // 转述期间用户停止→中止上游（与流式引擎同语义）
             })) ?? "";
           } finally {
             clearInterval(exPing);
@@ -249,33 +261,36 @@ export async function POST(request: NextRequest) {
         }
 
         // 行情+快讯并行拉取（原先串行，最坏15s死等；并行后TTFB由慢者决定≈行情拉取时间）
-        // 图片轮也注入行情：持仓图/K线图提到的标的要拉实时价+快讯对照
+        // 图片轮二次代码提取：持仓图的标的在图里不在问题文本里（"分析这个持仓"无代码可提）
+        // → 转述完成后从转述文本补提取，与文本代码去重合并
+        const effectiveStockCodes = Array.from(new Set([
+          ...stockCodes,
+          ...(currentTurnText ? extractStockCodes(currentTurnText) : []),
+        ]));
+        const newsQueryText = currentTurnText
+          ? `${combinedText} ${currentTurnText.slice(0, 800)}`
+          : combinedText;
         const stockTask = (async () => {
-          if (stockCodes.length > 0) {
+          if (effectiveStockCodes.length > 0) {
             try {
-              return buildStockContext(await fetchStockData(stockCodes));
+              return buildStockContext(await fetchStockData(effectiveStockCodes));
             } catch {
               // D5触发点：整体获取失败也要注入标注，模型才知道走降级路径
-              return `\n用户提到的股票[${stockCodes.join(", ")}]实时数据获取失败（网络层）。执行D5：明确告知数据获取失败，用知识库做定性框架分析，不编造数字。`;
+              return `\n用户提到的股票[${effectiveStockCodes.join(", ")}]实时数据获取失败（网络层）。执行D5：明确告知数据获取失败，用知识库做定性框架分析，不编造数字。`;
             }
           }
           return "";
         })();
         const [stockContext, newsContext] = await Promise.all([
           stockTask,
-          fetchNewsWithDeadline(),
+          fetchNewsWithDeadline(newsQueryText),
         ]);
 
-        const finalSystemPrompt = [
-          systemPrompt,
-          stockContext ? `${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。` : "",
-          cryptoContext,
-          newsContext,
-        ].filter(Boolean).join("\n");
+        const finalSystemPrompt = systemPrompt;
 
         const injectedParts: string[] = [];
         if (stockContext && !stockContext.includes("获取失败")) {
-          injectedParts.push(`实时行情${stockCodes.length}只`);
+          injectedParts.push(`实时行情${effectiveStockCodes.length}只`);
         }
         if (newsContext) injectedParts.push("最新市场快讯");
         send({
@@ -283,12 +298,32 @@ export async function POST(request: NextRequest) {
           text: injectedParts.length > 0 ? `已注入${injectedParts.join("、")}，AI生成中…` : "AI生成中…",
         });
 
+        // 前缀缓存友好结构（DeepSeek automatic context caching按前缀命中，命中部分价格≈1/10）：
+        // 稳定内容（40K知识库system+风格+历史轮次）排前面，可变注入（行情/快讯/加密边界）
+        // 单独一条system放在本轮user消息前。旧结构把注入拼进system prompt——每轮请求全部40K token
+        // 按新token计价；新结构下前缀稳定复用（上一轮的本轮user原样进入历史序列），每轮只有
+        // 注入+最新问题是新token，多轮长对话输入成本降60%以上。
+        // 注：缓存未命中（冷启动/逐出）时此结构与旧行为语义完全等价，零退化风险；
+        // 图片轮的转述消息天然在序列末尾，不破坏前缀。
+        const injectedContext = [
+          stockContext ? `${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。` : "",
+          cryptoContext,
+          newsContext,
+        ].filter(Boolean).join("\n");
+
+        const turnMessage = currentTurnText
+          ? { role: "user" as const, content: currentTurnText }
+          : (cleanMessages[cleanMessages.length - 1] ?? null);
+        const historyMessages = currentTurnText
+          ? cleanMessages
+          : (turnMessage ? cleanMessages.slice(0, -1) : cleanMessages);
+
         const streamMessages: ChatMessage[] = [
           { role: "system", content: finalSystemPrompt },
           { role: "system", content: analysisStyle },
-          ...(currentTurnText
-            ? [...cleanMessages, { role: "user" as const, content: currentTurnText }]
-            : cleanMessages),
+          ...historyMessages,
+          ...(injectedContext ? [{ role: "system" as const, content: injectedContext }] : []),
+          ...(turnMessage ? [turnMessage] : []),
         ];
 
         // 9/6红队修复（报告A）+深水区修正：短问句动态max_tokens
@@ -339,7 +374,16 @@ export async function POST(request: NextRequest) {
 
             for await (const chunk of callZhipuStream(
               streamMessages,
-              { temperature: 0.4, max_tokens: chatMaxTokens, timeout: 60_000 },
+              // signal贯通兜底引擎：兜底期间用户点停止同样中止（防DeepSeek空转兜底后白烧智谱token）
+              // timeout动态预算：maxDuration=120s是函数硬顶——DeepSeek快速失败时给满60s兜底；
+              // DeepSeek吃满90s超时后只剩~22s窗口，固定60s会被平台硬杀=前端只见"连接中断"无error事件；
+              // 按118s边界倒推剩余量，保证收尾done/error事件能在平台窗口内发出（15s保底）
+              {
+                temperature: 0.4,
+                max_tokens: chatMaxTokens,
+                timeout: Math.max(15_000, Math.min(60_000, 118_000 - (Date.now() - routeStart))),
+                signal: request.signal,
+              },
             )) {
               if (chunk.kind === "finish") {
                 if (chunk.reason === "length") truncatedByLength = true;
@@ -355,11 +399,11 @@ export async function POST(request: NextRequest) {
         }
 
         // 截断明示：用户看到"内容戛然而止"时知道为什么+怎么办（"继续"是自然补救交互）
+        // 同时进fullText：crossValidate的patch事件会整体替换全文，不进fullText的提示会被patch静默吃掉
         if (truncatedByLength) {
-          send({
-            type: "chunk",
-            text: "\n\n---\n\n⚠️ 以上回答因长度上限被截断（回答需求超过本次额度）。发送\"继续\"可从断点续写。",
-          });
+          const truncateNotice = "\n\n---\n\n⚠️ 以上回答因长度上限被截断（回答需求超过本次额度）。发送\"继续\"可从断点续写。";
+          fullText += truncateNotice;
+          send({ type: "chunk", text: truncateNotice });
         }
 
         // 双引擎全灭（DeepSeek零输出且智谱也零输出）≠空回答——明确报错，不让"已切换备用引擎"通知成为最终答案
@@ -386,7 +430,11 @@ export async function POST(request: NextRequest) {
           send({ type: "error", message: "AI服务暂时不可用，请稍后重试" });
         }
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // 客户端已断开流已取消——close抛错是预期路径，吞掉防假错误日志
+        }
       }
     },
   });

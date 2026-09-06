@@ -346,9 +346,11 @@ export async function POST(request: NextRequest) {
         );
 
         for await (const chunk of aiStream) {
-          fullText += chunk;
+          // StreamChunk对象流：finish事件（max_tokens截断原因）不进正文，text才进
+          if (chunk.kind === "finish") continue;
+          fullText += chunk.text;
           controller.enqueue(
-            encoder.encode(JSON.stringify({ type: "chunk", text: chunk }) + "\n"),
+            encoder.encode(JSON.stringify({ type: "chunk", text: chunk.text }) + "\n"),
           );
         }
 
