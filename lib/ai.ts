@@ -24,6 +24,12 @@ export type CallAIOptions = {
   timeout?: number;
   responseFormat?: "json" | "text";
   throwOnError?: boolean;
+  /** 指定模型（缺省用DEEPSEEK_MODEL环境变量）。深度模式传"deepseek-v4-pro" */
+  model?: string;
+  /** 思考模式开关（默认disabled=现状）。enabled时API忽略temperature（官方文档行为，不报错） */
+  thinking?: "enabled" | "disabled";
+  /** 思考强度low/high/max（仅thinking:enabled时生效，API默认high） */
+  reasoning_effort?: "low" | "high" | "max";
 };
 
 export class AIRequestError extends Error {
@@ -312,6 +318,7 @@ export async function* callZhipuStream(
  */
 export type StreamChunk =
   | { kind: "text"; text: string }
+  | { kind: "reasoning"; text: string }
   | { kind: "finish"; reason: "stop" | "length" | string };
 
 export async function* callAIStream(
@@ -323,8 +330,10 @@ export async function* callAIStream(
   if (!consumeAIBudget("callAIStream")) return;
 
   const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
-  const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
-  const timeoutMs = Math.max(1_000, Math.min(options.timeout ?? 60_000, 90_000));
+  const defaultModel = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
+  const requestedModel = options.model?.trim() || defaultModel;
+  // 深度模式（thinking enabled）TTFB含思维链生成（可达30-60s），timeout上限放宽到115s（Vercel maxDuration 120内留5s收尾）
+  const timeoutMs = Math.max(1_000, Math.min(options.timeout ?? 60_000, 115_000));
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   // 用户点"停止生成"→外部signal联动内部controller，中止上游DeepSeek连接=停止生成停止烧钱
@@ -334,28 +343,71 @@ export async function* callAIStream(
   else externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
 
   try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
+    // 请求配置阶梯（9/6输出质量优化）：4xx（非429）=参数/模型名被拒→降下一档；429/5xx/网络错→直接失败
+    // 终端兜底档永远是"默认模型+thinking disabled"=现状行为——深度升级最差退回原样，永不造成断供
+    const wantThinking = options.thinking === "enabled";
+    type LadderStep = { model: string; thinking: "enabled" | "disabled"; label: string };
+    const ladder: LadderStep[] = [];
+    if (wantThinking && requestedModel !== defaultModel) {
+      ladder.push(
+        { model: requestedModel, thinking: "enabled", label: "custom_model+thinking" },
+        { model: defaultModel, thinking: "enabled", label: "default_model+thinking" },
+      );
+    } else if (wantThinking) {
+      ladder.push({ model: requestedModel, thinking: "enabled", label: "thinking_enabled" });
+    } else if (requestedModel !== defaultModel) {
+      ladder.push(
+        { model: requestedModel, thinking: "disabled", label: "custom_model" },
+        { model: defaultModel, thinking: "disabled", label: "default_model" },
+      );
+    } else {
+      ladder.push({ model: requestedModel, thinking: "disabled", label: "standard" });
+    }
+    const terminal: LadderStep = { model: defaultModel, thinking: "disabled", label: "terminal_fallback" };
+    if (!ladder.some((l) => l.model === terminal.model && l.thinking === terminal.thinking)) {
+      ladder.push(terminal);
+    }
+
+    const buildBody = (step: LadderStep) => {
+      const body: Record<string, unknown> = {
+        model: step.model,
         messages,
         stream: true,
-        thinking: { type: "disabled" },
         temperature: options.temperature ?? 0.5,
         max_tokens: options.max_tokens ?? 3_000,
-      }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
+      };
+      if (step.thinking === "enabled") {
+        body.thinking = { type: "enabled" };
+        body.reasoning_effort = options.reasoning_effort ?? "high";
+      } else {
+        body.thinking = { type: "disabled" };
+      }
+      return JSON.stringify(body);
+    };
 
-    if (!response.ok || !response.body) {
-      console.error(`[ai-stream] deepseek_status=${response.status}`);
-      return;
+    let response: Response | null = null;
+    for (let i = 0; i < ladder.length; i++) {
+      const step = ladder[i];
+      const attempt = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: buildBody(step),
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (attempt.ok && attempt.body) {
+        response = attempt;
+        break;
+      }
+      console.error(`[ai-stream] deepseek_status=${attempt.status} ladder=${step.label}`);
+      const isParamRejection = attempt.status >= 400 && attempt.status < 500 && attempt.status !== 429;
+      try { await attempt.body?.cancel(); } catch { /* 释放失败响应体，防连接泄漏 */ }
+      if (!isParamRejection || i === ladder.length - 1) return;
     }
+    if (!response || !response.body) return;
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -378,10 +430,16 @@ export async function* callAIStream(
 
         try {
           const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta?.content;
+          const choice = parsed.choices?.[0];
+          const delta = choice?.delta?.content;
           if (delta) yield { kind: "text", text: delta };
+          // 思考模式思维链（reasoning_content与content同级）：chat route用它切换"深度推理中"状态，不进用户正文
+          const reasoning = choice?.delta?.reasoning_content;
+          if (typeof reasoning === "string" && reasoning.length > 0) {
+            yield { kind: "reasoning", text: reasoning };
+          }
           // finish_reason=length：max_tokens截断（chat页需要向用户明示）
-          const finishReason = parsed.choices?.[0]?.finish_reason;
+          const finishReason = choice?.finish_reason;
           if (finishReason) yield { kind: "finish", reason: finishReason };
         } catch {
           // 跳过格式异常的 chunk

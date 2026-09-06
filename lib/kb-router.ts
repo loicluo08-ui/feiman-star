@@ -80,8 +80,8 @@ const ROUTE_RULES: RouteRule[] = [
   { module: 11, pattern: /芒格|巴菲特|利弗莫尔|段永平|索罗斯|马斯克|查理|护城河|反身性|第一性原理|本分|能力圈|内在价值|思维模型|逆向思考|多元思维/i },
 ];
 
-// 大师风格→模块11强制联动（9/6：风格选中时知识必须随车）
-const GURU_STYLE_MODULE = /^(munger|buffett|livermore|duan|soros|musk)$/;
+// 大师风格→模块11强制联动（9/6：风格选中时知识必须随车）。blend=大师融合旗舰，模块11是它的弹药库
+const GURU_STYLE_MODULE = /^(blend|munger|buffett|livermore|duan|soros|musk)$/;
 
 // 股票问题指示：具体标的（代码/公司名/持仓）→估值(1)+财务(2)联动
 // 注意：中文词不能用\b（JS \w只含ASCII，中文不是词字符）——直接子串匹配
@@ -135,6 +135,10 @@ export function selectKBForQuestion(
     if (STOCK_HINT.test(routeText)) {
       wanted.add(1);
       wanted.add(2);
+      // 大师会诊（9/6质量线）：股票问题默认带模块11——系统prompt的会诊协议按问题类型
+      // 自动路由芒格/巴菲特/利弗莫尔/索罗斯/马斯克视角，无模块11知识=会诊空转。
+      // 大师框架是分析武器库不是可选项（罗竹先：五维度是地基，框架是放大镜）
+      wanted.add(11);
     }
 
     const parts: string[] = [header.trimEnd()];

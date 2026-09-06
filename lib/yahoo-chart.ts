@@ -83,6 +83,9 @@ export interface HistoryAnchors {
   fiftyTwoWeekLow: number | null;
   ytdStart: number | null;
   avgVolume20: number | null;
+  ma20: number | null;
+  ma50: number | null;
+  ma200: number | null;
 }
 
 export function extractHistoryAnchors(chart: YahooChartResult | null): HistoryAnchors | null {
@@ -140,6 +143,20 @@ export function extractHistoryAnchors(chart: YahooChartResult | null): HistoryAn
   }
   const avgVolume20 = vols.length >= 10 ? vols.reduce((a, b) => a + b, 0) / vols.length : null;
 
+  // MA价格均线（9/6质量优化）：现价vs均线位置是多头/空头排列判断的直接锚——
+  // 基线实测AI自报"20日均线[数据缺失]"，而日线数据已拉到本地，只差没算。
+  // 含最新K线（盘中=即时均线，标准实时图表口径）；数据不足宁null（模型按D2走缺数据路径）
+  const maAt = (n: number): number | null => {
+    if (lastIdx + 1 < n) return null;
+    let sum = 0;
+    for (let i = lastIdx; i > lastIdx - n; i--) {
+      const v = rawCloses[i];
+      if (typeof v !== "number") return null;
+      sum += v;
+    }
+    return sum / n;
+  };
+
   return {
     oneMonthAgo: closeAt(21),
     threeMonthsAgo: closeAt(63),
@@ -150,5 +167,8 @@ export function extractHistoryAnchors(chart: YahooChartResult | null): HistoryAn
     fiftyTwoWeekLow: w52Low,
     ytdStart,
     avgVolume20,
+    ma20: maAt(20),
+    ma50: maAt(50),
+    ma200: maAt(200),
   };
 }

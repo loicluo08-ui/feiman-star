@@ -48,6 +48,23 @@ export async function GET(request: Request) {
 
     // 阈值：≤20元告警（按当前月耗¥2.14=9天缓冲）；≤10元紧急
     const level = total <= 10 ? "critical" : total <= 20 ? "warn" : "ok";
+    // 可选models探针：?token=...&probe=models → 附带DeepSeek可用模型列表（9/6质量优化：确认v4-pro档位名）
+    // 只返回模型id列表不暴露key，token鉴权同主路径
+    let models: string[] | null = null;
+    if (searchParams.get("probe") === "models") {
+      try {
+        const mres = await fetch(`${process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"}/models`, {
+          headers: { Authorization: `Bearer ${KEY}` },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (mres.ok) {
+          const mjson = (await mres.json()) as { data?: Array<{ id?: string }> };
+          models = (mjson.data ?? []).map((m) => m.id ?? "").filter(Boolean);
+        }
+      } catch {
+        models = null; // 探针失败不影响主路径
+      }
+    }
     return NextResponse.json({
       ok: true,
       alert: level !== "ok",
@@ -56,6 +73,7 @@ export async function GET(request: Request) {
       breakdown: { granted, topped },
       is_available: data.is_available ?? null,
       checkedAt: new Date().toISOString(),
+      ...(models ? { models } : {}),
     });
   } catch (e) {
     return NextResponse.json({ ok: false, alert: true, level: "warn", reason: `巡检请求失败：${e instanceof Error ? e.message : "unknown"}` });

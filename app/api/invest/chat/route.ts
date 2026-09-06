@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type VisionMessage } from "@/lib/ai";
 import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
+import { buildSourcePool, verifySourceLabels } from "@/lib/source-integrity";
 import { selectKBForQuestion } from "@/lib/kb-router";
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { getStylePrompt, CHAT_STYLES } from "@/lib/chat-styles";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData, fetchVix, buildMarketMoodBlock } from "@/lib/stock-context";
+import { isOptionQuery, fetchOptionContext, buildOptionBlock } from "@/lib/option-context";
 import { buildNewsContext } from "@/lib/news-context";
+import { DELIBERATION_BLOCK } from "@/lib/chat-deliberation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +53,7 @@ const CROSS_VALIDATION_BLOCK = [
   "   这条是最高优先级规则，违反将被系统自动过滤。",
   "d. 边界标明：有限制的必须写明限制条件，高风险话题（医疗/法律/投资）加\"仅供参考\"。",
   "e. 反追问测试：预判用户可能追问的点，确保没有答不上来的声称。",
+  "f. 句式与数据等级对齐：核心判断句中凡无直接实时数据支撑的量级判断（个股IV分位/情绪分位/资金流），必须带推导限定词（\"基于VIX低位推导IV大概率偏低，未直接观测个股IV\"），禁止使用事实句式（\"XX当前IV处于偏低水平\"）。判别法：把判断词换成数据源追问——该数据系统本轮注入了吗？没有就降为推导句式。",
 ].join("\n");
 
 export async function POST(request: NextRequest) {
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
     "0i. 指令有歧义按最可能意图执行，末尾一句话标注其他可能意图，不反问等待。",
     "",
     "规则：",
-    "1. 分析任何标的时，必须按五维度框架（基本面/水池效应/板块轮动/产业周期/市场情绪）逐项拆解",
+    "1. 分析任何标的时，按五维度框架（基本面/水池效应/板块轮动/产业周期/市场情绪）扫描，输出按重要性深挖：最关键的1-2个维度深入（含反转与心理误判检验），其余各1-2句结论——均匀平铺五段等于没有思考",
     "2. 仓位建议必须参照仓位策略矩阵（4环境×3标的）",
     "3. 期权相关问题必须先过5%规则，再给策略建议",
     "4. 所有判断标注数据来源（费曼星原文/经验值/行业惯例/历史数据）",
@@ -139,6 +143,7 @@ export async function POST(request: NextRequest) {
     "6. 涉及具体买卖建议时，加上\"仅供参考，不构成投资建议\"",
     "7. 简洁回答控制在500字以内，完整分析控制在1500字以内；用户明确要求详细/全面/深度分析时上限放宽至2200字（宁可深而长，不要浅而全；2200字上限与3500输出token对齐，宁可分次续写也不浅尝辄止）。用户没要求详细分析时默认简洁回答。",
     "8. 如果系统在下方注入了实时行情数据或【实时市场快讯】，直接引用，不要说\"无法获取实时数据\"。引用快讯时注明发布时间（如\"14:32快讯\"），并区分快讯（事件事实）与行情（价格数字）。",
+    "8a. 用户陈述的行情类前提（大盘/板块/个股涨跌幅、价格、『昨天大跌』类描述）若与注入的实时数据矛盾，第一步先指出矛盾并给出真实数字，再回答。用户前提错误未纠正=整个分析建立在假数据上。注入数据含[交易日状态]行——休市期间用户谈『昨天下跌』时，先核对注入数据的实际交易日。",
     "",
     "输出格式要求：",
     "9. 回复开头用【分析思路】标注本次分析使用的投资风格和核心维度（1行，如：风格=价值 | 维度=基本面+水池效应）",
@@ -147,6 +152,7 @@ export async function POST(request: NextRequest) {
     "12. 用户发送\"继续\"且上一条回答带有续断标记（因长度上限被截断／已停止生成／AI生成中断——三者语义相同：上文是完整回答被中途截断的部分）时：从上一条回答的断点无缝续写，不重复已写内容，不重新开头（不要重复【分析思路】行），续写完成后正常收尾【追问方向】。",
     "13. 情绪维度：若注入了【市场情绪指标】，市场情绪判断必须引用VIX具体数值和分档（贪婪/中性/焦虑/恐慌），与模块3情绪策略联动（如VIX恐慌区+基本面完好的标的=模块3“情绪极端+基本面支撑”候选）；未注入VIX时，明确说“当前无情绪数据”，禁止猜测市场情绪。",
     "14. 技术位/价格位数字必须有来源：支撑压力位/目标价/加仓减仓触发价，要么带[数据]（注入锚点直接引用，如近1月低点$410.12），要么带[推导]（标明推导逻辑，如跌破3月前价$41.64后下一参照位=52周低$X）。无来源支撑的点位（凭空生成的平台/支撑位）严禁输出——宁可写「该价位无数据支撑，无法给出」。",
+    DELIBERATION_BLOCK,
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
     "",
@@ -219,6 +225,8 @@ export async function POST(request: NextRequest) {
 
       try {
         // 注入移入流内：响应首字节<100ms，用户立刻看到状态而不是黑盒等待
+        // 大师融合（blend旗舰模式）标志提前声明：status行/流构建多处在wantsLong之前引用
+        const isBlend = input.data.style === "blend";
         // 两段式图片管线第一阶段：GLM-4V转述（8-20s）——期间持续推状态+心跳，不再是黑盒
         let currentTurnText: string | null = null;
 
@@ -313,12 +321,30 @@ export async function POST(request: NextRequest) {
             return null;
           }
         })();
-        const [stockContext, newsContext, marketMood] = await Promise.all([
+        // 期权链上下文（9/6质量专项，Q2失分主因"IV是猜的"）：仅用户问题含期权语义才拉CBOE——
+        // 普通股票问题零延迟代价。8s软超时失败静默跳过（期权是增强不是依赖）
+        const optionTask = (async () => {
+          const optionQuery = isOptionQuery(
+            [combinedText, ...(currentTurnText ? [currentTurnText] : [])].join("\n").slice(-2000),
+          );
+          if (!optionQuery || effectiveStockCodes.length === 0) return null;
+          try {
+            return await Promise.race([
+              fetchOptionContext(effectiveStockCodes[0]),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+            ]);
+          } catch {
+            return null;
+          }
+        })();
+        const [stockContext, newsContext, marketMood, optionCtx] = await Promise.all([
           stockTask,
           fetchNewsWithDeadline(newsQueryText),
           vixTask,
+          optionTask,
         ]);
         const moodContext = buildMarketMoodBlock(marketMood);
+        const optionContextText = optionCtx ? buildOptionBlock(optionCtx) : "";
 
         const finalSystemPrompt = systemPrompt;
 
@@ -328,9 +354,14 @@ export async function POST(request: NextRequest) {
         }
         if (newsContext) injectedParts.push("最新市场快讯");
         if (moodContext) injectedParts.push("VIX情绪");
+        if (optionContextText) injectedParts.push("期权链（IV/Greeks/OI）");
         send({
           type: "status",
-          text: injectedParts.length > 0 ? `已注入${injectedParts.join("、")}，AI生成中…` : "AI生成中…",
+          text: injectedParts.length > 0
+            ? `已注入${injectedParts.join("、")}，${isBlend ? "大师圆桌深度思考中（约30-60秒，出字后即流式输出）…" : "AI生成中…"}`
+            : isBlend
+              ? "大师圆桌深度思考中（约30-60秒，出字后即流式输出）…"
+              : "AI生成中…",
         });
 
         // 前缀缓存友好结构（DeepSeek automatic context caching按前缀命中，命中部分价格≈1/10）：
@@ -340,11 +371,27 @@ export async function POST(request: NextRequest) {
         // 注入+最新问题是新token，多轮长对话输入成本降60%以上。
         // 注：缓存未命中（冷启动/逐出）时此结构与旧行为语义完全等价，零退化风险；
         // 图片轮的转述消息天然在序列末尾，不破坏前缀。
+        // 交易日状态行（修短板A）：行情数据都是收盘快照，周末/盘前注入的仍是上一交易日数据。
+        // 用户谈"昨天大跌"时，AI需要知道"昨天"是否是交易日、注入数据属于哪个交易日——
+        // 否则会把用户虚构的行情当前提（红队实测：周日用户称"昨天半导体大跌3%"被当真）
+        const nyNow = new Date();
+        const nyDay = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(nyNow);
+        const nyDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(nyNow);
+        const nyTime = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(nyNow);
+        const weekend = nyDay === "Sat" || nyDay === "Sun";
+        const marketStatus = weekend
+          ? `美股休市（今日${nyDay}），注入的行情数据为上一交易日收盘快照——用户提及的"今日/昨日行情"须先与快照核对，快照没有的就是未发生的`
+          : Number(nyTime.split(":")[0]) >= 9 && Number(nyTime.split(":")[0]) < 16
+            ? "美股交易时段（美东，可能盘中）"
+            : `美股非交易时段（美东${nyTime}），注入的行情数据为最近收盘快照`;
+
         const injectedContext = [
+          stockContext || newsContext || moodContext || optionContextText ? `[交易日状态] 美东${nyDate} ${nyDay}，${marketStatus}。` : "",
           stockContext ? `${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。` : "",
           cryptoContext,
           moodContext,
           newsContext,
+          optionContextText,
         ].filter(Boolean).join("\n");
 
         const turnMessage = currentTurnText
@@ -367,11 +414,14 @@ export async function POST(request: NextRequest) {
         // → 改为字数≤20 且 无长输出意图词 才压800；含"详细/全面/深入/分析/对比"等词给全量
         // 图片轮固定全量：持仓归因/财报解读天然长输出，"帮我看看这图"短问≠短答
         const trimmedQuestion = lastUserText.trim();
+        // 大师融合（blend旗舰模式）：默认深度长输出+pro模型+thinking+4000 token上限
+        // isBlend已在stream start顶部声明（status行先引用）
         const wantsLong =
+          isBlend ||
           imageTurn !== null
           || /详细|全面|深入|展开|完整|系统性|逐一|对比|多角度|深度分析|长文/.test(trimmedQuestion)
           || trimmedQuestion.length > 20;
-        const chatMaxTokens = wantsLong ? 3500 : 800;
+        const chatMaxTokens = wantsLong ? (isBlend ? 4000 : 3500) : 800;
 
         // 心跳：首chunk前每5s推ping防代理空闲断连（40K token prompt的TTFB可达10-20s）
         let receivedFirstChunk = false;
@@ -385,9 +435,19 @@ export async function POST(request: NextRequest) {
 
         try {
           // request.signal：客户端断开（用户点停止/关页面）时中止上游DeepSeek连接——停止生成=停止烧钱
+          // blend旗舰：v4-pro+thinking（思维链在内部，TTFB 30-60s靠ping心跳续命）——
+          // ladder自动降级：pro被拒(4xx)→flash+thinking→flash+无思考=现状，深度升级永不造成断供
           for await (const chunk of callAIStream(
             streamMessages,
-            { temperature: 0.4, max_tokens: chatMaxTokens, retry: 1, timeout: 90_000, signal: request.signal },
+            {
+              temperature: 0.4,
+              max_tokens: chatMaxTokens,
+              retry: 1,
+              ...(isBlend
+                ? { model: "deepseek-v4-pro", thinking: "enabled" as const, reasoning_effort: "high" as const, timeout: 110_000 }
+                : { timeout: 90_000 }),
+              signal: request.signal,
+            },
           )) {
             if (chunk.kind === "finish") {
               if (chunk.reason === "length") truncatedByLength = true;
@@ -454,9 +514,27 @@ export async function POST(request: NextRequest) {
           console.log(`[invest/chat] cross_validate flags=${validation.flags.join("; ")}`);
         }
 
+        // 来源标签降级（R4校验层闭环，lib/source-integrity.ts）：[数据]行含池外数字→降级[模型记忆]。
+        // prompt层（规则f/R4）教模型自觉，本层工程强制兜底——flash指令遵循有波动（9/6 Q2基线实测：
+        // "过去4季度净利润增速70-120%（[数据] 财报）"——系统没注入财报，冒用[数据]烧信任）
+        const sourcePool = buildSourcePool(
+          injectedQuotes,
+          marketMood,
+          [stockContext, newsContext, moodContext, optionContextText].filter(Boolean).join("\n"),
+        );
+        const srcLabels = verifySourceLabels(validation.cleaned ? validation.text : fullText, sourcePool);
+        if (srcLabels.verified) {
+          fullText = srcLabels.text;
+          send({ type: "patch", text: srcLabels.text });
+          console.log(`[invest/chat] source_labels_downgraded: ${srcLabels.flags.join(" | ")}`);
+        }
+
         // 数字锚定验证（9/6深度）：D4规则的事后真实闭环——回答数字与注入行情精确比对，
         // 疑似漂移（±15%区间内但不匹配白名单）→ 末尾附核对警告（只报告不patch，用户口述数字已豁免）
-        const numeric = verifyNumericAnchors(validation.cleaned ? validation.text : fullText, injectedQuotes);
+        const numeric = verifyNumericAnchors(
+          srcLabels.verified ? srcLabels.text : (validation.cleaned ? validation.text : fullText),
+          injectedQuotes,
+        );
         if (numeric.verified) {
           fullText = numeric.text;
           send({ type: "patch", text: numeric.text });

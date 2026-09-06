@@ -3,9 +3,10 @@
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/background-task";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { TypewriterText } from "@/components/typewriter-text";
 
-// 10风格=4基础+6大师（模块11思维框架库）。route的zod enum与此保持一致
-type AnalysisStyle = "balanced" | "value" | "growth" | "quant" | "munger" | "buffett" | "livermore" | "duan" | "soros" | "musk";
+// 11风格=4基础+大师融合旗舰+6大师（模块11思维框架库）。route的zod enum与此保持一致
+type AnalysisStyle = "balanced" | "value" | "growth" | "quant" | "blend" | "munger" | "buffett" | "livermore" | "duan" | "soros" | "musk";
 
 // 大师视角按钮组（默认收起，点「大师视角」展开——4+6全铺开挤占移动端）
 const GURU_STYLES: Array<{ key: AnalysisStyle; label: string; hint: string }> = [
@@ -180,6 +181,9 @@ export default function ChatPage() {
   const [nearBottom, setNearBottom] = useState(true);
   // 流式状态行（后端status事件：注入进度/生成状态）
   const [statusLine, setStatusLine] = useState("");
+  // 步骤化状态栈（agentmore式流动性）：每个status事件一条，最新呼吸高亮、旧步骤打勾——
+  // 用户看到的是"过程感"（注入行情→注入快讯→生成中）而不是单行覆盖
+  const [statusSteps, setStatusSteps] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState(-1);
   // 长对话滚动摘要（窗口外记忆）：会话级状态，随历史持久化
   const summaryRef = useRef("");
@@ -257,6 +261,7 @@ export default function ChatPage() {
     abortRef.current?.abort();
     clearTask(CHAT_TASK_KEY);
     setStatusLine("");
+    setStatusSteps([]);
     setLoading(false);
   }
 
@@ -509,6 +514,7 @@ export default function ChatPage() {
     setLoading(true);
     setError("");
     setStatusLine("");
+    setStatusSteps([]);
     nearBottomRef.current = true;
     setNearBottom(true);
     scrollToBottom(true);
@@ -594,7 +600,11 @@ export default function ChatPage() {
                   continue; // 不落消息体，随下一条chunk的重渲染显示
                 } else if (data.type === "status") {
                   if (mountedRef.current && epochRef.current === epoch) {
-                    setStatusLine(data.text ?? "");
+                    const statusText = data.text ?? "";
+                    setStatusLine(statusText);
+                    // 步骤栈：同文本去重（重试/续写轮次间不重复堆叠）
+                    setStatusSteps((prev) =>
+                      prev[prev.length - 1] === statusText ? prev : [...prev, statusText]);
                   }
                   continue; // 状态行不落消息体
                 } else if (data.type === "done") {
@@ -678,6 +688,7 @@ export default function ChatPage() {
       setLoading(false);
       setError("");
       setStatusLine("");
+      setStatusSteps([]);
       scrollToBottom();
     }).catch((taskError: unknown) => {
       if (!mountedRef.current || epochRef.current !== epoch) return;
@@ -688,6 +699,7 @@ export default function ChatPage() {
       setLoading(false);
       setError(taskError instanceof Error ? taskError.message : "AI暂时不可用");
       setStatusLine("");
+      setStatusSteps([]);
       scrollToBottom();
     });
   }
@@ -789,6 +801,18 @@ export default function ChatPage() {
                   {s.label}
                 </button>
               ))}
+              {/* 大师融合旗舰：多视角审视→交叉检验→融合单一深度输出（v4-pro+thinking）。首字慢（思维链30-60s）但深度最高 */}
+              <button
+                onClick={() => setStyle("blend")}
+                title="大师融合旗舰模式：按标的选3-4位大师视角分别审视+交叉检验，融合为单一深度输出（走v4-pro深度模型，首字约30-60秒）"
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  style === "blend"
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm"
+                    : "border border-[var(--primary)]/60 text-[var(--primary)] hover:bg-[var(--primary)]/10"
+                }`}
+              >
+                ⚡大师融合
+              </button>
               <button
                 onClick={() => setShowGurus((v) => !v)}
                 className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
@@ -909,7 +933,7 @@ export default function ChatPage() {
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
             {messages.map((m, i) => (
-              <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+              <div key={i} className={`msg-in ${m.role === "user" ? "flex justify-end" : "flex justify-start"}`}>
                 <div
                   className={
                     m.role === "user"
@@ -932,11 +956,19 @@ export default function ChatPage() {
                   ) : null}
                   {m.text ? (
                     m.role === "assistant" ? (
-                      <>
-                        <MarkdownRenderer content={m.text} />
-                        {loading && i === messages.length - 1 ? (
-                          <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-[var(--text)] align-text-bottom" />
-                        ) : (
+                      loading && i === messages.length - 1 ? (
+                        /* 流式中：字符级打字机轻渲染（完成后父层切markdown全排版）+
+                           底部动态状态行——agentmore式流动性 */
+                        <>
+                          <TypewriterText target={m.text} className="whitespace-pre-wrap break-words leading-6" />
+                          <div className="mt-2 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--primary)]" />
+                            {statusLine || "生成中…"}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <MarkdownRenderer content={m.text} />
                           <div className="mt-2 flex items-center gap-3">
                             <button
                               onClick={() => void copyAnswer(m.text, i)}
@@ -961,15 +993,41 @@ export default function ChatPage() {
                               </button>
                             ) : null}
                           </div>
-                        )}
-                      </>
+                        </>
+                      )
                     ) : (
                       <div className="whitespace-pre-wrap leading-6">{m.text}</div>
                     )
                   ) : loading && i === messages.length - 1 ? (
-                    <div className="flex items-center gap-1 text-sm text-[var(--text-muted)]">
-                      <span className="inline-block h-4 w-0.5 animate-pulse bg-[var(--text)]" />
-                      {statusLine || "思考中…"}
+                    /* 思考期（首字前）：步骤栈逐条点亮——注入进度可见，不再是黑盒"思考中" */
+                    <div className="space-y-1.5 py-0.5 text-sm">
+                      {statusSteps.length === 0 ? (
+                        <div className="flex items-center gap-1 text-[var(--text-muted)]">
+                          <span className="inline-block h-4 w-0.5 animate-pulse bg-[var(--text)]" />
+                          思考中…
+                        </div>
+                      ) : (
+                        statusSteps.map((step, idx) => {
+                          const isLatest = idx === statusSteps.length - 1;
+                          return (
+                            <div
+                              key={`${idx}-${step}`}
+                              className={
+                                isLatest
+                                  ? "flex items-center gap-1.5 text-[var(--text)]"
+                                  : "flex items-center gap-1.5 text-[var(--text-muted)]"
+                              }
+                            >
+                              {isLatest ? (
+                                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--primary)]" />
+                              ) : (
+                                <span className="inline-block text-xs text-[var(--text-muted)]">✓</span>
+                              )}
+                              {step}
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   ) : null}
                 </div>

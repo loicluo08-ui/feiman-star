@@ -83,6 +83,10 @@ export type InjectedQuote = {
     ytdStart?: number | null;
     fiftyTwoWeekHigh?: number | null;
     fiftyTwoWeekLow?: number | null;
+    // 9/6质量优化：MA均线锚（现价vs均线位置是趋势排列的直接依据，引用不得误报漂移）
+    ma20?: number | null;
+    ma50?: number | null;
+    ma200?: number | null;
   } | null;
 };
 
@@ -143,6 +147,7 @@ export function verifyNumericAnchors(
         ...[
           history.oneMonthAgo, history.threeMonthsAgo, history.monthHigh, history.monthLow,
           history.sixMonthsAgo, history.ytdStart, history.fiftyTwoWeekHigh, history.fiftyTwoWeekLow,
+          history.ma20, history.ma50, history.ma200,
         ].filter((v): v is number => v != null),
       );
     }

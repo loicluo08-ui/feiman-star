@@ -315,6 +315,12 @@ export function buildStockContext(
       if (h.fiftyTwoWeekHigh != null) parts2.push(`52周高:${h.fiftyTwoWeekHigh.toFixed(2)}`);
       if (h.fiftyTwoWeekLow != null) parts2.push(`52周低:${h.fiftyTwoWeekLow.toFixed(2)}`);
       if (parts2.length > 0) parts.push(`历史锚点[${parts2.join(" | ")}](Yahoo日线)`);
+      // MA均线锚：现价vs均线位置=多头/空头排列的直接判断依据（计算含最新K线，盘中=即时均线）
+      const mas: string[] = [];
+      if (h.ma20 != null) mas.push(`MA20:${h.ma20.toFixed(2)}`);
+      if (h.ma50 != null) mas.push(`MA50:${h.ma50.toFixed(2)}`);
+      if (h.ma200 != null) mas.push(`MA200:${h.ma200.toFixed(2)}`);
+      if (mas.length > 0) parts.push(`均线[${mas.join(" | ")}](Yahoo日线，含最新价)`);
     }
     // 量能基线：当日量与近20日均量的比值——放量/缩量判断的唯一依据（无基线时AI只能猜）
     // 盘中口径护栏：今日量为盘中累计量（未收盘），上午时段除以全天均量必然偏低=误报缩量。
