@@ -7,6 +7,7 @@ import { BASE_SKILLS } from "@/lib/chat-skills";
 import { loadKnowledgeBase } from "@/lib/knowledge";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData } from "@/lib/stock-context";
+import { buildNewsContext } from "@/lib/news-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
     "5. 不确定时明确说明，不编造数据",
     "6. 涉及具体买卖建议时，加上\"仅供参考，不构成投资建议\"",
     "7. 简洁回答控制在500字以内，完整分析控制在1500字以内。用户没要求详细分析时默认简洁回答。",
-    "8. 如果系统在下方注入了实时行情数据，直接引用这些数据，不要说\"无法获取实时数据\"。",
+    "8. 如果系统在下方注入了实时行情数据或【实时市场快讯】，直接引用，不要说\"无法获取实时数据\"。引用快讯时注明发布时间（如\"14:32快讯\"），并区分快讯（事件事实）与行情（价格数字）。",
     "",
     "输出格式要求：",
     "9. 回复开头用【分析思路】标注本次分析使用的投资风格和核心维度（1行，如：风格=价值 | 维度=基本面+水池效应）",
@@ -172,6 +173,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // 实时讯息注入：与行情拉取并行，命中/未命中都有上下文，拉不到静默跳过（快讯是增强不是依赖）
+  const newsContext = await buildNewsContext(combinedText);
+
   // 加密资产识别：提取符号但不拉股票行情（同名ticker是美股产品不是币），注入数据边界声明
   const cryptoSymbols = extractCryptoSymbols(combinedText);
   let cryptoContext = "";
@@ -179,15 +183,18 @@ export async function POST(request: NextRequest) {
     cryptoContext = `\n\n⚠️ 加密资产数据边界（必须遵守）：用户提到加密资产[${cryptoSymbols.join("、")}]。费曼星行情源仅覆盖股票，本次未注入任何加密货币行情数据。注意：BTC/ETH等符号在美股存在同名产品（如BTC=Grayscale比特币ETF），那是基金份额价格，与加密货币现货价格量级完全不同，严禁引用为币价。对加密资产只能做定性框架分析（波动率/仓位纪律/损失厌恶/流动性风险），引用时标注[框架]或[经验]，明确告知用户"无法提供加密货币实时行情"，具体现货价格一律不写。`;
   }
 
-  const finalSystemPrompt = stockContext
-    ? `${systemPrompt}\n${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。${cryptoContext}`
-    : `${systemPrompt}${cryptoContext}`;
+  const finalSystemPrompt = [
+    systemPrompt,
+    stockContext ? `${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。` : "",
+    cryptoContext,
+    newsContext,
+  ].filter(Boolean).join("\n");
 
   // 图片路径：保持非流式，由GLM-4V处理。
   if (hasImage) {
     try {
       const visionMessages: VisionMessage[] = [
-        { role: "system", content: visionSystemPrompt },
+        { role: "system", content: newsContext ? `${visionSystemPrompt}${newsContext}` : visionSystemPrompt },
         ...recentMessages.map((message) => {
           if (message.content.type === "text") {
             return { role: message.role, content: message.content.text } as VisionMessage;

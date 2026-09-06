@@ -1,195 +1,12 @@
 import { NextResponse } from "next/server";
-import { isLowQuality, isEnglishDominant, dedupFlashItems } from "@/lib/flash-filter";
+import { getFlashFeed, type FlashItem } from "@/lib/flash-source";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface FlashItem {
-  id: string;
-  title: string;
-  content: string;
-  content_text: string;
-  time_str: string;
-  timestamp: number;
-  is_important: boolean;
-  channels: number[];
-  source: string;
-}
-
-const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/g, "\n")
-    .replace(/<\/?b>/g, "")
-    .replace(/<\/?strong>/g, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .trim();
-}
-
-function hasBoldTag(html: string): boolean {
-  return /<b>|<strong/.test(html);
-}
-
-function formatRelativeTime(ts: number): string {
-  const now = Math.floor(Date.now() / 1000);
-  const diff = now - ts;
-  if (diff < 10) return "刚刚";
-  if (diff < 60) return `${diff}秒前`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
-  return new Date(ts * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
-}
-
-// normalizeForDedup 已移至 lib/flash-filter.ts 单源维护（9/6：服务端与客户端共用判重）
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 数据源1: 金十（服务端兜底，主源在客户端直连）
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-interface Jin10Raw {
-  id: string;
-  time: string;
-  data: { content: string; title: string; source: string };
-  important: number;
-  channel: number[];
-}
-
-async function fetchJin10(): Promise<FlashItem[]> {
-  const cacheBuster = Date.now();
-  const urls = [
-    `https://www.jin10.com/flash_newest.js?_=${cacheBuster}`,
-    `https://cdn.jin10.com/flash_newest.js?_=${cacheBuster}`,
-    `https://www.jin10.com/flash_newest.js`,
-  ];
-
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": UA,
-          Referer: "https://www.jin10.com/",
-          "Cache-Control": "no-cache, no-store, max-age=0",
-          Pragma: "no-cache",
-        },
-        signal: AbortSignal.timeout(4000),
-      });
-      if (!res.ok) continue;
-
-      const text = await res.text();
-      if (!text || text.length < 10) continue;
-
-      const match = text.match(/var newest = (.+);/);
-      if (!match) continue;
-
-      const raw = JSON.parse(match[1]) as Jin10Raw[];
-      return raw.map((item) => {
-        const rawContent = item.data.content || "";
-        const cleanContent = stripHtml(rawContent);
-        const cleanTitle = stripHtml(item.data.title || "");
-        const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
-        return {
-          id: `jin10_${item.id}`,
-          title: cleanTitle,
-          content: cleanContent,
-          content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
-          time_str: formatRelativeTime(ts),
-          timestamp: ts,
-          is_important: item.important === 1 || hasBoldTag(rawContent),
-          channels: item.channel || [],
-          source: "金十数据",
-        };
-      });
-    } catch {
-      continue;
-    }
-  }
-
-  return [];
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 数据源2: 华尔街见闻
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-interface WscnItem {
-  id: string;
-  title: string;
-  content: string;
-  display_time: number;
-  is_important: boolean;
-}
-
-async function fetchWallstreetCN(): Promise<FlashItem[]> {
-  try {
-    const res = await fetch(
-      "https://api-one-wscn.awtmt.com/apiv1/content/lives?channel=global-channel&limit=20",
-      {
-        headers: { "User-Agent": UA },
-        signal: AbortSignal.timeout(5000),
-      },
-    );
-    if (!res.ok) return [];
-
-    const payload = (await res.json()) as { data?: { items?: WscnItem[] } };
-    const items = payload.data?.items ?? [];
-
-    return items.map((item) => {
-      const cleanContent = stripHtml(item.content || "");
-      const cleanTitle = stripHtml(item.title || "");
-      const ts = item.display_time;
-      return {
-        id: `wscn_${item.id}`,
-        title: cleanTitle,
-        content: cleanContent,
-        content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
-        time_str: formatRelativeTime(ts),
-        timestamp: ts,
-        is_important: item.is_important || false,
-        channels: [],
-        source: "华尔街见闻",
-      };
-    });
-  } catch {
-    return [];
-  }
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 数据源3已删除（财联社API全失效，换成金十第三CDN节点在fetchJin10里）
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 缓存兜底（5分钟）
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-let lastSuccessCache: FlashItem[] = [];
-let lastSuccessTime = 0;
-const CACHE_TTL = 5 * 60 * 1000;
-// 主路径节流缓存：快讯更新频率分钟级，10秒内的重复请求直接回缓存（防前端5秒轮询打穿金十）
-let throttleCache: FlashItem[] = [];
-let throttleTime = 0;
-const THROTTLE_TTL = 10 * 1000;
-// 节流命中时也返回完整顶层字段，保持响应结构一致
-let throttleSource = "";
-
-function getCachedFallback(): FlashItem[] {
-  if (Date.now() - lastSuccessTime < CACHE_TTL && lastSuccessCache.length > 0) {
-    return lastSuccessCache;
-  }
-  return [];
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 主函数：金十为主，华尔街见闻+财联社补充
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 数据抓取/过滤/去重/缓存逻辑已抽至 lib/flash-source.ts（9/6：chat实时讯息注入共用数据源与缓存）
+// 本route只保留：限流 + 响应组装 + 数据源不可用时的503语义
 
 export async function GET(request: Request) {
   const limited = await enforceRateLimitAsync(request, "flash", RATE_LIMITS.flash);
@@ -200,74 +17,19 @@ export async function GET(request: Request) {
     );
   }
 
-  // 10秒节流缓存命中→直接返回（前端5秒轮询，快讯分钟级更新，用户零感知）
-  if (Date.now() - throttleTime < THROTTLE_TTL && throttleCache.length > 0) {
-    return NextResponse.json({
-      data: throttleCache,
-      timestamp: new Date().toISOString(),
-      source: throttleSource || "金十数据",
-    });
-  }
-
-  const [jin10Items, wscnItems] = await Promise.all([
-    fetchJin10(),
-    fetchWallstreetCN(),
-  ]);
-
-  // 金十为主源，华尔街见闻全量合并（无CDN缓存，实时性好）
-  // 之前只在金十延迟时补华尔街见闻，但金十CDN缓存4小时会导致午间延迟17分钟
-  // 改为始终合并，靠去重处理重叠
-  let all: FlashItem[] = [...jin10Items, ...wscnItems];
-
-  // 质量过滤 + 英文过滤（金十会推英文原文，同一条新闻通常有中文版）
-  const filtered = all.filter((i) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text));
-
-  // 9/6红队收紧：去重逻辑移至 lib/flash-filter.dedupFlashItems 单源维护
-  // （误杀修复：摘要条目吞单条新闻、前缀条件吞增量信息——详见该函数注释）
-  const deduped = dedupFlashItems(filtered);
-
-  const items = deduped.slice(0, 30);
-
-  // 写节流缓存（成功拿到任何数据就缓存，包括items非空的路径）
-  if (items.length > 0) {
-    throttleCache = items;
-    throttleTime = Date.now();
-  }
+  const feed = await getFlashFeed();
+  const items: FlashItem[] = feed.items;
 
   if (items.length === 0) {
-    const cached = getCachedFallback();
-    if (cached.length > 0) {
-      return NextResponse.json({
-        data: cached,
-        timestamp: new Date().toISOString(),
-        source: "缓存数据（数据源暂时不可用）",
-        fallback: true,
-      });
-    }
-
     return NextResponse.json(
       { error: "快讯数据暂时不可用，请稍后重试" },
       { status: 503 },
     );
   }
 
-  lastSuccessCache = items;
-  lastSuccessTime = Date.now();
-
-  const sources: string[] = [];
-  if (jin10Items.length > 0) sources.push("金十数据");
-  if (wscnItems.some((i) => i.timestamp > (jin10Items[0]?.timestamp || 0))) sources.push("华尔街见闻");
-
-  throttleSource = sources.join("+") || "金十数据";
-
   return NextResponse.json({
     data: items,
     timestamp: new Date().toISOString(),
-    source: throttleSource,
-    stats: {
-      total: items.length,
-      jin10: jin10Items.length,
-      wscn: wscnItems.length,
-    },
+    source: feed.source || "金十数据",
   });
 }

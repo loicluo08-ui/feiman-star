@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "baseUrl": "/home/z/my-project/platform/nextjs_latest",
+    "paths": { "@/*": ["*"] },
+    "module": "commonjs",
+    "target": "es2020",
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "strict": false,
+    "types": ["node"],
+    "typeRoots": ["/home/z/my-project/platform/nextjs_latest/node_modules/@types"],
+    "outDir": "/tmp/nc-test/out"
+  },
+  "files": [
+    "/home/z/my-project/platform/nextjs_latest/lib/news-context.ts"
+  ]
+}
