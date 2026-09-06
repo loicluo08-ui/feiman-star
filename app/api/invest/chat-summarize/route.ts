@@ -27,6 +27,7 @@ const SUMMARY_PROMPT = [
   "- 所有具体数字：成本价/现价/仓位/股数/盈亏额/百分比/资金量/价格位",
   "- 用户持有的标的、用户立场（看多/看空/持有观察）、用户陈述的约束（资金量/风险偏好/时间窗口）",
   "- AI给出过的关键结论、条件位（站稳X/跌破Y）、分歧点",
+  "- AI给过的行动计划档位：目标仓位%/分笔分配/触发条件（若回踩$X…则加仓…）/证伪信号——计划的生命周期跨越轮次，摘要丢了计划=用户回访时AI失忆重新分析",
   "",
   "必须丢弃：寒暄、过程展开、重复内容、未涉及数字的泛泛讨论",
   "输出：≤400字纯文本，无标题无markdown格式。数字禁止改写换算。",
@@ -48,9 +49,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "参数不合法" }, { status: 400 });
   }
 
-  // 只取原文前600字/条——摘要要的是骨架不是全文（数字和立场才是记忆）
+  // 首部400+尾部400拼接（原截前600字会切掉回答尾部的【裁决】+行动计划段——
+  // 计划档位是摘要必保项却在消息尾部，尾部必须进摘要窗口）
   const transcript = input.messages
-    .map((m) => `${m.role === "user" ? "用户" : "AI"}: ${m.text.slice(0, 600)}`)
+    .map((m) => {
+      const t = m.text.length > 800
+        ? `${m.text.slice(0, 400)}\n[中段省略]\n${m.text.slice(-400)}`
+        : m.text;
+      return `${m.role === "user" ? "用户" : "AI"}: ${t}`;
+    })
     .join("\n");
 
   const messages: ChatMessage[] = [
