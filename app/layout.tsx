@@ -1,6 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  // 移动端软键盘弹出时收缩视口而不是覆盖输入框（chat页输入区在底部，键盘盖住=没法用）
+  interactiveWidget: "resizes-content",
+};
 
 export const metadata: Metadata = {
   title: {
@@ -8,11 +16,6 @@ export const metadata: Metadata = {
     template: "%s · 费曼星",
   },
   description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情实时更新，仅供研究参考，不构成投资建议。",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 5,
-  },
   openGraph: {
     title: "费曼星 · 投资分析工具",
     description: "AI驱动的美股分析工具——选股分析、交易复盘、投资对话。行情实时更新，仅供研究参考，不构成投资建议。",

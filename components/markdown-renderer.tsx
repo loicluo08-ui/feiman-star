@@ -1,12 +1,29 @@
 "use client";
 
+import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 
 type Props = { content: string };
 
-export function MarkdownRenderer({ content }: Props) {
+/**
+ * 流式安全：AI流中输出到一半的```代码围栏未闭合时，剩余文本会被整段
+ * 渲染成一个巨大代码块（闪烁跳变）。检测围栏数为奇数时补一个临时闭合，
+ * 完整内容（偶数围栏）零影响。
+ */
+function stabilizeFences(content: string): string {
+  const fences = (content.match(/^[ \t]*(```|~~~)/gm) || []).length;
+  return fences % 2 === 1 ? `${content}\n\`\`\`` : content;
+}
+
+/**
+ * memo：流式期间messages数组每次flush都重渲染所有气泡——
+ * 旧消息content不变直接跳过（避免664 chunk×全量markdown重解析），
+ * 流式气泡content变化才重新解析。render props对象每次新建不影响
+ * ReactMarkdown等props恒定，memo浅比较仅看content。
+ */
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Props) {
   return (
     <div className="feiman-md">
       <ReactMarkdown
@@ -65,8 +82,8 @@ export function MarkdownRenderer({ content }: Props) {
           ),
         }}
       >
-        {content}
+        {stabilizeFences(content)}
       </ReactMarkdown>
     </div>
   );
-}
+});
