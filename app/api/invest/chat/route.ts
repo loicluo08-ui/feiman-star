@@ -256,9 +256,14 @@ export async function POST(request: NextRequest) {
           ...cleanMessages,
         ];
 
+        // 9/6红队修复（报告A）：短问句动态max_tokens——≤20字时3000→800，
+        // 系统模板强制结构下短问题的最坏输出成本砍3.75x
+        const trimmedQuestion = lastUserText.trim();
+        const chatMaxTokens = trimmedQuestion.length > 0 && trimmedQuestion.length <= 20 ? 800 : 3000;
+
         for await (const chunk of callAIStream(
           streamMessages,
-          { temperature: 0.4, max_tokens: 3000, retry: 1, timeout: 90_000 },
+          { temperature: 0.4, max_tokens: chatMaxTokens, retry: 1, timeout: 90_000 },
         )) {
           fullText += chunk;
           controller.enqueue(
@@ -278,7 +283,7 @@ export async function POST(request: NextRequest) {
 
           for await (const chunk of callZhipuStream(
             streamMessages,
-            { temperature: 0.4, max_tokens: 3000, timeout: 60_000 },
+            { temperature: 0.4, max_tokens: chatMaxTokens, timeout: 60_000 },
           )) {
             fullText += chunk;
             controller.enqueue(

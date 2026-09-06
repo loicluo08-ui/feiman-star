@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { filterFlashItems } from "@/lib/flash-filter";
+import { filterFlashItems, dedupFlashItems } from "@/lib/flash-filter";
 
 interface FlashItem {
   id: string;
@@ -174,15 +174,9 @@ export default function FlashPage() {
       // 金十客户端数据为主源，服务端数据全量合并（华尔街见闻无CDN缓存，实时性好）
       let allItems: FlashItem[] = filterFlashItems([...jin10Items, ...serverData.data]);
 
-      // 去重（content前30字符指纹）
-      const seen = new Map<string, number>();
-      const deduped: FlashItem[] = [];
-      for (const item of allItems.sort((a, b) => b.timestamp - a.timestamp)) {
-        const fp = item.content.replace(/[\s\W]/g, "").slice(0, 20);
-        if (seen.has(fp)) continue;
-        seen.set(fp, item.timestamp);
-        deduped.push(item);
-      }
+      // 9/6红队收紧：客户端去重改用与服务端同一套 lib/flash-filter.dedupFlashItems
+      // （原20字前缀指纹会误杀"非农16万vs21万人"类数字差在前的两条不同快讯）
+      const deduped = dedupFlashItems(allItems);
 
       const newItems = deduped.slice(0, 30);
 

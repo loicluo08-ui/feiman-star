@@ -10,12 +10,54 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
+const factsSchema = z.object({
+  source: z.enum(["ai", "fallback"]).optional(),
+  totalTrades: z.number().int().min(0).max(10_000),
+  winRate: z.number().min(0).max(100).nullable().default(null),
+  totalPnl: z.number().finite().min(-1e12).max(1e12),
+  profitLossRatio: z.number().positive().max(1_000_000).nullable().default(null),
+  openLots: z.array(z.object({
+    symbol: z.string().trim().min(1).max(12),
+    quantity: z.number().positive().max(1e9),
+    price: z.number().positive().max(1e9),
+  })).max(20).default([]),
+  anomalies: z.array(z.object({
+    symbol: z.string().trim().min(1).max(12),
+    message: z.string().trim().min(1).max(200),
+  })).max(10).default([]),
+  dateSorted: z.boolean().default(false),
+});
+
 const requestSchema = z.object({
   trades: z.string().trim().min(10).max(8000),
   strategy: z.string().trim().max(2000).optional().default(""),
   questions: z.string().trim().max(1000).optional().default(""),
   totalCapital: z.coerce.number().positive().max(1_000_000_000).optional().default(100_000),
+  facts: factsSchema.optional(),
 });
+
+type ReviewFacts = z.infer<typeof factsSchema>;
+
+/** 9/6红队修复（报告D case2）：确定性FIFO事实底座注入——AI叙述的统计数字必须与代码计算一致 */
+function buildFactsBlock(facts: ReviewFacts): string[] {
+  const lines = [
+    "【事实底座】（系统用确定性FIFO代码计算，与你的独立计算无关，报告统计数字以此为准）",
+    `- 已平仓笔数：${facts.totalTrades}`,
+    `- 胜率：${facts.winRate != null ? `${facts.winRate}%` : "无已平仓交易"}`,
+    `- 总盈亏：$${facts.totalPnl}`,
+    `- 盈亏比：${facts.profitLossRatio != null ? facts.profitLossRatio : "无法计算（含∞情形）"}`,
+  ];
+  if (facts.openLots.length > 0) {
+    lines.push(`- 未平仓持仓（FIFO余量）：${facts.openLots.map((lot) => `${lot.symbol} ${lot.quantity}股@$${lot.price}`).join("；")}`);
+  }
+  if (facts.anomalies.length > 0) {
+    lines.push("- ⚠️ 数据异常（必须在报告中向用户明示统计不完整）：");
+    for (const anomaly of facts.anomalies) lines.push(`  · ${anomaly.symbol}：${anomaly.message}`);
+  }
+  if (facts.dateSorted) lines.push("- 注：记录日期乱序，系统已按日期时间序重排后再计算");
+  lines.push("");
+  return lines;
+}
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "review", RATE_LIMITS.review);
@@ -90,6 +132,7 @@ export async function POST(request: NextRequest) {
     "量化约束：",
     "- 每个结论必须引用具体交易数据支撑",
     "- 胜率/盈亏比等数字必须从用户给的记录计算，不编造",
+    "- 若用户消息含【事实底座】（系统代码按FIFO确定性计算）：交易概览表的总笔数/胜率/盈亏比/总盈亏必须与底座完全一致；底座标注了数据异常时必须向用户明示统计不完整；你自己复算与底座矛盾时以底座为准并指出矛盾",
     "- 未平仓仓位（有买入无对应卖出）：只用用户记录中的成交价计算已实现成本，浮盈浮亏需用户提供当前价才可计算；用户未提供当前价时标注「需提供当前市价」，禁止用你记忆中的价格估算",
     "- 如果记录格式混乱无法解析，明确说「记录格式不清晰，以下基于有限信息」",
     "",
@@ -111,6 +154,7 @@ export async function POST(request: NextRequest) {
     trades,
     "",
     `总资金：$${totalCapital.toLocaleString("en-US")}`,
+    ...(input.data.facts ? buildFactsBlock(input.data.facts) : []),
     "",
     strategy ? `使用的策略：${strategy}` : "",
     "",

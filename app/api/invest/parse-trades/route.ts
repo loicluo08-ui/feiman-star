@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI } from "@/lib/ai";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { sortTradesByDate } from "@/lib/trade-stats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,12 +72,51 @@ export async function POST(request: NextRequest) {
       const result = parsedTradeSchema.safeParse(candidate);
       return result.success ? [result.data] : [];
     });
+
+    // 9/6红队修复（报告D发现2）：schema不过的条目不再静默丢弃——回传给前端明示
+    const unparsed = candidates
+      .filter((candidate) => {
+        try {
+          return !parsedTradeSchema.safeParse(candidate).success;
+        } catch {
+          return true;
+        }
+      })
+      .slice(0, 10)
+      .map((candidate) => {
+        try {
+          return JSON.stringify(candidate).slice(0, 120);
+        } catch {
+          return String(candidate).slice(0, 120);
+        }
+      });
+
     if (trades.length === 0) {
-      return NextResponse.json({ error: "没有识别到完整交易" }, { status: 422 });
+      return NextResponse.json(
+        { error: unparsed.length > 0 ? "没有识别到完整交易（存在无法结构化的条目）" : "没有识别到完整交易" },
+        { status: 422 },
+      );
     }
 
+    // 9/6红队修复（报告D发现6/本地审计）：服务端按日期归一化+排序（单源lib/trade-stats），
+    // 日期倒挂的输入不再按原文序算FIFO
+    const mapped = trades.map((t) => ({
+      date: t.date,
+      symbol: t.code,
+      side: t.side,
+      quantity: t.quantity,
+      price: t.price,
+    }));
+    const sortedTrades = sortTradesByDate(mapped).entries.map((t) => ({
+      date: t.date,
+      code: t.symbol,
+      side: t.side,
+      quantity: t.quantity,
+      price: t.price,
+    }));
+
     return NextResponse.json(
-      { data: { trades } },
+      { data: { trades: sortedTrades, unparsed } },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch {

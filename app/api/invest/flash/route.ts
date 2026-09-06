@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isLowQuality, isEnglishDominant } from "@/lib/flash-filter";
+import { isLowQuality, isEnglishDominant, dedupFlashItems } from "@/lib/flash-filter";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -48,17 +48,7 @@ function formatRelativeTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
 }
 
-function normalizeForDedup(content: string): string {
-  // 剥掉金十格式壳：【标题】+ 讯头，否则同事件双源（金十带壳/华尔街纯正文）对不上
-  let t = content.replace(/【[^】]*】/g, "");
-  t = t.replace(/金十数据\d{1,2}月\d{1,2}日讯[，,]?/g, "");
-  // 剥纯英文词：华尔街常插 (CXMT) 等括号注释而金十不写，保留会导致字符错位
-  t = t.replace(/[A-Za-z]+/g, "");
-  // 注意：不能用 \W（ASCII语义）——会把中文全剥掉，指纹退化成纯数字字母
-  // tsconfig target es5 不支持 \p{...} Unicode属性类，用显式中文范围+数字
-  t = t.replace(/[^0-9\u4e00-\u9fff]/g, "");
-  return t;
-}
+// normalizeForDedup 已移至 lib/flash-filter.ts 单源维护（9/6：服务端与客户端共用判重）
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 数据源1: 金十（服务端兜底，主源在客户端直连）
@@ -232,26 +222,9 @@ export async function GET(request: Request) {
   // 质量过滤 + 英文过滤（金十会推英文原文，同一条新闻通常有中文版）
   const filtered = all.filter((i) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text));
 
-  // 去重：前30个归一化字符全等，或一方为另一方前缀且重合≥12字（处理两源详略不同）
-  // + 开头14字被已入库条目包含：同事件跨源文案（官方通稿标题两源趋同，但金十壳内标题/正文重复+带日期、
-  //   华尔街title独立存content无标题——仅比对content会开头错位漏判，故输入改用content_text并加此兜底）
-  // 归一化后<6字的短讯（剥壳剩空壳）直接保留不参与判重，防误杀
-  const normTexts: string[] = [];
-  const deduped: FlashItem[] = [];
-  for (const item of filtered.sort((a, b) => b.timestamp - a.timestamp)) {
-    const t = normalizeForDedup(item.content_text);
-    const isDup =
-      t.length >= 6 &&
-      normTexts.some((prev) => {
-        if (prev === t) return true;
-        if (prev.startsWith(t) || t.startsWith(prev)) return Math.min(prev.length, t.length) >= 12;
-        if (t.length >= 14 && prev.includes(t.slice(0, 14))) return true;
-        return prev.slice(0, 30) === t.slice(0, 30);
-      });
-    if (isDup) continue;
-    normTexts.push(t);
-    deduped.push(item);
-  }
+  // 9/6红队收紧：去重逻辑移至 lib/flash-filter.dedupFlashItems 单源维护
+  // （误杀修复：摘要条目吞单条新闻、前缀条件吞增量信息——详见该函数注释）
+  const deduped = dedupFlashItems(filtered);
 
   const items = deduped.slice(0, 30);
 

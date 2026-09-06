@@ -79,6 +79,8 @@ function memRateLimit(
   maxRequests: number,
   windowMs: number,
 ): { allowed: boolean; remaining: number; resetAt: number } {
+  // 键基数兜底：防伪造键撑爆内存（修复后键=真实IP，此为防御纵深）
+  if (buckets.size > 20_000) buckets.clear();
   const bucket = buckets.get(key) ?? { timestamps: [] };
   const now = Date.now();
   bucket.timestamps = bucket.timestamps.filter((t) => t > now - windowMs);
@@ -93,13 +95,21 @@ function memRateLimit(
   return { allowed: true, remaining: maxRequests - bucket.timestamps.length, resetAt: now + windowMs };
 }
 
+/** 取客户端IP（9/6红队修复：原实现取XFF首值可被伪造轮换）
+ * 链路：用户 → Cloudflare(橙云) → Vercel
+ * 1) cf-connecting-ip：CF在场时由CF覆写，请求方无法伪造——最优先
+ * 2) XFF末值：无CF直连Vercel时，末值是Vercel追加的最近一跳（真实来源IP），首值才是用户可注入的
+ */
 export function getClientIP(request: Request): string {
   const headers = request.headers;
-  return (
-    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    headers.get("x-real-ip")?.trim() ??
-    "unknown"
-  );
+  const cfIP = headers.get("cf-connecting-ip")?.trim();
+  if (cfIP) return cfIP;
+  const xff = headers.get("x-forwarded-for");
+  if (xff) {
+    const hops = xff.split(",").map((hop) => hop.trim()).filter(Boolean);
+    if (hops.length > 0) return hops[hops.length - 1];
+  }
+  return headers.get("x-real-ip")?.trim() ?? "unknown";
 }
 
 export function buildRateLimitKey(ip: string, route: string): string {

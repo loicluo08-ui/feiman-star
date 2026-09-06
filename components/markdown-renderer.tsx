@@ -33,14 +33,21 @@ export function MarkdownRenderer({ content }: Props) {
           pre: ({ node, ...props }) => (
             <pre className="my-3 overflow-x-auto rounded-xl bg-[#1e1e2e] p-4 text-sm text-[#cdd6f4]" {...props} />
           ),
-          a: ({ node, ...props }) => (
-            <a
-              className="text-[#0066cc] underline underline-offset-2 hover:text-[#004499]"
-              target="_blank"
-              rel="noopener noreferrer"
-              {...props}
-            />
-          ),
+          a: ({ node, href, ...props }) => {
+            // 9/6红队修复（报告C）：显式协议白名单——react-markdown默认urlTransform已拦
+            // javascript:/data:，这里做第二层（防御纵深），非http(s)/mailto的href不渲染成链接
+            const rawHref = typeof href === "string" ? href : undefined;
+            const safeHref = rawHref != null && /^(https?:|mailto:)/i.test(rawHref) ? rawHref : undefined;
+            return (
+              <a
+                {...props}
+                href={safeHref}
+                className="text-[#0066cc] underline underline-offset-2 hover:text-[#004499]"
+                target={safeHref ? "_blank" : undefined}
+                rel={safeHref ? "noopener noreferrer nofollow" : undefined}
+              />
+            );
+          },
           hr: ({ node, ...props }) => <hr className="my-4 border-t border-[var(--border)]" {...props} />,
           table: ({ node, ...props }) => (
             <div className="my-3 overflow-x-auto">

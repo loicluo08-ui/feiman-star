@@ -36,6 +36,33 @@ export class AIRequestError extends Error {
   }
 }
 
+// ── 9/6红队修复：per-instance AI日预算（KV全局限流未激活前的第三层钱包防线） ──
+// 单实例内计数；多实例会放大上限（N×budget），真正的全局上限=DeepSeek余额+KV限流（待绑定）
+// 默认1500次/日/实例：约为单人正常日用量10倍，攻击者在单实例上的烧钱被截断
+const AI_DAILY_BUDGET = Math.max(1, Number(process.env.AI_DAILY_BUDGET ?? 1500));
+let budgetDay = "";
+let budgetUsed = 0;
+
+function consumeAIBudget(tag: string): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== budgetDay) {
+    budgetDay = today;
+    budgetUsed = 0;
+  }
+  if (budgetUsed >= AI_DAILY_BUDGET) {
+    console.warn(`[ai-budget] ${tag} blocked: ${budgetUsed}/${AI_DAILY_BUDGET} (instance-local, resets daily)`);
+    return false;
+  }
+  budgetUsed += 1;
+  return true;
+}
+
+export function getAIBudgetStatus(): { used: number; limit: number; day: string } {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== budgetDay) return { used: 0, limit: AI_DAILY_BUDGET, day: today };
+  return { used: budgetUsed, limit: AI_DAILY_BUDGET, day: budgetDay };
+}
+
 export function sanitizeInput(value: unknown, maxLength = 20_000): string | null {
   if (typeof value !== "string") return null;
   const text = value
@@ -66,6 +93,7 @@ export async function callAI(
 ): Promise<string | null> {
   const apiKey = process.env.DEEPSEEK_API_KEY || "";
   if (!apiKey) return null;
+  if (!consumeAIBudget("callAI")) return null;
 
   const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
   const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
@@ -129,6 +157,7 @@ export async function callVisionAI(
 ): Promise<string | null> {
   const apiKey = process.env.ZHIPU_API_KEY || "";
   if (!apiKey) return null;
+  if (!consumeAIBudget("callVisionAI")) return null;
 
   const baseUrl = process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";
   const maxRetries = options.retry ?? 1;
@@ -191,6 +220,7 @@ export async function* callZhipuStream(
 ): AsyncGenerator<string> {
   const apiKey = process.env.ZHIPU_API_KEY || "";
   if (!apiKey || messages.length === 0) return;
+  if (!consumeAIBudget("callZhipuStream")) return;
 
   const baseUrl = process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";
   const model = process.env.ZHIPU_TEXT_MODEL || "glm-4-flash";
@@ -267,6 +297,7 @@ export async function* callAIStream(
 ): AsyncGenerator<string> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey || messages.length === 0) return;
+  if (!consumeAIBudget("callAIStream")) return;
 
   const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
   const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";

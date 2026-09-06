@@ -236,7 +236,12 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const rawCode = new URL(request.url).searchParams.get("code")?.trim().toUpperCase();
+  // 9/6红队修复（报告B）：重复query参数直接拒绝，不静默取首值
+  const codeParams = new URL(request.url).searchParams.getAll("code");
+  if (codeParams.length > 1) {
+    return NextResponse.json({ error: "参数异常" }, { status: 400 });
+  }
+  const rawCode = codeParams[0]?.trim().toUpperCase();
   if (!rawCode || !/^[A-Z]{1,5}(\.[A-Z])?$/.test(rawCode)) {
     return NextResponse.json({ error: "请输入有效的美股代码（如 AAPL）" }, { status: 400 });
   }

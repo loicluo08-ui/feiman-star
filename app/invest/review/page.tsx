@@ -2,6 +2,16 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, updateTaskProgress, type BackgroundTask } from "@/lib/background-task";
+import {
+  calculatePositionCheck,
+  calculateTradeStats,
+  calculateTradeStatsFromEntries,
+  normalizeAITrades,
+  parseTrades,
+  type ParsedTrade,
+  type PositionCheck,
+  type TradeStats,
+} from "@/lib/trade-stats";
 
 type ReviewRecord = {
   id: string;
@@ -55,226 +65,38 @@ function readReviewDraft(): ReviewDraft | null {
   }
 }
 
-type ParsedTrade = {
-  date?: string;
-  symbol: string;
-  side: "buy" | "sell";
-  quantity: number;
-  price: number;
-  raw?: string;
-};
-
-type TradeStats = {
-  totalTrades: number;
-  winRate: number | null;
-  totalPnl: number;
-  profitLossRatio: number | null;
-  closedPnls: number[];
-};
-
-type PositionViolation = {
-  tradeNumber: number;
-  symbol: string;
-  amount: number;
-  ratio: number;
-  rule: string;
-};
-
-type PositionCheck = {
-  totalTrades: number;
-  violationCount: number;
-  violations: PositionViolation[];
-};
 
 type SummaryPeriod = "week" | "month";
 
-function toPositiveNumber(value: string | undefined): number | null {
-  if (!value) return null;
-  const number = Number(value.replace(/[$,\s]/g, ""));
-  return Number.isFinite(number) && number > 0 ? number : null;
-}
-
-function parseTradeEntry(raw: string): ParsedTrade | null {
-  const text = raw.trim();
-  if (!text) return null;
-
-  const csv = text.split(",").map((part) => part.trim());
-  if (csv.length >= 5 && /^(BUY|SELL)$/i.test(csv[2])) {
-    const quantity = toPositiveNumber(csv[3]);
-    const price = toPositiveNumber(csv[4]);
-    if (quantity && price && /^[A-Z]{1,6}$/i.test(csv[1])) {
-      return {
-        symbol: csv[1].toUpperCase(),
-        side: csv[2].toUpperCase() === "BUY" ? "buy" : "sell",
-        quantity,
-        price,
-        raw: text,
-      };
-    }
-  }
-
-  const sideMatch = text.match(/方向\s*[:：]\s*(买入|卖出|BUY|SELL)/i)
-    ?? text.match(/(?:^|\s)(买入|卖出|BUY|SELL)(?:\s|$)/i);
-  if (!sideMatch) return null;
-
-  const side = /^(买入|BUY)$/i.test(sideMatch[1]) ? "buy" : "sell";
-  const symbolMatch = text.match(/代码\s*[:：]\s*([A-Z]{1,6})/i)
-    ?? text.match(/(?:买入|卖出|BUY|SELL)\s+([A-Z]{1,6})/i);
-  const quantityMatch = text.match(/(?:数量|QTY)\s*[:：]?\s*([\d,.]+)/i)
-    ?? text.match(/([\d,.]+)\s*(?:股|SHARES?)/i);
-  const priceMatch = text.match(/(?:价格|PRICE)\s*[:：]?\s*\$?\s*([\d,.]+)/i)
-    ?? text.match(/@\s*\$?\s*([\d,.]+)/);
-
-  const quantity = toPositiveNumber(quantityMatch?.[1]);
-  const price = toPositiveNumber(priceMatch?.[1]);
-  if (!symbolMatch || !quantity || !price) return null;
-
-  return {
-    symbol: symbolMatch[1].toUpperCase(),
-    side,
-    quantity,
-    price,
-    raw: text,
-  };
-}
-
-function parseTrades(text: string): ParsedTrade[] {
-  const entries: ParsedTrade[] = [];
-  const blocks = text.split(/\n\s*-{3,}\s*\n/);
-
-  for (const block of blocks) {
-    const isFieldBlock = /(?:方向|代码|数量|价格)\s*[:：]/.test(block);
-    if (isFieldBlock) {
-      const entry = parseTradeEntry(block);
-      if (entry) entries.push(entry);
-      continue;
-    }
-
-    for (const line of block.split(/\r?\n/)) {
-      const entry = parseTradeEntry(line);
-      if (entry) entries.push(entry);
-    }
-  }
-
-  return entries;
-}
-
-function calculateTradeStatsFromEntries(entries: ParsedTrade[], explicitPnlText = ""): TradeStats {
-  const openLots = new Map<string, Array<{ quantity: number; price: number }>>();
-  const closedPnls: number[] = [];
-
-  for (const entry of entries) {
-    if (entry.side === "buy") {
-      const lots = openLots.get(entry.symbol) ?? [];
-      lots.push({ quantity: entry.quantity, price: entry.price });
-      openLots.set(entry.symbol, lots);
-      continue;
-    }
-
-    const lots = openLots.get(entry.symbol) ?? [];
-    let remaining = entry.quantity;
-    let tradePnl = 0;
-    let matchedQuantity = 0;
-
-    while (remaining > 0 && lots.length > 0) {
-      const lot = lots[0];
-      const matched = Math.min(remaining, lot.quantity);
-      tradePnl += (entry.price - lot.price) * matched;
-      matchedQuantity += matched;
-      remaining -= matched;
-      lot.quantity -= matched;
-      if (lot.quantity <= 0) lots.shift();
-    }
-
-    if (matchedQuantity > 0) closedPnls.push(tradePnl);
-    openLots.set(entry.symbol, lots);
-  }
-
-  if (closedPnls.length === 0 && explicitPnlText) {
-    const explicitPnls = Array.from(
-      explicitPnlText.matchAll(/(?:盈亏|P\/?L|PNL)\s*[:：]?\s*([+-]?\s*\$?\s*[\d,.]+)/gi),
-      (match) => Number(match[1].replace(/[$,\s]/g, "")),
-    ).filter(Number.isFinite);
-    closedPnls.push(...explicitPnls);
-  }
-
-  const wins = closedPnls.filter((pnl) => pnl > 0);
-  const losses = closedPnls.filter((pnl) => pnl < 0);
-  const averageWin = wins.length > 0 ? wins.reduce((sum, pnl) => sum + pnl, 0) / wins.length : null;
-  const averageLoss = losses.length > 0
-    ? Math.abs(losses.reduce((sum, pnl) => sum + pnl, 0) / losses.length)
-    : null;
-
-  return {
-    totalTrades: closedPnls.length,
-    winRate: closedPnls.length > 0 ? (wins.length / closedPnls.length) * 100 : null,
-    totalPnl: closedPnls.reduce((sum, pnl) => sum + pnl, 0),
-    profitLossRatio: averageWin != null && averageLoss != null
-      ? averageWin / averageLoss
-      : averageWin != null
-        ? Number.POSITIVE_INFINITY
-        : null,
-    closedPnls,
-  };
-}
-
-function calculateTradeStats(text: string): TradeStats {
-  return calculateTradeStatsFromEntries(parseTrades(text), text);
-}
-
-function calculatePositionCheck(entries: ParsedTrade[], sourceText: string, totalCapital: number): PositionCheck {
-  const normalizedCapital = Number.isFinite(totalCapital) && totalCapital > 0 ? totalCapital : 100_000;
-  const sourceLines = sourceText.split(/\r?\n/);
-  const violations: PositionViolation[] = [];
-
-  entries.forEach((entry, index) => {
-    const context = entry.raw
-      || sourceLines.find((line) => line.toUpperCase().includes(entry.symbol))
-      || "";
-    const isOption = /期权|OPTION|\bCALL\b|\bPUT\b/i.test(context);
-    const isDayTrade = isOption && /日内|DAY\s*TRADE|INTRADAY|0DTE/i.test(context);
-    const amount = entry.quantity * entry.price * (isOption ? 100 : 1);
-    const ratio = amount / normalizedCapital;
-    const limit = isDayTrade ? 0.05 * 0.2 : isOption ? 0.05 : 0.15;
-    if (ratio <= limit) return;
-    violations.push({
-      tradeNumber: index + 1,
-      symbol: entry.symbol,
-      amount,
-      ratio,
-      rule: isDayTrade ? "日内期权超过可操作资金20%" : isOption ? "期权资金超过总资金5%" : "单笔交易超过总资金15%",
-    });
-  });
-
-  return { totalTrades: entries.length, violationCount: violations.length, violations };
-}
-
-function normalizeAITrades(value: unknown): ParsedTrade[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const trade = item as Record<string, unknown>;
-    const side = trade.side === "buy" || trade.side === "sell" ? trade.side : null;
-    const quantity = Number(trade.quantity);
-    const price = Number(trade.price);
-    const symbol = typeof trade.code === "string" ? trade.code.trim().toUpperCase() : "";
-    if (!side || !symbol || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price <= 0) {
-      return [];
-    }
-    return [{
-      date: typeof trade.date === "string" ? trade.date : "",
-      symbol,
-      side,
-      quantity,
-      price,
-    }];
-  });
-}
 
 function formatPnl(value: number, hasTrades: boolean): string {
   if (!hasTrades) return "—";
   const sign = value > 0 ? "+" : value < 0 ? "−" : "";
   return `${sign}$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
+/** 9/6红队修复（报告D）：复盘请求附带确定性FIFO事实底座——AI叙述数字必须与代码计算一致 */
+function buildReviewFacts(stats: TradeStats, source: "ai" | "fallback") {
+  return {
+    source,
+    totalTrades: stats.totalTrades,
+    winRate: stats.winRate != null ? Math.round(stats.winRate * 10) / 10 : null,
+    totalPnl: Math.round(stats.totalPnl * 100) / 100,
+    profitLossRatio:
+      stats.profitLossRatio === Number.POSITIVE_INFINITY || stats.profitLossRatio == null
+        ? null
+        : Math.round(stats.profitLossRatio * 100) / 100,
+    openLots: (stats.openLots ?? []).slice(0, 20).map((lot) => ({
+      symbol: lot.symbol,
+      quantity: lot.quantity,
+      price: lot.price,
+    })),
+    anomalies: (stats.anomalies ?? []).slice(0, 10).map((anomaly) => ({
+      symbol: anomaly.symbol,
+      message: `第${anomaly.tradeNumber}笔卖出${anomaly.soldQuantity}股，仅${anomaly.availableQuantity}股有对应买入，未匹配${anomaly.unmatchedQuantity}股已剔除统计`,
+    })),
+    dateSorted: stats.sortedByDate ?? false,
+  };
 }
 
 export default function ReviewPage() {
@@ -294,6 +116,7 @@ export default function ReviewPage() {
   const [resolvedTradeStats, setResolvedTradeStats] = useState<TradeStats | null>(null);
   const [resolvedPositionCheck, setResolvedPositionCheck] = useState<PositionCheck | null>(null);
   const [statsSource, setStatsSource] = useState<"local" | "ai" | "fallback">("local");
+  const [unparsedCount, setUnparsedCount] = useState(0);
   const [progressStep, setProgressStep] = useState("正在解析交易记录…");
   const [draftHydrated, setDraftHydrated] = useState(false);
   const mountedRef = useRef(false);
@@ -512,6 +335,7 @@ export default function ReviewPage() {
         const parseJson = await parseResponse.json();
         const parsedTrades = normalizeAITrades(parseJson.data?.trades);
         if (parsedTrades.length === 0) throw new Error("empty_trades");
+        const aiUnparsedCount = Array.isArray(parseJson.data?.unparsed) ? parseJson.data.unparsed.length : 0;
         parsedStats = calculateTradeStatsFromEntries(parsedTrades);
         parsedPositionCheck = calculatePositionCheck(parsedTrades, currentTrades, currentTotalCapital);
         parseMode = "ai";
@@ -520,6 +344,7 @@ export default function ReviewPage() {
           setResolvedTradeStats(parsedStats);
           setResolvedPositionCheck(parsedPositionCheck);
           setStatsSource("ai");
+          setUnparsedCount(aiUnparsedCount);
           setProgressStep("交易解析完成，正在生成复盘报告…");
         }
       } catch {
@@ -531,6 +356,7 @@ export default function ReviewPage() {
           setResolvedTradeStats(parsedStats);
           setResolvedPositionCheck(parsedPositionCheck);
           setStatsSource("fallback");
+          setUnparsedCount(0);
           setProgressStep("AI解析失败，已用本地规则解析；正在生成复盘报告…");
         }
       }
@@ -550,6 +376,7 @@ export default function ReviewPage() {
             strategy: currentStrategy,
             questions: currentQuestions,
             totalCapital: currentTotalCapital,
+            facts: buildReviewFacts(parsedStats, parseMode),
           }),
         });
       } finally {
@@ -775,9 +602,9 @@ export default function ReviewPage() {
               <p className="text-sm font-medium">交易统计</p>
               <p className="text-xs text-[var(--text-muted)]">
                 {statsSource === "ai"
-                  ? "AI结构化解析结果"
+                  ? `AI结构化解析结果${unparsedCount > 0 ? `（另有${unparsedCount}条未能结构化，已忽略）` : ""}${tradeStats.sortedByDate ? "；已按日期排序处理" : ""}`
                   : statsSource === "fallback"
-                    ? "AI解析失败，已回退本地规则"
+                    ? `AI解析失败，已回退本地规则${tradeStats.sortedByDate ? "；已按日期排序处理" : ""}`
                     : "提交后将先由AI结构化解析"}
               </p>
             </div>
@@ -801,6 +628,16 @@ export default function ReviewPage() {
                     : "—"}
               />
             </div>
+            {/* 9/6红队修复：卖超等数据异常必须明示，不再静默吞量 */}
+            {(tradeStats.anomalies ?? []).length > 0 && (
+              <ul className="mt-2 space-y-1 rounded-lg border border-[var(--negative)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--negative)]">
+                {(tradeStats.anomalies ?? []).map((anomaly, i) => (
+                  <li key={i}>
+                    ⚠️ 第{anomaly.tradeNumber}笔 {anomaly.symbol}：卖出{anomaly.soldQuantity}股，仅{anomaly.availableQuantity}股可配对，未匹配{anomaly.unmatchedQuantity}股无对应买入已剔除——统计不完整，请核对记录
+                  </li>
+                ))}
+              </ul>
+            )}
             {/* 盈亏可视化 */}
             {tradeStats.totalTrades > 0 && tradeStats.closedPnls && tradeStats.closedPnls.length > 0 && (
               <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
