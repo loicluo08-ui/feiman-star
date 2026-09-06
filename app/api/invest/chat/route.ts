@@ -12,6 +12,8 @@ import { isOptionQuery, fetchOptionContext, buildOptionBlock } from "@/lib/optio
 import { buildNewsContext } from "@/lib/news-context";
 import { buildEarningsContext } from "@/lib/chat-earnings-context";
 import { DELIBERATION_BLOCK } from "@/lib/chat-deliberation";
+import { ACTION_PLAN_BLOCK } from "@/lib/chat-action-plan";
+import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
 import { CHAT_QUALITY_BLOCK } from "@/lib/chat-quality";
 
 export const runtime = "nodejs";
@@ -143,7 +145,7 @@ export async function POST(request: NextRequest) {
     "4. 所有判断标注数据来源（费曼星原文/经验值/行业惯例/历史数据）",
     "5. 不确定时明确说明，不编造数据",
     "6. 涉及具体买卖建议时，加上\"仅供参考，不构成投资建议\"",
-    "7. 简洁回答控制在500字以内，完整分析控制在1500字以内；用户明确要求详细/全面/深度分析时上限放宽至2200字（宁可深而长，不要浅而全；2200字上限与3500输出token对齐，宁可分次续写也不浅尝辄止）。用户没要求详细分析时默认简洁回答。",
+    "7. 简洁回答控制在500字以内，完整分析控制在1500字以内；用户明确要求详细/全面/深度分析时上限放宽至2200字（宁可深而长，不要浅而全；2200字上限与3500输出token对齐，宁可分次续写也不浅尝辄止）。用户没要求详细分析时默认简洁回答。短问快答纪律（13:15实测回归修复：熔炉管线误伤短问）：问题≤20字且不含详细/全面/深入/分析/对比/计划/拆解类深度意图词时——跳过风格管线②-⑤的分步展开与五维度逐项扫描，输出四件套：①核心判断（含现价/涨跌幅/一个关键位锚点数字）②一句话归因 ③最强反方一条 ④【追问方向】；总长≤350字。深度管线只属于明确要深度的提问——「苹果现在什么情况」要的是现状速览，不是研究报告。",
     "8. 如果系统在下方注入了实时行情数据或【实时市场快讯】，直接引用，不要说\"无法获取实时数据\"。引用快讯时注明发布时间（如\"14:32快讯\"），并区分快讯（事件事实）与行情（价格数字）。",
     "8a. 用户陈述的行情类前提（大盘/板块/个股涨跌幅、价格、『昨天大跌』类描述）若与注入的实时数据矛盾，第一步先指出矛盾并给出真实数字，再回答。用户前提错误未纠正=整个分析建立在假数据上。注入数据含[交易日状态]行——休市期间用户谈『昨天下跌』时，先核对注入数据的实际交易日。",
     "",
@@ -155,6 +157,8 @@ export async function POST(request: NextRequest) {
     "13. 情绪维度：若注入了【市场情绪指标】，市场情绪判断必须引用VIX具体数值和分档（贪婪/中性/焦虑/恐慌），与模块3情绪策略联动（如VIX恐慌区+基本面完好的标的=模块3“情绪极端+基本面支撑”候选）；未注入VIX时，明确说“当前无情绪数据”，禁止猜测市场情绪。",
     "14. 技术位/价格位数字必须有来源：支撑压力位/目标价/加仓减仓触发价，要么带[数据]（注入锚点直接引用，如近1月低点$410.12），要么带[推导]（标明推导逻辑，如跌破3月前价$41.64后下一参照位=52周低$X）。无来源支撑的点位（凭空生成的平台/支撑位）严禁输出——宁可写「该价位无数据支撑，无法给出」。",
     DELIBERATION_BLOCK,
+    DELIBERATION_ENHANCEMENT,
+    ACTION_PLAN_BLOCK,
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
     CHAT_QUALITY_BLOCK,
@@ -446,10 +450,12 @@ export async function POST(request: NextRequest) {
           imageTurn !== null
           || /详细|全面|深入|展开|完整|系统性|逐一|对比|多角度|深度分析|长文/.test(trimmedQuestion)
           || trimmedQuestion.length > 20;
-        const chatMaxTokens = wantsLong ? (isBlend ? 4000 : 3500) : 800;
+        const chatMaxTokens = wantsLong ? (isBlend ? 6000 : 3500) : 800;
         // 9/6质量优化（引擎分层）：详细类问题（非blend）同样开启思维链——
         // flash+thinking推理深度显著提升，成本仅输出3x（¥0.03-0.05/轮 vs 无思考¥0.01）；
-        // 短问句保持无思考快路径（省钱+快）。blend仍是pro+4000 tokens的天花板档
+        // 短问句保持无思考快路径（省钱+快）。blend是pro+6000 tokens的天花板档：
+        // 6000而非4000——flash降级路径下CoT过程+正文都吃content token（实测总6300字被4000腰斩），
+        // pro+thinking生效后reasoning走独立额度，6000=纯正文余量
         const deepThinking = isBlend || wantsLong;
 
         // 心跳：首chunk前每5s推ping防代理空闲断连（40K token prompt的TTFB可达10-20s）
@@ -461,6 +467,12 @@ export async function POST(request: NextRequest) {
         let fallbackNotice = "";
         // 9/6深水区修复①：finish_reason=length（max_tokens截断）时向用户明示——截断的回答看似完整实则腰斩
         let truncatedByLength = false;
+        // 9/6质量修复（blend思考外溢过滤）：preamble状态机
+        let blendPreambleDone = !isBlend;
+        let blendPreambleBuf = "";
+        // 9/6流畅性：思维链进度（截尾片段，每8条推一次防刷屏）
+        let reasoningTail = "";
+        let reasoningChunks = 0;
 
         try {
           // request.signal：客户端断开（用户点停止/关页面）时中止上游DeepSeek连接——停止生成=停止烧钱
@@ -488,10 +500,62 @@ export async function POST(request: NextRequest) {
             // 思维链事件（thinking模式的reasoning_content）：绝不进正文——
             // 没有此分支时{kind:"reasoning"}掉进默认路径，内部推理原文流进用户答案
             // 注意：不置receivedFirstChunk——思维链期（可达30-60s）必须继续ping心跳防代理断连
-            if (chunk.kind === "reasoning") continue;
+            // 9/6流畅性（AgentMore标准）：reasoning片段经status事件透传给前端——用户在65s等待期
+            // 看到"正在思考"的具体内容滚动（Claude/ChatGPT同款体验），不再是黑盒干等
+            if (chunk.kind === "reasoning") {
+              if (chunk.text.trim()) {
+                reasoningTail = chunk.text.trim().slice(-40);
+                reasoningChunks += 1;
+                if (reasoningChunks % 8 === 1) {
+                  send({ type: "status", text: `深度思考中…${reasoningTail}` });
+                }
+              }
+              continue;
+            }
+            // 9/6质量修复（blend实测抓出）：v4-pro思考外溢——pro模型可能把"我需要回答用户…先梳理数据"
+            // 式过程文本写进content通道（prompt的"首字符必须是【"压不住）。服务端硬过滤：
+            // 首个正文chunk起，丢弃过程性文本直到出现【开头的结构行；20字符内没等到=放弃过滤直接透传（防死循环丢全文）
+            if (isBlend && !receivedFirstChunk && chunk.text.trimStart().startsWith("【")) {
+              blendPreambleDone = true;
+            }
+            if (isBlend && !blendPreambleDone) {
+              blendPreambleBuf += chunk.text;
+              // 缓冲上限2400字符（live实测CoT前缀600+字符，240上限会让CoT整段泄露——process文本有多长吞多长，
+              // 只有真找不到【的才在流收尾时fail-open透传）
+              if (blendPreambleBuf.length > 2400) {
+                blendPreambleDone = true;
+                // 重新扫描整段：若中途已有【，从【起透传，之前部分丢弃
+                const idx = blendPreambleBuf.indexOf("【");
+                const recovered = idx >= 0 ? blendPreambleBuf.slice(idx) : blendPreambleBuf;
+                fullText += recovered;
+                send({ type: "chunk", text: recovered });
+                receivedFirstChunk = true;
+              }
+              // buffer内出现【=正文开始：从首个【起透传，之前的CoT丢弃
+              const startIdx = blendPreambleBuf.indexOf("【");
+              if (!blendPreambleDone && startIdx >= 0) {
+                blendPreambleDone = true;
+                const recovered = blendPreambleBuf.slice(startIdx);
+                fullText += recovered;
+                send({ type: "chunk", text: recovered });
+                receivedFirstChunk = true;
+              }
+              continue;
+            }
             if (!receivedFirstChunk) receivedFirstChunk = true;
             fullText += chunk.text;
             send({ type: "chunk", text: chunk.text });
+          }
+
+          // blend守卫流收尾：CoT吞到流结束仍没等到【（模型全程没进正文结构）——
+          // fail-open把buffer整段透传（宁可泄露过程文本不可空回复），并避免D7误判零输出烧兜底
+          if (isBlend && !blendPreambleDone && blendPreambleBuf.trim()) {
+            console.warn("[invest/chat] blend_preamble_unconsumed len=" + blendPreambleBuf.length);
+            blendPreambleDone = true;
+            fullText += blendPreambleBuf;
+            send({ type: "chunk", text: blendPreambleBuf });
+            if (!receivedFirstChunk) receivedFirstChunk = true;
+            blendPreambleBuf = "";
           }
 
           // D7: DeepSeek零输出（余额耗尽/连接失败/超时无chunk）→ 智谱glm-4-flash兜底流
