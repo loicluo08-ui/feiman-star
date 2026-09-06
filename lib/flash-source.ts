@@ -174,7 +174,7 @@ type EmItem = {
 async function fetchEastmoney(): Promise<FlashItem[]> {
   try {
     const res = await fetch(
-      `https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&pageSize=20&req_trace=${Date.now()}`,
+      `https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=20&req_trace=${Date.now()}`,
       {
         headers: {
           "User-Agent": UA,
@@ -184,8 +184,10 @@ async function fetchEastmoney(): Promise<FlashItem[]> {
       },
     );
     if (!res.ok) return [];
-    const payload = (await res.json()) as { data?: { fastNewsList?: EmItem[] } };
-    const items = payload.data?.fastNewsList ?? [];
+    const payload = (await res.json()) as { code?: number | string; data?: { fastNewsList?: EmItem[] } };
+    // 东财参数错时HTTP仍200+code:0+data:null（sortEnd缺失实测）——必须校验code与列表存在
+    const items = payload.data?.fastNewsList;
+    if (String(payload.code ?? "") !== "1" || !Array.isArray(items)) return [];
 
     return items.flatMap((item) => {
       if (!item.code || !item.showTime) return [];

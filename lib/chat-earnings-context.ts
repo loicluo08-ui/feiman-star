@@ -19,14 +19,17 @@ type EarningsEntry = {
   hour: string;
 };
 
-function getWeekdays(weekOffset: number): string[] {
+// 未来导向周计算（区别于calendar route的显示对齐语义）：周日/周六指向下一交易周——
+// 即将发生的财报才是决策信息（事件风险未落地），已发生财报价值归零
+function getUpcomingWeekdays(): string[] {
   const now = new Date();
   const day = now.getUTCDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
+  // 周日(0)→下周一(+1)；周一~五(1-5)→本周；周六(6)→下周一(+2)
+  const mondayOffset = day === 0 ? 1 : day === 6 ? 2 : 1 - day;
   const monday = new Date(Date.UTC(
     now.getUTCFullYear(),
     now.getUTCMonth(),
-    now.getUTCDate() + mondayOffset + weekOffset * 7,
+    now.getUTCDate() + mondayOffset,
   ));
   return Array.from({ length: 5 }, (_, i) => {
     const d = new Date(monday);
@@ -84,7 +87,7 @@ let weekCache: { entries: EarningsEntry[]; expiresAt: number } | null = null;
 
 async function getThisWeekEarnings(): Promise<EarningsEntry[]> {
   if (weekCache && weekCache.expiresAt > Date.now()) return weekCache.entries;
-  const weekdays = getWeekdays(0);
+  const weekdays = getUpcomingWeekdays();
   const dayResults = await Promise.all(weekdays.map((d) => fetchNasdaqDay(d)));
   const entries = dayResults.flat();
   weekCache = { entries, expiresAt: Date.now() + 30 * 60 * 1000 };
