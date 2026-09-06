@@ -184,9 +184,13 @@ export function verifyNumericAnchors(
     // 涨跌幅漂移：答案百分比 vs 注入changePct（差>0.3且<5=疑似，差≥5多为区间涨跌非当日，跳过）
     // 9/6锚点扩展：区间语义豁免——"年内/年初至今/近1月/近6月/52周回撤"等百分比是区间涨跌，
     // 幅度小(差<5)时会撞当日口径检测误报。带位置提取，语境含区间词的百分比跳过
+    // 9/6 live误报修复：股息率0.03%被当涨跌幅误抓——百分比必须处于涨跌语境（今日/当日/
+    // 涨/跌/盘等词±24字符内）才参与当日口径比对；股息率/PE口径/仓位占比/评分等静默跳过
     if (changePct != null) {
       const rangeWord =
         /年内|年初|至今|YTD|近1月|近3月|近6月|近一月|近三月|近六月|1个月|3个月|6个月|三个月|六个月|52周|一年|1年|回撤|涨了|累计|区间/;
+      const pctMoveWord = /今日|当日|今天|收盘|盘[前后]|现价|涨[到至幅]?|跌[到至幅]?|上[涨跌]|下[涨跌]|单日|日内/;
+      const pctStaticWord = /股息|分红率|利率|费率|胜率|仓位|占比|评分|权重|PE|市盈|ROE|ROA|毛利|净利|利润率|增速|增长|通胀|失业|GDP|衰减/;
       const pcts: number[] = [];
       const pctRe = /([+-]?\d{1,3}(?:\.\d{1,2})?)\s*%/g;
       let pm: RegExpExecArray | null;
@@ -194,6 +198,8 @@ export function verifyNumericAnchors(
         const idx = pm.index ?? 0;
         const ctx = text.slice(Math.max(0, idx - 24), idx + 10);
         if (rangeWord.test(ctx)) continue; // 区间语义百分比不参与当日口径比对
+        if (pctStaticWord.test(ctx)) continue; // 股息率/评分等静态口径百分比跳过
+        if (!pctMoveWord.test(ctx)) continue; // 无涨跌语境（如表格裸百分比）不参与比对
         pcts.push(parseFloat(pm[1]));
       }
       const suspects = pcts.filter(
