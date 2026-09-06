@@ -161,6 +161,57 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
 // 缓存（模块级，同实例内flash route与chat route共享）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+type EmItem = {
+  code: string;
+  title?: string;
+  summary?: string;
+  showTime?: string;
+  titleColor?: number;
+};
+
+// 东方财富7×24快讯（9/6第三源）：财联社接口已死（HTML盾页），东财JSON直通。
+// 价值：A股/宏观时段补充（金十美股时段强，东财国内时段覆盖更好）
+async function fetchEastmoney(): Promise<FlashItem[]> {
+  try {
+    const res = await fetch(
+      `https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&pageSize=20&req_trace=${Date.now()}`,
+      {
+        headers: {
+          "User-Agent": UA,
+          Referer: "https://kuaixun.eastmoney.com/",
+        },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    if (!res.ok) return [];
+    const payload = (await res.json()) as { data?: { fastNewsList?: EmItem[] } };
+    const items = payload.data?.fastNewsList ?? [];
+
+    return items.flatMap((item) => {
+      if (!item.code || !item.showTime) return [];
+      // showTime格式"2026-09-06 12:43:48"（北京时间）→ epoch秒
+      const ts = Math.floor(Date.parse(`${item.showTime.replace(" ", "T")}+08:00`) / 1000);
+      if (!Number.isFinite(ts)) return [];
+      const title = (item.title || "").trim();
+      const content = (item.summary || "").trim();
+      if (!content && !title) return [];
+      return [{
+        id: `em_${item.code}`,
+        title,
+        content: content || title,
+        content_text: title ? `${title}\n${content}` : content,
+        time_str: formatRelativeTime(ts),
+        timestamp: ts,
+        is_important: (item.titleColor ?? 0) !== 0,
+        channels: [],
+        source: "东方财富",
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
 let lastSuccessCache: FlashItem[] = [];
 let lastSuccessTime = 0;
 const CACHE_TTL = 5 * 60 * 1000;
@@ -195,13 +246,14 @@ export async function getFlashFeed(): Promise<FlashFeed> {
   }
 
   refreshPromise = (async () => {
-    const [jin10Items, wscnItems] = await Promise.all([
+    const [jin10Items, wscnItems, emItems] = await Promise.all([
       fetchJin10(),
       fetchWallstreetCN(),
+      fetchEastmoney(),
     ]);
 
-    // 金十为主源，华尔街见闻全量合并（金十CDN缓存4小时会导致午间延迟17分钟，靠去重处理重叠）
-    let all: FlashItem[] = [...jin10Items, ...wscnItems];
+    // 金十为主源，华尔街见闻+东方财富全量合并（金十CDN缓存4小时会导致午间延迟17分钟，靠去重处理重叠）
+    let all: FlashItem[] = [...jin10Items, ...wscnItems, ...emItems];
 
     // 质量过滤 + 英文过滤（金十会推英文原文，同一条新闻通常有中文版）
     const filtered = all.filter((i) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text));
@@ -224,9 +276,16 @@ export async function getFlashFeed(): Promise<FlashFeed> {
     lastSuccessCache = items;
     lastSuccessTime = Date.now();
 
+    // source标注口径：该源贡献了全网最新一条（列表顺序不可靠，用各源最大timestamp比）
+    const maxTs = (arr: FlashItem[]) => arr.reduce((m, i) => Math.max(m, i.timestamp), 0);
     const sources: string[] = [];
+    const jin10Max = maxTs(jin10Items);
+    const wscnMax = maxTs(wscnItems);
+    const emMax = maxTs(emItems);
+    const freshest = Math.max(jin10Max, wscnMax, emMax);
     if (jin10Items.length > 0) sources.push("金十数据");
-    if (wscnItems.some((i) => i.timestamp > (jin10Items[0]?.timestamp || 0))) sources.push("华尔街见闻");
+    if (wscnItems.length > 0 && wscnMax === freshest && freshest > 0) sources.push("华尔街见闻");
+    if (emItems.length > 0 && emMax === freshest && freshest > 0) sources.push("东方财富");
     throttleSource = sources.join("+") || "金十数据";
 
     return { items, source: throttleSource };

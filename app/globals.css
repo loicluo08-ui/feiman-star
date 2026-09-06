@@ -109,3 +109,20 @@ textarea::placeholder {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* 消息气泡进入动画（9/6 agentmore式流动性）：新气泡滑入渐显，一次性播放
+   key=i稳定时流式flush复用DOM不重播；prefers-reduced-motion下自动禁用（上方已有全局规则） */
+@keyframes msgIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.msg-in {
+  animation: msgIn 0.28s ease-out;
+}
