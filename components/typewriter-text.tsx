@@ -1,55 +1,49 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+/**
+ * 流式平滑打字机（9/6 agentmore式流动性输出，9/13 P0-3升级ChatGPT式buffering）
+ *
+ * 问题：AI的chunk到达是bursty的（一坨一坨），直接跟随渲染=忽快忽慢的机械感。
+ * ChatGPT的做法：buffer后以恒定速率放出——假装平滑流（感知速度铁律：ITL稳定>追赶速度）。
+ *
+ * 本组件：字符级渐进显示，requestAnimationFrame追赶目标文本：
+ * - 积压≤90字（约1.5秒阅读量）：恒速1字/帧（60字/s）——绝对平滑，不跟burst跳
+ * - 积压>90字：按积压比例平滑加速消化（backlog-90)/60，尾部不积压
+ * - 流式期间纯文本渲染（whitespace-pre-wrap），完成后由父组件切
+ *   markdown全排版（9/13 P0-2块级增量渲染待接，当前两阶段）
+ */
+
+"use client";
+
+import { useEffect, useRef } from "react";
 
 type Props = { target: string; className?: string };
 
-/**
- * 流式平滑打字机（9/6 agentmore式流动性输出）
- *
- * 现状问题：SSE chunk经100ms节流批量flush，文本以"块"跳变出现（一次几十字），
- * 且每刷全量markdown重解析——块跳变观感廉价+卡顿。
- *
- * 本组件：字符级渐进显示，requestAnimationFrame追赶目标文本：
- * - 追赶速率自适应积压量：落后越多放得越快（大段落不假慢），接近追平时减速
- *   （尾部呈自然打字感），积压清零即静止——永远是"正在流出"的观感
- * - 内部状态自持，不动messages数组——逐字符零全量重渲染
- * - 流式期间纯文本渲染（whitespace-pre-wrap），完成后由父组件切
- *   MarkdownRenderer全排版（agentmore同款：流式轻渲染+完成重排版）
- * - 尾部闪烁光标（CSS animate-pulse，无依赖）
- */
 export function TypewriterText({ target, className }: Props) {
-  const [displayed, setDisplayed] = useState(() => target.slice(0, 0));
-  const rafRef = useRef<number | null>(null);
   const lenRef = useRef(0);
+  const elRef = useRef<HTMLSpanElement>(null);
+  const rafRef = useRef<number>(0);
 
   useEffect(() => {
-    const step = () => {
+    const tick = () => {
       const backlog = target.length - lenRef.current;
       if (backlog > 0) {
-        // 指数追赶+尾部跟速：rate≈backlog/60——积压60字时1字/帧（60字/s≈AI输出速率，
-        // 尾部匀速流出=平滑观感）；积压300字时5字/帧快速消化，永不落后AI太多
-        const rate = Math.max(1, Math.ceil(backlog / 60));
-        lenRef.current = Math.min(target.length, lenRef.current + rate);
-        setDisplayed(target.slice(0, lenRef.current));
+        // ChatGPT式buffering：恒速基线+积压压力平滑加速（不跟burst突跳）
+        const rate = backlog > 90 ? Math.max(1, Math.ceil((backlog - 90) / 60)) : 1;
+        const step = Math.min(rate, backlog);
+        lenRef.current += step;
+        if (elRef.current) elRef.current.textContent = target.slice(0, lenRef.current);
       }
-      rafRef.current = requestAnimationFrame(step);
+      if (lenRef.current < target.length) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
     };
-    // 跳变保护：target被截断/替换（patch整体替换全文）时同步回退
-    if (target.length < lenRef.current) {
-      lenRef.current = target.length;
-      setDisplayed(target);
-    }
-    rafRef.current = requestAnimationFrame(step);
-    return () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
   }, [target]);
 
   return (
-    <div className={className ?? "whitespace-pre-wrap break-words leading-6"}>
-      {displayed}
-      <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-[var(--primary)] align-text-bottom" aria-hidden />
-    </div>
+    <span ref={elRef} className={className} style={{ whiteSpace: "pre-wrap" }}>
+    </span>
   );
 }

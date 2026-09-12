@@ -637,8 +637,9 @@ export async function POST(request: NextRequest) {
         let blendPreambleDone = !isBlend;
         let blendPreambleBuf = "";
         // 9/6流畅性：思维链进度（截尾片段，每8条推一次防刷屏）
-        let reasoningTail = "";
-        let reasoningChunks = 0;
+        // 9/13流畅性P0-1：思维链句子缓冲——按句子边界透传完整句（业界标准：R1/Open WebUI式原文句子流），
+        // 替代旧"每8个chunk取尾40字符"的碎字快照（碎字=廉价感主源）
+        let reasonBuf = "";
 
         try {
           // request.signal：客户端断开（用户点停止/关页面）时中止上游DeepSeek连接——停止生成=停止烧钱
@@ -676,13 +677,18 @@ export async function POST(request: NextRequest) {
             // 9/6流畅性（AgentMore标准）：reasoning片段经status事件透传给前端——用户在65s等待期
             // 看到"正在思考"的具体内容滚动（Claude/ChatGPT同款体验），不再是黑盒干等
             if (chunk.kind === "reasoning") {
-              if (chunk.text.trim()) {
-                reasoningTail = chunk.text.trim().slice(-40);
-                reasoningChunks += 1;
-                if (reasoningChunks % 8 === 1) {
-                  send({ type: "status", text: `深度思考中…${reasoningTail}` });
-                }
+              reasonBuf += chunk.text;
+              // 句子边界切分：凑齐一句透传一句（完整中文句保证可读），积压保险丝防超长段
+              const sentRe = /[^。！？\n]+[。！？\n]/g;
+              let m: RegExpExecArray | null;
+              let lastEnd = 0;
+              while ((m = sentRe.exec(reasonBuf))) lastEnd = m.index + m[0].length;
+              if (lastEnd > 0) {
+                const sentence = reasonBuf.slice(0, lastEnd).trim().slice(-70);
+                reasonBuf = reasonBuf.slice(lastEnd);
+                if (sentence) send({ type: "status", text: `思考中：${sentence}` });
               }
+              if (reasonBuf.length > 600) reasonBuf = reasonBuf.slice(-300);
               continue;
             }
             // 9/6质量修复（blend实测抓出）：v4-pro思考外溢——pro模型可能把"我需要回答用户…先梳理数据"
