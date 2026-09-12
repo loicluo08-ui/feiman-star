@@ -65,6 +65,10 @@ const requestSchema = z.object({
     .optional(),
 });
 
+// 判断记账核验：失效文本的方向词分类（跌破类=向下触发 / 突破类=向上触发）
+const TRIG_DOWN_RE = /跌破|失守|下破|低于|收于.*之下/;
+const TRIG_UP_RE = /突破|站上|上破|高于|收于.*之上/;
+
 const CROSS_VALIDATION_BLOCK = [
   "输出前内部交叉验证（不输出验证过程，只输出最终通过验证的回答）：",
   "a. 事实核查：每个数据/结论必须有知识库支撑，无支撑的不输出或标注\"未验证\"。",
@@ -510,22 +514,65 @@ export async function POST(request: NextRequest) {
             buildSignalContext(stockSignalData) + "\n\n【深度生成纪律】①关键变量识别：本轮结论最依赖哪1-2个变量？写进【分析思路】行。五维度中与关键变量无关的折叠为一句话背景，关键变量本身挖透（信号数据+传导机制+反方攻击+历史对照）②交叉信号池直接引用（保留[推导]标注），引用与判断矛盾时先解释矛盾③裁决表必须给出明确档位——数据真不足时写“缺XX数据无法裁决”并列出补数路径，禁止用“存疑”当挡箭牌④最强的那条判断直接说透，不垫对冲基调——对冲放进条件分支，不进主判断" }] : []),
           ...(wantsLong && injectedContext ? [{ role: "system" as const, content:
             "【深度档数据引用配额】本轮为深度分析：正文至少引用3个注入数据点（行情数字/快讯事件及其发布时间/情绪指标/期权数据），引用处按R4标注[数据]或注明快讯时间。注入池不足3个可用数据点时，明确列出缺口（如“未注入：财报数据”）并用[推导]句式补足——引用真实注入数据是深度的核心，空框架罗列是负资产。" }] : []),
-          // 9/12判断记账回访：历史主判断注入，规则28强制对账——判断追踪的"框架之外增量"
-          // 同标的去重取最新（前端slice(-8)可能含同标的多条——重复注入挤预算+对账指向混乱）
+          // 9/12判断记账回访升级：①同标的去重+轨迹（最近2次）②失效条件自动核验——
+          // 从失效文本提取方向词与价位，对照注入行情现价机械判定触发状态，AI对账不许选择性失明
           ...(historyLedger.length > 0 ? [{ role: "system" as const, content:
             (() => {
-              const latest = new Map<string, { symbol: string; stance: string; keyLevel: string; invalidation: string; confidence: string; date: string }>();
-              for (let i = 0; i < historyLedger.length; i++) latest.set(historyLedger[i].symbol, historyLedger[i]);
-              const vals: Array<{ symbol: string; stance: string; keyLevel: string; invalidation: string; confidence: string; date: string }> = [];
-              latest.forEach((v) => vals.push(v));
-              const lines = vals.map((e) =>
-                `- ${e.date} ${e.symbol}：立场=${e.stance}`
-                + (e.keyLevel ? ` | 关键位=${e.keyLevel}` : "")
-                + (e.invalidation ? ` | 失效条件=${e.invalidation}` : "")
-                + (e.confidence ? ` | 信心度=${e.confidence}` : ""),
-              ).join("\n");
-              return "【历史判断记账】（此前对话中AI给出的主判断存档，按标的取最新一次）\n" + lines
-                + "\n（规则28生效：本轮问题涉及上述标的时，必须先出对账段再作答）";
+              type LedgerRow = { symbol: string; stance: string; keyLevel: string; invalidation: string; confidence: string; date: string };
+              const bySymbol = new Map<string, LedgerRow[]>();
+              for (let i = 0; i < historyLedger.length; i++) {
+                const arr = bySymbol.get(historyLedger[i].symbol) || [];
+                arr.push(historyLedger[i]);
+                bySymbol.set(historyLedger[i].symbol, arr);
+              }
+              const matchQuote = (symbol: string): { price: number | null } | null => {
+                const codeM = symbol.match(/^([A-Za-z0-9.\-]+)/);
+                const codePart = codeM ? codeM[1].toUpperCase() : "";
+                const cnM = symbol.match(/[（(]([^）)]+)[）)]/);
+                const cnPart = cnM ? cnM[1] : "";
+                for (let i = 0; i < injectedQuotes.length; i++) {
+                  const q = injectedQuotes[i];
+                  const codeHit = codePart && q.code && q.code.toUpperCase().indexOf(codePart) >= 0;
+                  const nameHit = cnPart && q.name && q.name.indexOf(cnPart) >= 0;
+                  if (codeHit || nameHit) return q;
+                }
+                return null;
+              };
+              const verify = (e: LedgerRow): string => {
+                const q = matchQuote(e.symbol);
+                if (!q || q.price == null) return "本轮未注入该标的行情，无法自动核验";
+                const text = e.invalidation || "";
+                const nums = text.match(/\d+(?:\.\d+)?/g);
+                if (!text || !nums || nums.length === 0) return `现价${q.price}，无失效价位记录，不机械核验`;
+                const level = parseFloat(nums[0]);
+                if (TRIG_DOWN_RE.test(text)) {
+                  return q.price < level
+                    ? `失效条件已触发（现价${q.price} < 失效位${level}）——立场失效，必须按规则28翻转处理`
+                    : `失效未触发（现价${q.price} ≥ 失效位${level}）`;
+                }
+                if (TRIG_UP_RE.test(text)) {
+                  return q.price > level
+                    ? `失效条件已触发（现价${q.price} > 失效位${level}）——立场失效，必须按规则28翻转处理`
+                    : `失效未触发（现价${q.price} ≤ 失效位${level}）`;
+                }
+                return `现价${q.price}，失效条件无方向词（跌破/突破类），系统不判向，由AI对照数据自行核验`;
+              };
+              const lines: string[] = [];
+              bySymbol.forEach((rows) => {
+                const recent = rows.slice(-2).reverse(); // 最新在前，最多2条轨迹
+                for (let i = 0; i < recent.length; i++) {
+                  const e = recent[i];
+                  const tag = i === 0 ? "" : "（再上次）";
+                  const core = `- ${e.date} ${e.symbol}${tag}：立场=${e.stance}`
+                    + (e.keyLevel ? ` | 关键位=${e.keyLevel}` : "")
+                    + (e.invalidation ? ` | 失效条件=${e.invalidation}` : "")
+                    + (e.confidence ? ` | 信心度=${e.confidence}` : "");
+                  lines.push(i === 0 ? `${core} → 核验：${verify(e)}` : core);
+                }
+              });
+              return "【历史判断记账】（此前对话中AI给出的主判断存档，同标的展示最近2次轨迹；核验=系统用注入行情现价对失效条件的机械判定）\n"
+                + lines.join("\n")
+                + "\n（规则28生效：本轮问题涉及上述标的时，必须先出对账段——对账必须引用核验状态，核验显示「已触发」时禁止维持原立场）";
             })() }] : []),
           ...(turnMessage ? [turnMessage] : []),
         ];
