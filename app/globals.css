@@ -126,3 +126,15 @@ textarea::placeholder {
 .msg-in {
   animation: msgIn 0.28s ease-out;
 }
+
+/* ===== 9/13流畅性：全局动效token（Apple=全站一致+克制）===== */
+:root {
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur-med: 250ms;
+}
+@keyframes feiman-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.feiman-msg-enter { animation: feiman-fade-in var(--dur-med) var(--ease-standard) both; }

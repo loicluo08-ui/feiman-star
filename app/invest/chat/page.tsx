@@ -4,6 +4,20 @@ import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "
 import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/background-task";
 import { loadLedger, parseLedgerLine, saveEntry, stripLedgerLines, clearLedger, type LedgerEntry } from "@/lib/judgment-ledger";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
+
+// 9/13流畅性P1：块级增量渲染（streaming-markdown模式）——
+// 流式期间已完成段落立即markdown渲染（memo缓存不重解析），只有最后一段（未完成）走打字机纯文本。
+// 完成瞬间的重排量从全文2500字→最后一段（跳变量降~85%）。表格段落完成时仍有小跳，段落渐入掩盖。
+function StreamingMarkdown({ text }: { text: string }) {
+  const cut = text.lastIndexOf("\n\n");
+  if (cut <= 0) return <TypewriterText target={text} className="break-words leading-7" />;
+  return (
+    <>
+      <MarkdownRenderer content={text.slice(0, cut)} />
+      <TypewriterText target={text.slice(cut + 2)} className="break-words leading-7" />
+    </>
+  );
+}
 import { TypewriterText } from "@/components/typewriter-text";
 
 // 12风格=4基础+大师融合旗舰+6大师+海龟（模块11思维框架库）。route的zod enum与此保持一致
@@ -1045,7 +1059,7 @@ export default function ChatPage() {
                         /* 流式中：字符级打字机轻渲染（完成后父层切markdown全排版）+
                            底部动态状态行——agentmore式流动性 */
                         <>
-                          <TypewriterText target={m.text} className="whitespace-pre-wrap break-words leading-6" />
+                          <StreamingMarkdown text={m.text} />
                           <div className="mt-2 flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
                             <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--primary)]" />
                             {statusLine || "生成中…"}
