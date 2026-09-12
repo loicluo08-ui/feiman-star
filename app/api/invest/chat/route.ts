@@ -605,7 +605,11 @@ export async function POST(request: NextRequest) {
               max_tokens: chatMaxTokens,
               retry: 1,
               ...(isBlend
-                ? { model: "deepseek-v4-pro", thinking: "enabled" as const, reasoning_effort: "high" as const, timeout: 280_000 }
+                // 9/12晚实测裁决（逸翔拍板选A）：v4-pro在9/10模型升级后reasoning额度不再独立，
+                // thinking挤占content预算——三轮blend实测正文仅1008-2353字且结尾复读prompt，
+                // 对照flash+thinking同题4388字完整结构。blend改走defaultModel(flash)+thinking，
+                // thinking量按reasoning_effort=high保留，全预算给正文。pro恢复后一行切回
+                ? { model: "deepseek-v4-flash", thinking: "enabled" as const, reasoning_effort: "high" as const, timeout: 280_000 }
                 : deepThinking
                   // 详细类问题开flash思维链：推理深度升档，成本仅输出3x；ladder保证被拒时自动退回无思考
                   // 9/12根因修复：110s是blend截断真凶——timeout=总时长硬顶（含thinking全程），
