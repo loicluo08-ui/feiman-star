@@ -5,14 +5,15 @@ import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/backgr
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { TypewriterText } from "@/components/typewriter-text";
 
-// 11风格=4基础+大师融合旗舰+6大师（模块11思维框架库）。route的zod enum与此保持一致
-type AnalysisStyle = "balanced" | "value" | "growth" | "quant" | "blend" | "munger" | "buffett" | "livermore" | "duan" | "soros" | "musk";
+// 12风格=4基础+大师融合旗舰+6大师+海龟（模块11思维框架库）。route的zod enum与此保持一致
+type AnalysisStyle = "balanced" | "value" | "growth" | "quant" | "blend" | "munger" | "buffett" | "livermore" | "turtle" | "duan" | "soros" | "musk";
 
 // 大师视角按钮组（默认收起，点「大师视角」展开——4+6全铺开挤占移动端）
 const GURU_STYLES: Array<{ key: AnalysisStyle; label: string; hint: string }> = [
   { key: "munger", label: "芒格", hint: "多元思维+逆向思考：先问会怎么死" },
   { key: "buffett", label: "巴菲特", hint: "护城河+内在价值+市场先生" },
   { key: "livermore", label: "利弗莫尔", hint: "关键点+最小阻力线+止损铁律" },
+  { key: "turtle", label: "海龟", hint: "突破入场+ATR头寸+2N止损+机械纪律" },
   { key: "duan", label: "段永平", hint: "买股票就是买公司+不懂不做" },
   { key: "soros", label: "索罗斯", hint: "反身性+找市场共识的错误" },
   { key: "musk", label: "马斯克", hint: "第一性原理：行业的理论最优解" },
