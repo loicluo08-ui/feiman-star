@@ -19,7 +19,7 @@ export type PeerRow = {
 };
 
 /** 静态行业同伴表（高频对话标的覆盖；未列出的标的走Finnhub或跳过） */
-const SECTOR_PEERS: Record<string, string[]> = {
+export const SECTOR_PEERS: Record<string, string[]> = {
   NVDA: ["AMD", "INTC", "AVGO", "QCOM", "TXN", "MU"],
   AMD: ["NVDA", "INTC", "AVGO", "QCOM", "TXN"],
   INTC: ["AMD", "NVDA", "QCOM", "TXN", "MU"],
@@ -40,7 +40,7 @@ const SECTOR_PEERS: Record<string, string[]> = {
   COIN: ["HOOD", "MSTR", "SQ"],
   PLTR: ["SNOW", "CRWD", "NET"],
   SNOW: ["PLTR", "CRWD", "NET"],
-  FUTU: ["HOOD", "COIN"],
+  FUTU: ["HOOD", "COIN", "SOFI"],
   UBER: ["DASH", "LYFT", "ABNB"],
   JPM: ["BAC", "GS", "WFC", "C"],
   XOM: ["CVX", "COP", "OXY"],
@@ -66,7 +66,7 @@ async function fetchFinnhubPeers(code: string): Promise<string[]> {
 const cache = new Map<string, { text: string; expiresAt: number }>();
 const CACHE_TTL = 60 * 60 * 1000; // 同行PE盘中变化慢，1小时缓存防腾讯频控
 
-function median(nums: number[]): number | null {
+export function median(nums: number[]): number | null {
   if (nums.length === 0) return null;
   const sorted = [...nums].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);

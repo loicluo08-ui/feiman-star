@@ -54,7 +54,8 @@ export function parseLedgerLine(text: string): LedgerEntry | null {
   const m = text.match(LEDGER_LINE_RE);
   if (!m) return null;
   const kv: Record<string, string> = {};
-  const parts = m[1].split("|");
+  // 9/13全角兼容：AI输出"｜"（全角管道）时split("|")静默漏字段→漏记账
+  const parts = m[1].split(/[｜|]/);
   for (let i = 0; i < parts.length; i++) {
     const idx = parts[i].indexOf("=");
     if (idx > 0) {
