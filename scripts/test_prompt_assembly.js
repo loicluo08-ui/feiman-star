@@ -137,7 +137,7 @@ check(
 
 // ---------- 6. blend旗舰结构完整性（dad验收的形态） ----------
 const blendSrc = stylesSrc;
-const blendMarkers = ["【分析思路】", "**核心判断**", "【裁决】", "【追问方向】", "信心度", "会诊=", "死亡风险前置"];
+const blendMarkers = ["【分析思路】", "**核心判断**", "【裁决】", "失效预注册", "信心度", "会诊=", "死亡风险前置"];
 const blendMissing = blendMarkers.filter((mk) => !blendSrc.includes(mk));
 check(`blend旗舰结构标记（${blendMarkers.length}项）`, blendMissing.length === 0, `缺: ${blendMissing.join(",")}`);
 

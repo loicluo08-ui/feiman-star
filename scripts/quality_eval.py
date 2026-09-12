@@ -107,7 +107,7 @@ def score_answer(text):
         "plan_score": sum(plan_hits.values()),
         "abs_leaks": abs_leaks,
         "has_analysis_header": "【分析思路】" in text,
-        "has_falsify_tail": "【追问方向】" in text,
+        "tail_no_questions": "【追问方向】" not in text,
     }
 
 
