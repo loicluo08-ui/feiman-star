@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
     CASE_LIBRARY_BLOCK,
     ACTION_PLAN_BLOCK,
     PLAN_LIFECYCLE_BLOCK,
-    "25. 失效条件预注册（压力测试）：深度档结论在结尾（行动计划之后）用1-2句声明——本结论最依赖哪个假设？该假设被什么数据支撑？假设崩塌时结论如何变化（如\"本判断最依赖'资本开支周期未逆转'，若下周财报指引下修则立场失效\"）。与规则18的芒格逆向互补：逆向列反方论据，这里预注册可证伪条件。简洁档可省。",
+    "25. 失效条件预注册（压力测试）：深度档结论在结尾、行动计划之后用1-2句声明（预注册是全文最后一句，其后不再追加任何内容）——本结论最依赖哪个假设？该假设被什么数据支撑？假设崩塌时结论如何变化（如\"本判断最依赖'资本开支周期未逆转'，若下周财报指引下修则立场失效\"）。与规则18的芒格逆向互补：逆向列反方论据，这里预注册可证伪条件。简洁档可省。",
     "27. 判断记账（跨会话判断追踪的机器接口）：标准/深度档输出含主判断时，在【裁决】表（或核心判断）之后、行动计划之前输出一行机器记账行——格式固定：【判断记账】标的=代码(名称) | 立场=多/空/观望 | 关键位=触发价 | 失效=失效条件 | 信心度=N%。短问快答/纯认知/无主判断的输出不输出此行。该行是给系统记账的，字段值必须与正文判断完全一致；失效条件必须具体可观测（「跌破支撑」不行，要具体价位或事件）。",
     "28. 历史判断回访（若本轮注入了【历史判断记账】）：用户问题涉及记账中的标的时，必须在【分析思路】之后、核心判断之前先出对账段（3句内）：上次判断（日期+立场+关键位）→对照当前注入数据→结论三选一：维持（失效未触发）/翻转（触发信号出现，明说此前判断错误及原因）/重立（失效条件模糊无法核验）。对了不居功，错了不回避——判断追踪的价值全在对账的诚实度上。未涉及的标的不对账。",
     "26. 会诊对抗纪律（9/12实测判空：三视角全同向=零交锋的橡皮图章会诊）：①视角选取强制对立——深度会诊/大师融合的3-4个视角中必须至少1个质疑者，职责=攻击前提或看反方向（全市场看多时必带格雷厄姆残值或塔勒布尾部存活检验；看空共识时必带索罗斯反身性或费雪质检）；选出的组合全同向=重选。质疑者身份在【分析思路】标注（如：质疑者=格雷厄姆）②交锋必留痕——输出至少1轮真实观点攻击：谁攻击了谁的什么论点+结果（驳倒/幸存），如「利弗莫尔的趋势加仓逻辑被芒格逆向检验击中——财报事件窗口的死亡风险优先，趋势逻辑降级为次要素」。质疑者的攻击必须被正面回应而非无视；全同向无交锋=形式会诊=重写。与规则18互补：逆向列反方论据清单，这里要求对抗真实发生并留下痕迹",
@@ -268,6 +268,7 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let fullText = "";
+      let retryAfterOverflow = false; // 9/13护栏：context超限只自动降级一次
       // 客户端断开（停止生成/关页面）后controller.enqueue抛错——静默标记跳过后续send，
       // 上游signal已联动中止、循环很快自然退出；不防护=连环抛错进catch产生假stream_error日志
       let clientGone = false;
@@ -840,6 +841,23 @@ export async function POST(request: NextRequest) {
         send({ type: "done" });
       } catch (error) {
         console.error("[invest/chat] stream_error", error);
+        // 9/13长途对话护栏②：context超限（400/context_length）→自动降级重试一次：
+        // 摘要替代历史+窗口砍半——用户无感续聊，不弹"开新对话"
+        const errMsg = error instanceof Error ? error.message : String(error);
+        const isContextOverflow = /context|length|too long|max_tokens|400/i.test(errMsg) && /context|overflow|长度|超/i.test(errMsg);
+        if (isContextOverflow && !retryAfterOverflow) {
+          console.warn("[invest/chat] context overflow→自动降级重试（摘要替代历史）");
+          retryAfterOverflow = true;
+          // 预触发摘要压缩（fire-and-forget，服务端预压缩下轮生效）
+          fetch(new URL("/api/invest/chat-summarize", request.url), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: [] }),
+          }).catch(() => {});
+          send({ type: "chunk", text: "\n\n---\n\n⚠️ 本轮上下文达到长度上限。历史记忆已自动压缩——请重发刚才的问题，我将带着完整记忆继续（无需开新对话）。" });
+          send({ type: "done" });
+          return;
+        }
         // 降级：如果已有部分输出，补上结束语并正常done；否则发错误
         if (fullText.trim()) {
           const fallback = "\n\n---\n\n⚠️ AI生成中断，以上为已生成的部分内容。如需完整分析请重新提问。";

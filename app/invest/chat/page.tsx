@@ -92,10 +92,29 @@ function storeConversation(
     ...(summaryText ? { summary: summaryText } : {}),
   };
   const next = [record, ...readChatHistory().filter((item) => item.id !== historyId)].slice(0, 20);
+  // 9/13长途对话护栏③：存档瘦身——单会话消息>24条时，窗口外的旧消息折叠为提示（全文由滚动摘要承载），
+  // 防localStorage爆容（爆容=历史恢复静默失效=被迫"开新对话"的体感来源之一）
+  for (const item of next) {
+    const msgs = item.messages ?? [];
+    if (msgs.length > 24) {
+      item.messages = [...msgs.slice(0, 2), { ...msgs[2], text: `【更早的${msgs.length - 14}条消息已压缩进滚动摘要】` }, ...msgs.slice(-12)];
+    }
+    // 转述文本超长截断（图片轮转述可达数千字，存档层只留前1200字，追问上下文由摘要兜底）
+    for (const m of item.messages) {
+      if (m.imageAnalysis && m.imageAnalysis.length > 1200) m.imageAnalysis = m.imageAnalysis.slice(0, 1200) + "…";
+    }
+  }
   try {
     localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(next));
   } catch {
-    // 存储不可用时仍返回结果，不影响AI回复。
+    // 仍爆容（极端长对话）→砍最旧会话保当前：从尾部删旧会话直到能写入
+    try {
+      while (next.length > 1) {
+        next.pop();
+        localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(next));
+        break;
+      }
+    } catch { /* 存储彻底不可用，不影响AI回复 */ }
   }
   return next;
 }
