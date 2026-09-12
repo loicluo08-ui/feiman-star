@@ -86,6 +86,7 @@ export interface HistoryAnchors {
   ma20: number | null;
   ma50: number | null;
   ma200: number | null;
+  closes252: number[] | null; // 近252交易日有效收盘（服务端估值分位计算用，不进注入原文）
 }
 
 export function extractHistoryAnchors(chart: YahooChartResult | null): HistoryAnchors | null {
@@ -170,5 +171,13 @@ export function extractHistoryAnchors(chart: YahooChartResult | null): HistoryAn
     ma20: maAt(20),
     ma50: maAt(50),
     ma200: maAt(200),
+    closes252: (() => {
+      const arr: number[] = [];
+      for (let i = Math.max(0, lastIdx - 251); i <= lastIdx; i++) {
+        const v = rawCloses[i];
+        if (typeof v === "number" && v > 0) arr.push(v);
+      }
+      return arr.length >= 100 ? arr : null;
+    })(),
   };
 }

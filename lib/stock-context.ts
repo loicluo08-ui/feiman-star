@@ -322,6 +322,27 @@ export function buildStockContext(
       if (h.ma200 != null) mas.push(`MA200:${h.ma200.toFixed(2)}`);
       if (mas.length > 0) parts.push(`均线[${mas.join(" | ")}](Yahoo日线，含最新价)`);
     }
+    // 9/12材料层一期：估值分位——价格52周分位+隐含PE带宽，系统算好直给
+    // （AI自己不算/算错是机器评分Q4=50.4失分根因之一；数字必须服务端计算而非指望模型心算）
+    if (s.history?.closes252 && s.history.closes252.length >= 100 && s.price != null) {
+      const closes = s.history.closes252;
+      let lo = closes[0];
+      let hi = closes[0];
+      for (let i = 1; i < closes.length; i++) {
+        if (closes[i] < lo) lo = closes[i];
+        if (closes[i] > hi) hi = closes[i];
+      }
+      if (hi > lo) {
+        const pct = ((s.price - lo) / (hi - lo)) * 100;
+        const est: string[] = [`【估值位置】现价处52周区间$${lo.toFixed(2)}-$${hi.toFixed(2)}的 ${pct.toFixed(0)}% 分位`];
+        if (s.pe != null && s.pe > 0) {
+          const peLo = s.pe * (lo / s.price);
+          const peHi = s.pe * (hi / s.price);
+          est.push(`现价PE(TTM) ${s.pe.toFixed(1)}，EPS不变假设下52周隐含PE带宽 ${Math.min(peLo, peHi).toFixed(1)}-${Math.max(peLo, peHi).toFixed(1)}[近似口径：财报致EPS跳变时带宽失真，跳变次数=近一年财报数]`);
+        }
+        parts.push(est.join("；"));
+      }
+    }
     // 量能基线：当日量与近20日均量的比值——放量/缩量判断的唯一依据（无基线时AI只能猜）
     // 盘中口径护栏：今日量为盘中累计量（未收盘），上午时段除以全天均量必然偏低=误报缩量。
     // 美股盘中（美东工作日9:30-16:00）时标注盘中语义，收盘数据才直接给倍数
