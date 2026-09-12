@@ -99,7 +99,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
   changePct: number | null; marketCap: number | null;
   previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null;
   freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean;
-  history: HistoryAnchors | null;
+  history: HistoryAnchors | null; financialLine?: string;
 }>> {
   const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
   const FINNHUB_KEY = process.env.FINNHUB_API_KEY || "";
@@ -127,6 +127,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
     // 腾讯源优先（实时+全套字段+免认证）
     let qtValid = false;
     let qtTimestamp: string | null = null;
+    let financialLine = "";
     // D2原始快照：真实大涨大跌（如财报跳空>20%）时腾讯会被闸门弃用，留快照供双源确认后恢复
     let qtRawPrice = 0, qtRawPrev = 0, qtRawPct = 0, qtRawPE = 0, f44Cap = 0, qtRealMover = false;
     try {
@@ -190,10 +191,26 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
     let fhPrice: number | null = null;
     if (FINNHUB_KEY) {
       try {
-        const [quoteRes, profileRes] = await Promise.allSettled([
+        const [quoteRes, profileRes, metricRes] = await Promise.allSettled([
           fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(code)}&token=${FINNHUB_KEY}`, { signal: AbortSignal.timeout(4000) }),
           fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(code)}&token=${FINNHUB_KEY}`, { signal: AbortSignal.timeout(3000) }),
+          // 9/13财务快照：真实财报指标（营收增速/毛利率/净利率/ROE）——替代KB行业经验值的"硬数据层"
+          FINNHUB_KEY ? fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${encodeURIComponent(code)}&metric=all&token=${FINNHUB_KEY}`, { signal: AbortSignal.timeout(3500) }) : Promise.reject(new Error("no_key")),
         ]);
+        // 9/13财务快照解析：真实财报指标（软增强——失败静默跳过；financialLine声明在map闭包层）
+        if (metricRes.status === "fulfilled" && metricRes.value.ok) {
+          try {
+            const mjson = await metricRes.value.json();
+            const mm = mjson?.metric ?? {};
+            const revG = mm.revenueGrowthTTMYoy, gm = mm.grossMarginTTM, npm = mm.netProfitMarginTTM, roe = mm.roeTTM;
+            const fparts: string[] = [];
+            if (revG != null) fparts.push(`营收TTM同比${revG > 0 ? "+" : ""}${(revG * 100).toFixed(1)}%`);
+            if (gm != null) fparts.push(`毛利率${(gm * 100).toFixed(1)}%`);
+            if (npm != null) fparts.push(`净利率${(npm * 100).toFixed(1)}%`);
+            if (roe != null) fparts.push(`ROE ${(roe * 100).toFixed(1)}%`);
+            if (fparts.length >= 2) financialLine = ` | [财务快照·Finnhub] ${fparts.join("、")}（真实财报值[数据]，替代行业经验基准）`;
+          } catch {}
+        }
         if (quoteRes.status === "fulfilled" && quoteRes.value.ok) {
           const q = await quoteRes.value.json();
           fhPrice = q.c ?? null;
@@ -265,7 +282,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
       } catch {}
     }
 
-    const result = { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume, freshness: qtTimestamp, divergence, anomaly: !qtValid && !qtRealMover && price != null, extremeMove: qtRealMover, history };
+    const result = { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume, freshness: qtTimestamp, divergence, anomaly: !qtValid && !qtRealMover && price != null, extremeMove: qtRealMover, history, financialLine };
     // 成功获取才缓存（价格有值）；失败结果不缓存，下轮重试上游
     if (result.price != null) quoteCache.set(code, { data: result, expiresAt: Date.now() + QUOTE_CACHE_TTL });
     return result;
@@ -273,7 +290,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
 }
 
 export function buildStockContext(
-  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null; previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null; freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean; history: HistoryAnchors | null }>,
+  stockData: Array<{ code: string; name: string; price: number | null; pe: number | null; changePct: number | null; marketCap: number | null; previousClose: number | null; open: number | null; high: number | null; low: number | null; volume: number | null; freshness: string | null; divergence: number | null; anomaly: boolean; extremeMove: boolean; history: HistoryAnchors | null; financialLine?: string }>,
 ): string {
   if (stockData.length === 0) return "";
   const lines = stockData.map((s) => {
@@ -322,6 +339,7 @@ export function buildStockContext(
       if (h.ma200 != null) mas.push(`MA200:${h.ma200.toFixed(2)}`);
       if (mas.length > 0) parts.push(`均线[${mas.join(" | ")}](Yahoo日线，含最新价)`);
     }
+    if (s.financialLine) parts.push(s.financialLine);
     // 9/12材料层一期：估值分位——价格52周分位+隐含PE带宽，系统算好直给
     // （AI自己不算/算错是机器评分Q4=50.4失分根因之一；数字必须服务端计算而非指望模型心算）
     if (s.history?.closes252 && s.history.closes252.length >= 100 && s.price != null) {
