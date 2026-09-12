@@ -516,7 +516,9 @@ export async function POST(request: NextRequest) {
             (() => {
               const latest = new Map<string, { symbol: string; stance: string; keyLevel: string; invalidation: string; confidence: string; date: string }>();
               for (let i = 0; i < historyLedger.length; i++) latest.set(historyLedger[i].symbol, historyLedger[i]);
-              const lines = [...latest.values()].map((e) =>
+              const vals: Array<{ symbol: string; stance: string; keyLevel: string; invalidation: string; confidence: string; date: string }> = [];
+              latest.forEach((v) => vals.push(v));
+              const lines = vals.map((e) =>
                 `- ${e.date} ${e.symbol}：立场=${e.stance}`
                 + (e.keyLevel ? ` | 关键位=${e.keyLevel}` : "")
                 + (e.invalidation ? ` | 失效条件=${e.invalidation}` : "")
