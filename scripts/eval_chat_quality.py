@@ -52,9 +52,21 @@ def evaluate(path: Path) -> dict:
     # ——— A 对抗性 ———
     score = 0
     det = []
+    # 9/12结构级对抗检测（罗竹实测判空修复：词汇级检测放过了"三视角同向零交锋"的橡皮图章会诊）
+    challengers = re.findall(r"质疑者[=＝:：]\s*([\u4e00-\u9fa5·/、]+)", full)
+    crossfire = re.findall(r"(驳倒|被击中|击中|反驳|攻击了|幸存|降级为|刺穿|压倒)", full)
+    if challengers:
+        score += 25
+        det.append(f"质疑者视角: {', '.join(challengers[:2])}")
+    if crossfire:
+        score += 25
+        det.append(f"交锋痕迹×{len(crossfire)}: {', '.join(sorted(set(crossfire)))[:60]}")
+    if not challengers and not crossfire and ("会诊=" in full or "大师" in full):
+        score = max(0, score - 20)
+        det.append("⚠ 会诊无质疑者且零交锋=形式会诊（橡皮图章）")
     challenges = [c for c in CHALLENGE_MARKERS if c in full]
     if challenges:
-        score += min(30, 10 * len(challenges))
+        score += min(20, 7 * len(challenges))
         det.append(f"挑战标记×{len(challenges)}: {', '.join(challenges[:4])}")
     if re.search(r"你(的|确定|真的|愿意|能否|如何)", full):
         score += 15

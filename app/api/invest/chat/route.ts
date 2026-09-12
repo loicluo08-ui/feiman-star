@@ -48,6 +48,20 @@ const messageSchema = z.object({
 const requestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(20),
   style: z.enum(CHAT_STYLES).optional().default("balanced"),
+  // 9/12判断记账（跨会话判断追踪）：前端localStorage存档的历史主判断，结构化传回做回访对账
+  historyLedger: z
+    .array(
+      z.object({
+        symbol: z.string().max(80),
+        stance: z.string().max(20),
+        keyLevel: z.string().max(80).optional().default(""),
+        invalidation: z.string().max(160).optional().default(""),
+        confidence: z.string().max(20).optional().default(""),
+        date: z.string().max(12),
+      }),
+    )
+    .max(8)
+    .optional(),
 });
 
 const CROSS_VALIDATION_BLOCK = [
@@ -163,6 +177,7 @@ export async function POST(request: NextRequest) {
     ACTION_PLAN_BLOCK,
     PLAN_LIFECYCLE_BLOCK,
     "25. 失效条件预注册（压力测试）：深度档结论在结尾（行动计划之后）用1-2句声明——本结论最依赖哪个假设？该假设被什么数据支撑？假设崩塌时结论如何变化（如\"本判断最依赖'资本开支周期未逆转'，若下周财报指引下修则立场失效\"）。与规则18的芒格逆向互补：逆向列反方论据，这里预注册可证伪条件。简洁档可省。",
+    "26. 会诊对抗纪律（9/12实测判空：三视角全同向=零交锋的橡皮图章会诊）：①视角选取强制对立——深度会诊/大师融合的3-4个视角中必须至少1个质疑者，职责=攻击前提或看反方向（全市场看多时必带格雷厄姆残值或塔勒布尾部存活检验；看空共识时必带索罗斯反身性或费雪质检）；选出的组合全同向=重选。质疑者身份在【分析思路】标注（如：质疑者=格雷厄姆）②交锋必留痕——输出至少1轮真实观点攻击：谁攻击了谁的什么论点+结果（驳倒/幸存），如「利弗莫尔的趋势加仓逻辑被芒格逆向检验击中——财报事件窗口的死亡风险优先，趋势逻辑降级为次要素」。质疑者的攻击必须被正面回应而非无视；全同向无交锋=形式会诊=重写。与规则18互补：逆向列反方论据清单，这里要求对抗真实发生并留下痕迹",
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
     CHAT_QUALITY_BLOCK,

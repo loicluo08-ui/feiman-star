@@ -154,6 +154,12 @@ const polluted = sampleLines.filter((l) => {
 });
 check(`金样例无市场数字污染`, polluted.length === 0, polluted.slice(0, 2).join(" | "));
 
+// ---------- 7.5 对抗结构（9/12罗竹判空修复：三视角同向=橡皮图章会诊） ----------
+check(`blend视角选取含强制对立（质疑者硬约束）`, stylesSrc.includes("强制对立") && stylesSrc.includes("质疑者"));
+check(`blend交叉检验含强制交锋+失败回退`, stylesSrc.includes("强制交锋") && stylesSrc.includes("重选"));
+check(`规则26会诊对抗纪律已挂载`, routeSrc.includes("26. 会诊对抗纪律"));
+check(`对抗含交锋词汇结构（驳倒/幸存）`, stylesSrc.includes("驳倒") || stylesSrc.includes("幸存"));
+
 // ---------- 8. prompt栈体积监控（token预算警报） ----------
 const sizes = {};
 for (const [k, f] of Object.entries(files)) {
