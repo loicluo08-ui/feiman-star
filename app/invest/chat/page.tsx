@@ -2,6 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/background-task";
+import { loadLedger, parseLedgerLine, saveEntry, stripLedgerLines } from "@/lib/judgment-ledger";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { TypewriterText } from "@/components/typewriter-text";
 
@@ -528,7 +529,7 @@ export default function ChatPage() {
         const res = await fetch("/api/invest/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: apiMessages, style: currentStyle }),
+          body: JSON.stringify({ messages: apiMessages, style: currentStyle, historyLedger: loadLedger().slice(-8) }),
           signal: controller.signal,
         });
 
@@ -556,7 +557,7 @@ export default function ChatPage() {
               setMessages([
                 ...currentMessages,
                 userItem,
-                { role: "assistant", text: answer },
+                { role: "assistant", text: stripLedgerLines(answer) },
               ]);
               scrollToBottom();
             }
@@ -645,10 +646,16 @@ export default function ChatPage() {
 
         if (!answer.trim()) throw new Error("AI服务暂时不可用");
 
+        // 判断记账（9/12）：先从原文提取机器记账行存档，再剥离后进对话——
+        // 提取失败（无主判断/短问）静默跳过；这是跨会话判断追踪的写入端
+        const ledgerEntry = parseLedgerLine(answer);
+        if (ledgerEntry) saveEntry(ledgerEntry);
+        const displayAnswer = stripLedgerLines(answer);
+
         const completedMessages = [
           ...currentMessages,
           userItem,
-          { role: "assistant" as const, text: answer },
+          { role: "assistant" as const, text: displayAnswer },
         ];
         const nextHistory = storeConversation(completedMessages, currentStyle, historyId, summary.get() || undefined);
         return {
@@ -661,10 +668,12 @@ export default function ChatPage() {
         // 手动停止且已有部分输出：按成功收尾（保留已生成内容），不进错误分支
         const isAbort = (taskError as { name?: string } | null)?.name === "AbortError";
         if (isAbort && answer.trim()) {
+          const stopEntry = parseLedgerLine(answer);
+          if (stopEntry) saveEntry(stopEntry);
           const stoppedMessages = [
             ...currentMessages,
             userItem,
-            { role: "assistant" as const, text: `${answer}\n\n（已停止生成）` },
+            { role: "assistant" as const, text: `${stripLedgerLines(answer)}\n\n（已停止生成）` },
           ];
           const nextHistory = storeConversation(stoppedMessages, currentStyle, historyId, summary.get() || undefined);
           return {
