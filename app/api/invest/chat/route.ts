@@ -511,15 +511,20 @@ export async function POST(request: NextRequest) {
           ...(wantsLong && injectedContext ? [{ role: "system" as const, content:
             "【深度档数据引用配额】本轮为深度分析：正文至少引用3个注入数据点（行情数字/快讯事件及其发布时间/情绪指标/期权数据），引用处按R4标注[数据]或注明快讯时间。注入池不足3个可用数据点时，明确列出缺口（如“未注入：财报数据”）并用[推导]句式补足——引用真实注入数据是深度的核心，空框架罗列是负资产。" }] : []),
           // 9/12判断记账回访：历史主判断注入，规则28强制对账——判断追踪的"框架之外增量"
+          // 同标的去重取最新（前端slice(-8)可能含同标的多条——重复注入挤预算+对账指向混乱）
           ...(historyLedger.length > 0 ? [{ role: "system" as const, content:
-            "【历史判断记账】（此前对话中AI给出的主判断存档，按时间倒序）\n"
-            + historyLedger.map((e) =>
-              `- ${e.date} ${e.symbol}：立场=${e.stance}`
-              + (e.keyLevel ? ` | 关键位=${e.keyLevel}` : "")
-              + (e.invalidation ? ` | 失效条件=${e.invalidation}` : "")
-              + (e.confidence ? ` | 信心度=${e.confidence}` : ""),
-            ).join("\n")
-            + "\n（规则28生效：本轮问题涉及上述标的时，必须先出对账段再作答）" }] : []),
+            (() => {
+              const latest = new Map<string, { symbol: string; stance: string; keyLevel: string; invalidation: string; confidence: string; date: string }>();
+              for (let i = 0; i < historyLedger.length; i++) latest.set(historyLedger[i].symbol, historyLedger[i]);
+              const lines = [...latest.values()].map((e) =>
+                `- ${e.date} ${e.symbol}：立场=${e.stance}`
+                + (e.keyLevel ? ` | 关键位=${e.keyLevel}` : "")
+                + (e.invalidation ? ` | 失效条件=${e.invalidation}` : "")
+                + (e.confidence ? ` | 信心度=${e.confidence}` : ""),
+              ).join("\n");
+              return "【历史判断记账】（此前对话中AI给出的主判断存档，按标的取最新一次）\n" + lines
+                + "\n（规则28生效：本轮问题涉及上述标的时，必须先出对账段再作答）";
+            })() }] : []),
           ...(turnMessage ? [turnMessage] : []),
         ];
 
