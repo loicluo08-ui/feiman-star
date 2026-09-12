@@ -10,6 +10,7 @@ import { getStylePrompt, CHAT_STYLES } from "@/lib/chat-styles";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData, fetchVix, buildMarketMoodBlock } from "@/lib/stock-context";
 import { fetchPeerComparison } from "@/lib/sector-peers";
+import { isMacroQuery, fetchMacroContext } from "@/lib/macro-context";
 import { isOptionQuery, fetchOptionContext, buildOptionBlock } from "@/lib/option-context";
 import { buildNewsContext } from "@/lib/news-context";
 import { buildEarningsContext } from "@/lib/chat-earnings-context";
@@ -422,13 +423,27 @@ export async function POST(request: NextRequest) {
             return "";
           }
         })();
-        const [stockContext, newsContext, marketMood, optionCtx, earningsContext, peerComparisonText] = await Promise.all([
+        // 宏观锚（9/12材料层三期）：Q4宏观题具体性仅5的靶子——大盘/美联储类问题注入10Y+美元锚
+        // 语义路由（isMacroQuery）保证普通个股问题零延迟；8s软超时静默跳过
+        const macroTask = (async () => {
+          try {
+            if (!isMacroQuery(currentTurnText || "")) return "";
+            return await Promise.race([
+              fetchMacroContext(),
+              new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000)),
+            ]);
+          } catch {
+            return "";
+          }
+        })();
+        const [stockContext, newsContext, marketMood, optionCtx, earningsContext, peerComparisonText, macroContextText] = await Promise.all([
           stockTask,
           fetchNewsWithDeadline(newsQueryText),
           vixTask,
           optionTask,
           earningsTask,
           peerTask,
+          macroTask,
         ]);
         const moodContext = buildMarketMoodBlock(marketMood);
         const optionContextText = optionCtx ? buildOptionBlock(optionCtx) : "";
@@ -511,6 +526,7 @@ export async function POST(request: NextRequest) {
           newsContext,
           optionContextText,
           peerComparisonText,
+          macroContextText,
         ].filter(Boolean).join("\n");
 
         const turnMessage = currentTurnText

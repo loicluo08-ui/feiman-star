@@ -10,6 +10,11 @@ const ABSOLUTE_TERMS: Array<{ pattern: RegExp; replacement: string; label: strin
   { pattern: /零风险/g, replacement: "低风险", label: "零风险→低风险" },
   { pattern: /保证(?:不)?(?:会)?(?:出错|失败|亏损|损失)/g, replacement: "最大限度降低风险", label: "保证不出错→最大限度降低风险" },
   { pattern: /完全(?:安全|可靠|准确)/g, replacement: "较为安全可靠", label: "完全安全→较为安全可靠" },
+  // 9/13对齐quality_eval的ABS_RE口径（电池Q1-Q3各1处漏网：永远/必然/肯定会/绝对不会未在拦截表）
+  { pattern: /永远(?![^。]{0,6}(?:不会|没有|不存在))/g, replacement: "长期", label: "永远→长期" },
+  { pattern: /必然(?!\s*性)/g, replacement: "大概率", label: "必然→大概率" },
+  { pattern: /肯定会/g, replacement: "很可能", label: "肯定会→很可能" },
+  { pattern: /绝对不会/g, replacement: "极少会", label: "绝对不会→极少会" },
 ];
 
 const HIGH_RISK_PATTERNS: Array<{ topic: string; pattern: RegExp; disclaimer: string }> = [
