@@ -160,6 +160,12 @@ check(`blend交叉检验含强制交锋+失败回退`, stylesSrc.includes("强�
 check(`规则26会诊对抗纪律已挂载`, routeSrc.includes("26. 会诊对抗纪律"));
 check(`对抗含交锋词汇结构（驳倒/幸存）`, stylesSrc.includes("驳倒") || stylesSrc.includes("幸存"));
 
+// ---------- 7.6 信号交叉引擎（9/12深度优化：材料层质变） ----------
+const routeSrcAll = routeSrc + read("lib/signal-context.ts");
+check(`信号引擎已挂载route（深度档注入）`, routeSrc.includes("buildSignalContext") && routeSrc.includes("stockSignalData"));
+check(`深度生成纪律四条（关键变量/信号引用/裁决表态/非对称）`, routeSrc.includes("关键变量识别") && routeSrc.includes("裁决表必须给出明确档位") && routeSrc.includes("不垫对冲基调"));
+check(`信号引擎宁缺毋滥设计`, read("lib/signal-context.ts").includes("宁可不给，不硬编故事"));
+
 // ---------- 8. prompt栈体积监控（token预算警报） ----------
 const sizes = {};
 for (const [k, f] of Object.entries(files)) {

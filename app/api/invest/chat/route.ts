@@ -4,6 +4,7 @@ import { callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type Vis
 import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
 import { buildSourcePool, verifySourceLabels } from "@/lib/source-integrity";
 import { selectKBForQuestion } from "@/lib/kb-router";
+import { buildSignalContext, type SignalInputStock } from "@/lib/signal-context";
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { getStylePrompt, CHAT_STYLES } from "@/lib/chat-styles";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
@@ -342,6 +343,8 @@ export async function POST(request: NextRequest) {
           : combinedText;
         // 数字锚定验证的数据源：保留原始行情数组（buildStockContext只产字符串）
         let injectedQuotes: Array<import("@/lib/cross-validate").InjectedQuote> = [];
+        // 9/12深度优化：信号交叉引擎的原始行情（stockTask内赋值，注入块组装处消费）
+        let stockSignalData: SignalInputStock[] = [];
         const stockTask = (async () => {
           if (effectiveStockCodes.length > 0) {
             try {
@@ -349,6 +352,9 @@ export async function POST(request: NextRequest) {
               injectedQuotes = stockData.map((s) => ({
                 code: s.code, name: s.name, price: s.price, previousClose: s.previousClose,
                 open: s.open, high: s.high, low: s.low, changePct: s.changePct, history: s.history,
+              }));
+              stockSignalData = stockData.map((s) => ({
+                code: s.code, name: s.name, price: s.price, changePct: s.changePct, volume: s.volume, history: s.history,
               }));
               return buildStockContext(stockData);
             } catch {
@@ -499,6 +505,9 @@ export async function POST(request: NextRequest) {
           ...(injectedContext ? [{ role: "system" as const, content: injectedContext }] : []),
           // 9/12材料层修复（机器评分Q1-Q4具体性/快讯引用失分）：R系列教"怎么引用"，配额硬性规定"引用多少"——
           // 量化下限让模型无法用空框架蒙混，是"框架厚材料薄"缺口的指令层收口
+          // 9/12深度优化：交叉信号池+深度生成纪律（材料层质变——AI直接引用预计算信号，判断层质变——关键变量深挖+裁决必表态）
+          ...(wantsLong && stockSignalData.length > 0 ? [{ role: "system" as const, content:
+            buildSignalContext(stockSignalData) + "\n\n【深度生成纪律】①关键变量识别：本轮结论最依赖哪1-2个变量？写进【分析思路】行。五维度中与关键变量无关的折叠为一句话背景，关键变量本身挖透（信号数据+传导机制+反方攻击+历史对照）②交叉信号池直接引用（保留[推导]标注），引用与判断矛盾时先解释矛盾③裁决表必须给出明确档位——数据真不足时写“缺XX数据无法裁决”并列出补数路径，禁止用“存疑”当挡箭牌④最强的那条判断直接说透，不垫对冲基调——对冲放进条件分支，不进主判断" }] : []),
           ...(wantsLong && injectedContext ? [{ role: "system" as const, content:
             "【深度档数据引用配额】本轮为深度分析：正文至少引用3个注入数据点（行情数字/快讯事件及其发布时间/情绪指标/期权数据），引用处按R4标注[数据]或注明快讯时间。注入池不足3个可用数据点时，明确列出缺口（如“未注入：财报数据”）并用[推导]句式补足——引用真实注入数据是深度的核心，空框架罗列是负资产。" }] : []),
           // 9/12判断记账回访：历史主判断注入，规则28强制对账——判断追踪的"框架之外增量"
