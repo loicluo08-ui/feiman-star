@@ -646,8 +646,9 @@ export default function ChatPage() {
                     // "已注入行情N只"等关键注入步骤淹没（步骤栈变思考轰炸=体验倒退）
                     setStatusSteps((prev) => {
                       const last = prev[prev.length - 1];
-                      const isThinkingFeed = statusText.startsWith("深度思考中");
-                      const lastIsThinkingFeed = last?.startsWith("深度思考中");
+                      // 9/13 P0-1文案改版兼容：新句子流前缀"思考中："（旧"深度思考中"保留兼容）
+                      const isThinkingFeed = statusText.startsWith("思考中") || statusText.startsWith("深度思考中");
+                      const lastIsThinkingFeed = last?.startsWith("思考中") || last?.startsWith("深度思考中");
                       if (isThinkingFeed && lastIsThinkingFeed) {
                         const next = [...prev];
                         next[next.length - 1] = statusText;
@@ -655,6 +656,8 @@ export default function ChatPage() {
                       }
                       return last === statusText ? prev : [...prev, statusText];
                     });
+                    // 9/13真机反馈：思考期画面不自动跟进——status更新纳入滚动跟随（nearBottom保护，上翻不打扰）
+                    scrollToBottom();
                   }
                   continue; // 状态行不落消息体
                 } else if (data.type === "done") {
