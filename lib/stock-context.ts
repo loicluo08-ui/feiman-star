@@ -184,7 +184,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
           }
         }
       }
-    } catch {}
+    } catch (e) { console.error("[stock-context] 腾讯行情拉取失败，走Finnhub兜底:", e instanceof Error ? e.message : e); }
 
     // Finnhub交叉/兜底（腾讯失败时兜底供数；腾讯成功时只做D3分歧检测）+ D3跨源分歧检测
     let fhPrice: number | null = null;
