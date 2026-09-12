@@ -9,6 +9,7 @@ import { BASE_SKILLS } from "@/lib/chat-skills";
 import { getStylePrompt, CHAT_STYLES } from "@/lib/chat-styles";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData, fetchVix, buildMarketMoodBlock } from "@/lib/stock-context";
+import { fetchPeerComparison } from "@/lib/sector-peers";
 import { isOptionQuery, fetchOptionContext, buildOptionBlock } from "@/lib/option-context";
 import { buildNewsContext } from "@/lib/news-context";
 import { buildEarningsContext } from "@/lib/chat-earnings-context";
@@ -406,12 +407,26 @@ export async function POST(request: NextRequest) {
             return null;
           }
         })();
-        const [stockContext, newsContext, marketMood, optionCtx, earningsContext] = await Promise.all([
+        // 行业对比（9/12材料层二期）：同行PE/价格/中位数横向锚——估值判断从孤值变对比
+        // 只对主标的（effectiveStockCodes[0]）拉取；7s软超时+静默跳过（软增强模式）
+        const peerTask = (async () => {
+          try {
+            if (effectiveStockCodes.length === 0) return "";
+            return await Promise.race([
+              fetchPeerComparison(effectiveStockCodes[0]),
+              new Promise<string>((resolve) => setTimeout(() => resolve(""), 7000)),
+            ]);
+          } catch {
+            return "";
+          }
+        })();
+        const [stockContext, newsContext, marketMood, optionCtx, earningsContext, peerComparisonText] = await Promise.all([
           stockTask,
           fetchNewsWithDeadline(newsQueryText),
           vixTask,
           optionTask,
           earningsTask,
+          peerTask,
         ]);
         const moodContext = buildMarketMoodBlock(marketMood);
         const optionContextText = optionCtx ? buildOptionBlock(optionCtx) : "";
@@ -493,6 +508,7 @@ export async function POST(request: NextRequest) {
           earningsContext ?? "",
           newsContext,
           optionContextText,
+          peerComparisonText,
         ].filter(Boolean).join("\n");
 
         const turnMessage = currentTurnText
