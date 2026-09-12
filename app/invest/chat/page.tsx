@@ -689,6 +689,24 @@ export default function ChatPage() {
         // 提取失败（无主判断/短问）静默跳过；这是跨会话判断追踪的写入端
         const ledgerEntry = parseLedgerLine(answer);
         if (ledgerEntry) saveEntry(ledgerEntry);
+    // 9/13自动写入管道：判断云端同步（fire-and-forget）——数据进repo→回验cron→候选池→案例库
+    try {
+      const syncedRaw = localStorage.getItem("fx_judgment_synced_v1");
+      const synced = new Set<number>(syncedRaw ? JSON.parse(syncedRaw) : []);
+      const fresh = loadLedger().filter((e) => !synced.has(e.ts));
+      if (fresh.length > 0) {
+        fetch("/api/invest/judgment-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entries: fresh }),
+        }).then((r) => r.json()).then((r) => {
+          if (r.ok) {
+            fresh.forEach((e) => synced.add(e.ts));
+            localStorage.setItem("fx_judgment_synced_v1", JSON.stringify(Array.from(synced).slice(-500)));
+          }
+        }).catch(() => {});
+      }
+    } catch {}
         const displayAnswer = stripLedgerLines(answer);
 
         const completedMessages = [

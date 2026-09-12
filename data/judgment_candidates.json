@@ -1,0 +1,33 @@
+{
+  "verified": [
+    {
+      "symbol": "NVDA(英伟达)",
+      "stance": "多",
+      "keyLevel": "212.58",
+      "invalidation": "跌破MA50则减仓",
+      "confidence": "65%",
+      "date": "2026-09-05",
+      "ts": 1725500000000,
+      "verifiedAt": "2026-09-12",
+      "priceNow": 218.29,
+      "chgFromKeyLevel": 2.69,
+      "outcome": "中性",
+      "pattern": "多|跌破MA50则减仓"
+    },
+    {
+      "symbol": "TSLA(特斯拉)",
+      "stance": "多",
+      "keyLevel": "437",
+      "invalidation": "叙事闭环破裂",
+      "confidence": "70%",
+      "date": "2026-09-06",
+      "ts": 1725586400000,
+      "verifiedAt": "2026-09-12",
+      "priceNow": 365.44,
+      "chgFromKeyLevel": -16.38,
+      "outcome": "错",
+      "pattern": "多|叙事闭环破裂"
+    }
+  ],
+  "promoted": []
+}
