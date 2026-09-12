@@ -2,7 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/background-task";
-import { loadLedger, parseLedgerLine, saveEntry, stripLedgerLines } from "@/lib/judgment-ledger";
+import { loadLedger, parseLedgerLine, saveEntry, stripLedgerLines, clearLedger, type LedgerEntry } from "@/lib/judgment-ledger";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { TypewriterText } from "@/components/typewriter-text";
 
@@ -163,6 +163,9 @@ export default function ChatPage() {
   const [style, setStyle] = useState<AnalysisStyle>("balanced");
   // 大师视角按钮展开态：切到大师风格后保持展开（防「选中项藏在收起组里」的迷失感），关闭新对话不重置
   const [showGurus, setShowGurus] = useState(false);
+  // 判断账本面板（9/12）：本设备存档的AI主判断可视化——记账/对账链路的用户可见端
+  const [showLedger, setShowLedger] = useState(false);
+  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [history, setHistory] = useState<ChatHistoryRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
@@ -846,6 +849,17 @@ export default function ChatPage() {
               >
                 大师视角
               </button>
+              <button
+                onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); }}
+                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                  showLedger
+                    ? "border border-[var(--text)] text-[var(--text)]"
+                    : "border border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
+                }`}
+                title="判断账本：本设备存档的AI主判断，再次问同一标的时AI会主动对账"
+              >
+                📋账本({ledgerEntries.length})
+              </button>
               {showGurus &&
                 GURU_STYLES.map((s) => (
                   <button
@@ -864,6 +878,36 @@ export default function ChatPage() {
             </div>
           </div>
         </div>
+
+        {showLedger && (
+          <div className="mx-auto mt-3 w-full max-w-3xl rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold">判断账本（本设备存档的AI主判断）</span>
+              {ledgerEntries.length > 0 && (
+                <button
+                  onClick={() => { clearLedger(); setLedgerEntries([]); }}
+                  className="text-[var(--text-secondary)] underline hover:text-[var(--text)]"
+                >
+                  清空
+                </button>
+              )}
+            </div>
+            {ledgerEntries.length === 0 ? (
+              <p className="mt-2 text-[var(--text-secondary)]">暂无记账。AI给出主判断时自动存档（90天），再次问同一标的会主动对账。</p>
+            ) : (
+              <ul className="mt-2 space-y-1.5">
+                {[...ledgerEntries].reverse().map((e, i) => (
+                  <li key={`${e.ts}-${i}`} className="border-l-2 border-[var(--primary)]/40 pl-2">
+                    <span className="font-medium">{e.date} {e.symbol}</span>：立场={e.stance}
+                    {e.keyLevel ? <> | 关键位={e.keyLevel}</> : null}
+                    {e.invalidation ? <> | 失效={e.invalidation}</> : null}
+                    {e.confidence ? <> | 信心度={e.confidence}</> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {showHistory ? (
           <div className="mx-auto mt-4 max-h-64 max-w-3xl overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">

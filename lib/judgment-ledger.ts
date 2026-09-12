@@ -84,3 +84,13 @@ export function pruneLedger(entries: LedgerEntry[]): LedgerEntry[] {
   const fresh = entries.filter((e) => e && typeof e.ts === "number" && e.ts >= cutoff);
   return fresh.slice(-MAX_ENTRIES);
 }
+
+/** 清空账本（账本UI的清空按钮） */
+export function clearLedger(): void {
+  if (!isBrowser()) return;
+  try {
+    window.localStorage.removeItem(LEDGER_KEY);
+  } catch {
+    // localStorage满/禁用：静默（账本是增强不是依赖）
+  }
+}

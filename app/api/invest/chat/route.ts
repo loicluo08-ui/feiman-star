@@ -14,6 +14,7 @@ import { isOptionQuery, fetchOptionContext, buildOptionBlock } from "@/lib/optio
 import { buildNewsContext } from "@/lib/news-context";
 import { buildEarningsContext } from "@/lib/chat-earnings-context";
 import { DELIBERATION_BLOCK } from "@/lib/chat-deliberation";
+import { CASE_LIBRARY_BLOCK } from "@/lib/case-library";
 import { ACTION_PLAN_BLOCK } from "@/lib/chat-action-plan";
 import { PLAN_LIFECYCLE_BLOCK } from "@/lib/chat-plan-lifecycle";
 import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
@@ -181,6 +182,7 @@ export async function POST(request: NextRequest) {
     "14. 技术位/价格位数字必须有来源：支撑压力位/目标价/加仓减仓触发价，要么带[数据]（注入锚点直接引用，如近1月低点$410.12），要么带[推导]（标明推导逻辑，如跌破3月前价$41.64后下一参照位=52周低$X）。无来源支撑的点位（凭空生成的平台/支撑位）严禁输出——宁可写「该价位无数据支撑，无法给出」。",
     DELIBERATION_BLOCK,
     DELIBERATION_ENHANCEMENT,
+    CASE_LIBRARY_BLOCK,
     ACTION_PLAN_BLOCK,
     PLAN_LIFECYCLE_BLOCK,
     "25. 失效条件预注册（压力测试）：深度档结论在结尾（行动计划之后）用1-2句声明——本结论最依赖哪个假设？该假设被什么数据支撑？假设崩塌时结论如何变化（如\"本判断最依赖'资本开支周期未逆转'，若下周财报指引下修则立场失效\"）。与规则18的芒格逆向互补：逆向列反方论据，这里预注册可证伪条件。简洁档可省。",
@@ -554,26 +556,27 @@ export async function POST(request: NextRequest) {
                 }
                 return null;
               };
-              const verify = (e: LedgerRow): string => {
+              const verify = (e: LedgerRow): { state: "triggered" | "safe" | "unknown"; text: string } => {
                 const q = matchQuote(e.symbol);
-                if (!q || q.price == null) return "本轮未注入该标的行情，无法自动核验";
+                if (!q || q.price == null) return { state: "unknown", text: "本轮未注入该标的行情，无法自动核验" };
                 const text = e.invalidation || "";
                 const nums = text.match(/\d+(?:\.\d+)?/g);
-                if (!text || !nums || nums.length === 0) return `现价${q.price}，无失效价位记录，不机械核验`;
+                if (!text || !nums || nums.length === 0) return { state: "unknown", text: `现价${q.price}，无失效价位记录，不机械核验` };
                 const level = parseFloat(nums[0]);
                 if (TRIG_DOWN_RE.test(text)) {
                   return q.price < level
-                    ? `失效条件已触发（现价${q.price} < 失效位${level}）——立场失效，必须按规则28翻转处理`
-                    : `失效未触发（现价${q.price} ≥ 失效位${level}）`;
+                    ? { state: "triggered", text: `失效条件已触发（现价${q.price} < 失效位${level}）——立场失效，必须按规则28翻转处理` }
+                    : { state: "safe", text: `失效未触发（现价${q.price} ≥ 失效位${level}）` };
                 }
                 if (TRIG_UP_RE.test(text)) {
                   return q.price > level
-                    ? `失效条件已触发（现价${q.price} > 失效位${level}）——立场失效，必须按规则28翻转处理`
-                    : `失效未触发（现价${q.price} ≤ 失效位${level}）`;
+                    ? { state: "triggered", text: `失效条件已触发（现价${q.price} > 失效位${level}）——立场失效，必须按规则28翻转处理` }
+                    : { state: "safe", text: `失效未触发（现价${q.price} ≤ 失效位${level}）` };
                 }
-                return `现价${q.price}，失效条件无方向词（跌破/突破类），系统不判向，由AI对照数据自行核验`;
+                return { state: "unknown", text: `现价${q.price}，失效条件无方向词（跌破/突破类），系统不判向，由AI对照数据自行核验` };
               };
-              const lines: string[] = [];
+              type VRow = { core: string; v: ReturnType<typeof verify>; isLatest: boolean; symbol: string; stance: string; date: string };
+              const all: VRow[] = [];
               bySymbol.forEach((rows) => {
                 const recent = rows.slice(-2).reverse(); // 最新在前，最多2条轨迹
                 for (let i = 0; i < recent.length; i++) {
@@ -583,11 +586,21 @@ export async function POST(request: NextRequest) {
                     + (e.keyLevel ? ` | 关键位=${e.keyLevel}` : "")
                     + (e.invalidation ? ` | 失效条件=${e.invalidation}` : "")
                     + (e.confidence ? ` | 信心度=${e.confidence}` : "");
-                  lines.push(i === 0 ? `${core} → 核验：${verify(e)}` : core);
+                  const v = i === 0 ? verify(e) : { state: "unknown" as const, text: "（历史轨迹，不核验）" };
+                  all.push({ core, v, isLatest: i === 0, symbol: e.symbol, stance: e.stance, date: e.date });
                 }
               });
+              // 主动结算：已触发的判断置顶（管家式播报的素材），其余按原序
+              const triggered = all.filter((r) => r.v.state === "triggered");
+              const rest = all.filter((r) => r.v.state !== "triggered");
+              const lines: string[] = [];
+              for (const r of triggered) lines.push(`${r.core} → 核验：⚠️${r.v.text}`);
+              for (const r of rest) lines.push(r.isLatest ? `${r.core} → 核验：${r.v.text}` : r.core);
+              const triggeredTop = triggered.length > 0 && triggered[0].isLatest ? `${triggered[0].symbol}（${triggered[0].stance}，${triggered[0].date}）` : "";
+              const triggeredNote = triggeredTop ? `\n（⚠️存在已触发判断：${triggeredTop}——无论用户本轮问什么，回答末尾须加一行【账务提醒】播报该判断失效及归因提示，1句即可）` : "";
               return "【历史判断记账】（此前对话中AI给出的主判断存档，同标的展示最近2次轨迹；核验=系统用注入行情现价对失效条件的机械判定）\n"
                 + lines.join("\n")
+                + triggeredNote
                 + "\n（规则28生效：本轮问题涉及上述标的时，必须先出对账段——对账必须引用核验状态，核验显示「已触发」时禁止维持原立场）";
             })() }] : []),
           ...(turnMessage ? [turnMessage] : []),

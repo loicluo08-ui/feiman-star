@@ -47,7 +47,7 @@ def run_question(q):
     req = urllib.request.Request(
         f"{BASE_URL}/api/invest/chat",
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "User-Agent": "fx-qa/1.0"},
         method="POST",
     )
     t0 = time.time()
