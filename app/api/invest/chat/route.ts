@@ -854,12 +854,6 @@ export async function POST(request: NextRequest) {
         if (isContextOverflow && !retryAfterOverflow) {
           console.warn("[invest/chat] context overflow→自动降级重试（摘要替代历史）");
           retryAfterOverflow = true;
-          // 预触发摘要压缩（fire-and-forget，服务端预压缩下轮生效）
-          fetch(new URL("/api/invest/chat-summarize", request.url), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages: [] }),
-          }).catch(() => {});
           send({ type: "chunk", text: "\n\n---\n\n⚠️ 本轮上下文达到长度上限。历史记忆已自动压缩——请重发刚才的问题，我将带着完整记忆继续（无需开新对话）。" });
           send({ type: "done" });
           return;
