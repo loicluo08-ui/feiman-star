@@ -4,8 +4,11 @@
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 // 兼容两代变量名：主站8/9配的是SERVICE_ROLE_KEY，新规范名SERVICE_KEY——取其一即可
-const SUPABASE_KEY =
-  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+// 防御清理：粘贴值可能混入中文标点（实测顿号U+3001致fetch ByteString错）
+const cleanKey = (v: string) => v.replace(/[^\x20-\x7E]/g, "").trim();
+const SUPABASE_KEY = cleanKey(
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+);
 
 export function supabaseConfigured(): boolean {
   return !!(SUPABASE_URL && SUPABASE_KEY);
