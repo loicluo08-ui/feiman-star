@@ -1051,14 +1051,17 @@ export default function ChatPage() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto max-w-3xl space-y-4">
+          <div className="mx-auto max-w-3xl space-y-7">
             {messages.map((m, i) => (
-              <div key={i} className={`msg-in ${m.role === "user" ? "flex justify-end" : "flex justify-start"}`}>
+              <div key={i} className={`msg-in ${m.role === "user" ? "flex justify-end" : "flex items-start gap-3"}`}>
+                {m.role === "assistant" ? (
+                  <div aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-[var(--primary)] text-[13px] font-semibold text-[var(--primary-foreground)]">星</div>
+                ) : null}
                 <div
                   className={
                     m.role === "user"
-                      ? "max-w-[85%] rounded-2xl bg-[var(--primary)] px-4 py-2.5 text-sm text-[var(--primary-foreground)]"
-                      : "max-w-[85%] rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--text)]"
+                      ? "max-w-[85%] rounded-2xl bg-[var(--surface-muted)] px-4 py-2.5 text-[15px] leading-6 text-[var(--text)]"
+                      : "min-w-0 flex-1 text-[15px] leading-7 text-[var(--text)]"
                   }
                 >
                   {m.imagePreviews?.length ? (

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type VisionMessage } from "@/lib/ai";
+import { callAI, callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type VisionMessage } from "@/lib/ai";
 import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
 import { buildSourcePool, verifySourceLabels } from "@/lib/source-integrity";
 import { selectKBForQuestion } from "@/lib/kb-router";
@@ -1012,6 +1012,32 @@ export async function POST(request: NextRequest) {
           send({ type: "status", text: promiseGuard.cleaned ? `⚠️ 承诺语拦截：移除${promiseGuard.flags.length}处` : "✓ 承诺语拦截：0处" });
         } catch (error) {
           console.error("[invest/chat] promise_guard_error", error);
+        }
+
+        // P2④记账行截断保护：推理链让内容变长，8192上限可能吃掉结尾记账行——账本断粮=判断追踪失明。
+        // 检测：正文有核心判断但缺记账标记→服务端发起补充调用（30s轻调用）单独生成记账行
+        if (fullText.includes("核心判断") && !fullText.includes("【判断记账】")) {
+          try {
+            const ledgerResp = await callAI(
+              [
+                ...streamMessages,
+                {
+                  role: "user" as const,
+                  content:
+                    "基于你上面的分析，只输出一行判断记账，严格遵守格式，不输出任何其他内容：\n【判断记账】标的=代码(中文名) | 立场=看多/看空/中性(信心度X%) | 关键位=价格 | 失效条件=价格条件(可观测) | 依据=20字内",
+                },
+              ],
+              { timeout: 30_000 }
+            );
+            if (ledgerResp && ledgerResp.includes("【判断记账】")) {
+              const line = "\n\n" + ledgerResp.trim();
+              send({ type: "chunk", text: line });
+              fullText += line;
+              send({ type: "status", text: "✓ 判断记账已补录" });
+            }
+          } catch {
+            // 补录失败不阻塞done
+          }
         }
 
         // P2①对话日志入库（评测/反思原料）——done前同步写，失败静默不阻塞

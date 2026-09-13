@@ -68,7 +68,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Prop
           hr: ({ node, ...props }) => <hr className="my-4 border-t border-[var(--border)]" {...props} />,
           table: ({ node, ...props }) => (
             <div className="my-3 overflow-x-auto">
-              <table className="w-full border-collapse text-sm" {...props} />
+              <table className="w-full border-collapse text-[13.5px] leading-6" {...props} />
             </div>
           ),
           th: ({ node, ...props }) => (
@@ -78,7 +78,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Prop
             <td className="border border-[var(--border)] px-3 py-2" {...props} />
           ),
           blockquote: ({ node, ...props }) => (
-            <blockquote className="my-3 border-l-4 border-[var(--border-strong)] bg-[var(--surface-subtle)] py-2 pl-4 pr-3 text-sm text-[var(--text-secondary)]" {...props} />
+            <blockquote className="my-3 border-l-2 border-[var(--border-strong)] py-1 pl-3.5 text-[15px] text-[var(--text-secondary)]" {...props} />
           ),
         }}
       >
