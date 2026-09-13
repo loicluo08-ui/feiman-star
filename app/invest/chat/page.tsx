@@ -1083,7 +1083,7 @@ export default function ChatPage() {
         ) : (
           <div className="mx-auto max-w-3xl space-y-7 px-4 sm:px-0">
             {messages.map((m, i) => (
-              <div key={i} className={`msg-in ${m.role === "user" ? "flex justify-end" : "flex items-start gap-3"}`}>
+              <div key={i} className={`msg-in group/msg ${m.role === "user" ? "mt-8 flex justify-end" : "mt-4 flex items-start gap-3"}`}>
                 {m.role === "assistant" ? (
                   <div aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-[var(--primary)] text-[13px] font-semibold text-[var(--primary-foreground)]">星</div>
                 ) : null}
@@ -1123,13 +1123,29 @@ export default function ChatPage() {
                         <>
                           <MarkdownRenderer content={m.text} />
                           <div className="mt-2 flex items-center gap-3">
-                            <button
-                              onClick={() => void copyAnswer(m.text, i)}
-                              className="text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--text)]"
-                              aria-label="复制本条AI回答"
-                            >
-                              {copiedIndex === i ? "已复制 ✓" : "复制"}
-                            </button>
+                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 max-sm:opacity-100">
+                              <button
+                                onClick={() => void copyAnswer(m.text, i)}
+                                className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
+                                aria-label="复制本条AI回答"
+                                title="复制"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                              </button>
+                              {i === messages.length - 1 && !loading ? (
+                                <button
+                                  onClick={() => {
+                                    const lastUser = [...messages.slice(0, i)].reverse().find((x) => x.role === "user");
+                                    if (lastUser) void sendChat(lastUser.text, [], messages.slice(0, messages.indexOf(lastUser)));
+                                  }}
+                                  className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
+                                  aria-label="重新生成本条回答"
+                                  title="重新生成"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+                                </button>
+                              ) : null}
+                            </div>
                             {/* 截断/停止/中断的一键续写：后端规则12支持"继续"从断点续写，
                                 只提示打字门槛高——按钮直接发"继续"，baseMessages带完整上下文 */}
                             {!loading

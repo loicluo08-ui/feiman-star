@@ -152,3 +152,10 @@ textarea::placeholder {
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
 }
+
+/* ===== 9/13全局质感细节（ChatGPT/Grok式） ===== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+::selection { background: rgb(125 125 135 / 28%); }
