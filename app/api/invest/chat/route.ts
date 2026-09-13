@@ -22,6 +22,7 @@ import { ACTION_PLAN_BLOCK } from "@/lib/chat-action-plan";
 import { PLAN_LIFECYCLE_BLOCK } from "@/lib/chat-plan-lifecycle";
 import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
 import { CHAT_QUALITY_BLOCK } from "@/lib/chat-quality";
+import { QUALITY_GATE_BLOCK } from "@/lib/quality-gate-block";
 import { verifyNumbers } from "@/lib/number-verify";
 import { guardPromises } from "@/lib/promise-guard";
 import { extractSnapshot, snapshotsToBlock, isChallenge, CHALLENGE_GUARD_BLOCK } from "@/lib/conclusion-snapshot";
@@ -204,6 +205,8 @@ export async function POST(request: NextRequest) {
     CROSS_VALIDATION_BLOCK,
     BASE_SKILLS,
     CHAT_QUALITY_BLOCK,
+    // 9/13阶段1.3质量门硬规则（D队6门+A队misuse+B队言行审计压缩入栈，QG系列独立编号防撞号；全档位注入，短问膨胀由L0长度判据监控）
+    QUALITY_GATE_BLOCK,
     "",
     "<knowledge_base>",
     kbSelection.kb,
