@@ -6,6 +6,7 @@
 import { fetchOptionContext, buildOptionBlock } from "@/lib/option-context";
 import { fetchMacroContext } from "@/lib/macro-context";
 import { getFlashFeed } from "@/lib/flash-source";
+import { fetchStockData } from "@/lib/stock-context";
 
 // ——— 腾讯行情（latin1解码足够：价格字段纯ASCII，中文乱码不影响解析）——
 const NAME_TO_TENCENT: Record<string, string> = {
@@ -97,6 +98,21 @@ async function toolMacro(): Promise<string> {
   return "工具结果：宏观锚数据。\n" + (block || "宏观数据暂不可用（10Y/美元指数源超时）。");
 }
 
+// Phase 2：Finnhub财务快照（复用fetchStockData的financialLine）
+async function toolFinancials(rawSymbol: string): Promise<string> {
+  const sym = toTencentSymbol(rawSymbol);
+  if (!sym) return `工具结果：无法识别标的「${rawSymbol}」。`;
+  const code = sym.replace(/^us/, "");
+  try {
+    const rows = await fetchStockData([code]);
+    const line = rows && rows[0] ? rows[0].financialLine : null;
+    if (!line) return `工具结果：${code} 财务快照不可用（Finnhub无数据或key缺失）。`;
+    return `工具结果：${code} 财务快照（Finnhub）。\n${line}`;
+  } catch {
+    return `工具结果：${code} 财务数据查询失败。`;
+  }
+}
+
 // ——— 工具Schema（OpenAI function calling格式，DeepSeek兼容）———
 const TOOLS = [
   {
@@ -147,6 +163,20 @@ const TOOLS = [
       name: "query_macro",
       description: "查询宏观锚数据：10Y美债收益率、美元指数及近5日变化。涉及利率/流动性/大盘环境时查。",
       parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "query_financials",
+      description: "查询美股财务快照：公司简介/行业细分/关键财务指标（毛利率/ROE/营收增长等，Finnhub）。基本面深挖/同行对比时查。",
+      parameters: {
+        type: "object",
+        properties: {
+          symbol: { type: "string", description: "美股代码（如NVDA）" },
+        },
+        required: ["symbol"],
+      },
     },
   },
 ] as const;
@@ -253,6 +283,9 @@ export async function runAgentDataCollection(
     } else if (tc.name === "query_macro") {
       emitStatus("正在获取宏观锚数据…");
       result = await toolMacro();
+    } else if (tc.name === "query_financials") {
+      emitStatus(`正在获取 ${arg.symbol || ""} 财务快照…`);
+      result = await toolFinancials(arg.symbol || "");
     } else {
       result = `工具结果：未知工具 ${tc.name}`;
     }
@@ -261,6 +294,58 @@ export async function runAgentDataCollection(
     toolMsgs.push({ role: "tool", tool_call_id: tc.id, content: result.slice(0, 2600) });
   }
 
-  // Phase 1简化：单轮工具决策。二次补充轮留Phase 2（成本护栏）
+  // —— Phase 2：二次补充轮 ——（硬护栏：最多两轮，轮数即成本；补充上限2个调用）
+  if (out.toolsUsed.length > 0 && out.toolsUsed.length < 5) {
+    try {
+      const second = await callAITools(
+        [
+          ...decideMessages,
+          ...toolMsgs,
+          {
+            role: "user",
+            content:
+              "以上是刚获取的工具结果。判断：要高质量回答用户的问题，数据是否还有关键缺口（如同行对比缺对手行情、估值判断缺财务指标、结论依赖的事件缺快讯佐证）？有则调用工具补齐（最多2个调用），没有则只回复NO_TOOLS。",
+          },
+        ],
+        true
+      );
+      if (second.toolCalls && second.toolCalls.length > 0) {
+        const limit2 = Math.min(second.toolCalls.length, 2);
+        for (let i = 0; i < limit2; i++) {
+          const tc = second.toolCalls[i];
+          let arg: Record<string, string> = {};
+          try {
+            arg = JSON.parse(tc.args || "{}") as Record<string, string>;
+          } catch {
+            arg = {};
+          }
+          let result = "";
+          if (tc.name === "query_quote") {
+            emitStatus(`补充查询 ${arg.symbol || ""} 行情…`);
+            result = await toolQuote(arg.symbol || "");
+          } else if (tc.name === "query_option_chain") {
+            emitStatus(`补充查询 ${arg.symbol || ""} 期权链…`);
+            result = await toolOptionChain(arg.symbol || "");
+          } else if (tc.name === "search_news") {
+            emitStatus(`补充搜索「${arg.keyword || ""}」…`);
+            result = await toolNews(arg.keyword || "");
+          } else if (tc.name === "query_financials") {
+            emitStatus(`补充查询 ${arg.symbol || ""} 财务快照…`);
+            result = await toolFinancials(arg.symbol || "");
+          } else if (tc.name === "query_macro") {
+            emitStatus("补充查询宏观锚…");
+            result = await toolMacro();
+          } else {
+            result = `工具结果：未知工具 ${tc.name}`;
+          }
+          out.blocks.push(result.slice(0, 2600));
+          out.toolsUsed.push(tc.name);
+        }
+      }
+    } catch (e) {
+      console.log("[agent] 二次补充轮失败（不影响主流程）:", e instanceof Error ? e.message : e);
+    }
+  }
+
   return out;
 }
