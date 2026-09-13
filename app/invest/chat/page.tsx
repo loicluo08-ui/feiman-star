@@ -225,6 +225,7 @@ export default function ChatPage() {
   // 用户看到的是"过程感"（注入行情→注入快讯→生成中）而不是单行覆盖
   const [statusSteps, setStatusSteps] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState(-1);
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
   // 长对话滚动摘要（窗口外记忆）：会话级状态，随历史持久化
   const summaryRef = useRef("");
   const lastSummarizedCountRef = useRef(0); // 上次摘要时窗口外消息条数（每溢出4条重摘要）
@@ -800,10 +801,10 @@ export default function ChatPage() {
   return (
     <div className="flex h-[calc(100dvh-3rem)] flex-col md:h-screen">
       {/* Header */}
-      <header className="border-b border-[var(--border)] px-5 py-4">
+      <header className="px-5 pb-6 pt-7 sm:px-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-lg font-semibold">投资对话 · 支持截图分析</h1>
+            <h1 className="text-xl font-bold tracking-tight">投资对话</h1>
             <p className="mt-0.5 text-xs text-[var(--text-muted)]">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek（自动注入实时行情与最新快讯）。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1151,34 +1152,38 @@ export default function ChatPage() {
                       <div className="whitespace-pre-wrap leading-6">{m.text}</div>
                     )
                   ) : loading && i === messages.length - 1 ? (
-                    /* 思考期（首字前）：步骤栈逐条点亮——注入进度可见，不再是黑盒"思考中" */
-                    <div className="space-y-1.5 py-0.5 text-sm">
+                    /* 思考期（首字前）：折叠式思维链——shimmer标题+默认收起只显最新一条，可展开全部（o1式） */
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2">
+                      <button
+                        onClick={() => setThinkingExpanded((v) => !v)}
+                        className="flex w-full items-center gap-2 text-left text-sm"
+                      >
+                        <span className="shimmer-text font-medium">✦ 深度思考中</span>
+                        <span className="ml-auto text-xs text-[var(--text-muted)]">
+                          {statusSteps.length > 0 ? (thinkingExpanded ? "收起" : `${statusSteps.length} 条过程`) : ""}
+                        </span>
+                      </button>
                       {statusSteps.length === 0 ? (
-                        <div className="flex items-center gap-1 text-[var(--text-muted)]">
-                          <span className="inline-block h-4 w-0.5 animate-pulse bg-[var(--text)]" />
-                          思考中…
-                        </div>
+                        <div className="mt-1 text-xs text-[var(--text-muted)]">正在整理注入数据…</div>
                       ) : (
-                        statusSteps.map((step, idx) => {
-                          const isLatest = idx === statusSteps.length - 1;
-                          return (
-                            <div
-                              key={`${idx}-${step}`}
-                              className={
-                                isLatest
-                                  ? "flex items-center gap-1.5 text-[var(--text)]"
-                                  : "flex items-center gap-1.5 text-[var(--text-muted)]"
-                              }
-                            >
-                              {isLatest ? (
-                                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--primary)]" />
-                              ) : (
-                                <span className="inline-block text-xs text-[var(--text-muted)]">✓</span>
-                              )}
-                              {step}
-                            </div>
-                          );
-                        })
+                        <div className={thinkingExpanded ? "mt-2 space-y-1.5" : "mt-1.5"}>
+                          {(thinkingExpanded ? statusSteps : statusSteps.slice(-1)).map((step, idx, arr) => {
+                            const isLatest = idx === arr.length - 1;
+                            return (
+                              <div
+                                key={`${idx}-${step}`}
+                                className={isLatest ? "flex items-start gap-1.5 text-[var(--text)]" : "flex items-start gap-1.5 text-[var(--text-muted)]"}
+                              >
+                                {isLatest && !thinkingExpanded ? (
+                                  <span className="mt-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--primary)]" />
+                                ) : (
+                                  <span className="mt-0.5 text-xs text-[var(--text-muted)]">✓</span>
+                                )}
+                                <span className="min-w-0">{step}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   ) : null}
@@ -1253,11 +1258,11 @@ export default function ChatPage() {
               <span className="self-center px-1 text-xs text-[var(--text-muted)]">{images.length}/3</span>
             </div>
           ) : null}
-          <div className="flex gap-2.5">
+          <div className="flex items-end gap-1.5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-2 shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-all focus-within:border-[var(--border-strong)] focus-within:shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={images.length >= 3}
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[var(--border-strong)] transition-colors hover:border-[var(--text)]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
               title={images.length >= 3 ? "最多上传3张图片" : "上传截图（最多3张）"}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1286,15 +1291,15 @@ export default function ChatPage() {
               rows={1}
               maxLength={4000}
               placeholder="输入问题，或粘贴/上传截图让AI分析…（Enter发送，Shift+Enter换行）"
-              className="min-h-12 flex-1 resize-none self-center overflow-y-auto rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-4 py-3 text-[15px] leading-6 outline-none transition-all focus:border-[var(--text)] focus:ring-2 focus:ring-[var(--border-strong)]/40"
+              className="min-h-11 flex-1 resize-none self-center overflow-y-auto bg-transparent px-2 py-2.5 text-[15px] leading-6 outline-none"
             />
             <button
               onClick={loading ? stopGeneration : submit}
               disabled={!loading && !question.trim() && images.length === 0}
               className={
                 loading
-                  ? "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] text-[var(--text)] transition-opacity hover:opacity-80"
-                  : "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+                  ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--text)] transition-opacity hover:opacity-80"
+                  : "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
               }
               title={loading ? "停止生成" : "发送"}
             >
