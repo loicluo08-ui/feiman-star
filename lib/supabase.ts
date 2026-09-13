@@ -50,6 +50,7 @@ export interface KbDynamicRow {
   source: string;
   created: string;
   expires?: string | null;
+  embedding?: string | null; // pgvector文本形态（语义检索用）
 }
 
 export async function upsertKbEntries(rows: KbDynamicRow[]): Promise<boolean> {

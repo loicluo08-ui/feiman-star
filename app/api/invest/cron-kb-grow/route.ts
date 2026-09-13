@@ -51,7 +51,28 @@ export async function GET(request: NextRequest) {
     }
     const { merged, added } = mergeEntries(entries, fresh);
     if (JSON.stringify(merged) === JSON.stringify(entries)) {
-      return NextResponse.json({ ok: true, changed: false, total: entries.length });
+      // 无新数据也要补向量化（存量条目embedding为空的补齐——语义检索底座完整化）
+      let backfilled = 0;
+      try {
+        const { readKbEntries, updateKbEmbedding } = await import("@/lib/supabase");
+        const { embedTexts } = await import("@/lib/kb-embedding");
+        if (process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)) {
+          const rows = await readKbEntries(200);
+          const emptyRows = (rows || []).filter((r) => !r.embedding);
+          if (emptyRows.length > 0) {
+            const vectors = await embedTexts(emptyRows.map((r) => r.content));
+            if (vectors) {
+              for (let i = 0; i < emptyRows.length; i++) {
+                await updateKbEmbedding(emptyRows[i].id, vectors[i]);
+                backfilled += 1;
+              }
+            }
+          }
+        }
+      } catch {
+        // 补向量化失败静默
+      }
+      return NextResponse.json({ ok: true, changed: false, total: entries.length, embed_backfill: backfilled });
     }
     // 主写：Supabase（读路径主源，无GitHub token也全功能）
     const { upsertKbEntries, updateKbEmbedding } = await import("@/lib/supabase");
