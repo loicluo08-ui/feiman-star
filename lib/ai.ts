@@ -102,7 +102,8 @@ export async function callAI(
   if (!consumeAIBudget("callAI")) return null;
 
   const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
-  const model = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
+  // 2026-09-13官方核验：deepseek-v4-flash旧名对应模型已退役（请求由V4.1-Flash代服），默认值切换到正式名deepseek-flash（1M上下文）
+  const model = process.env.DEEPSEEK_MODEL || "deepseek-flash";
   const maxRetries = options.retry ?? 1;
   let timedOut = false;
 
@@ -330,7 +331,8 @@ export async function* callAIStream(
   if (!consumeAIBudget("callAIStream")) return;
 
   const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
-  const defaultModel = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
+  // 2026-09-13官方核验：切换正式名deepseek-flash（旧名deepseek-v4-flash仍被V4.1-Flash代服，env残留旧值不断供）
+  const defaultModel = process.env.DEEPSEEK_MODEL || "deepseek-flash";
   const requestedModel = options.model?.trim() || defaultModel;
   // 深度模式（thinking enabled）TTFB含思维链生成（可达30-60s），timeout上限放宽到115s（Vercel maxDuration 120内留5s收尾）
   const timeoutMs = Math.max(1_000, Math.min(options.timeout ?? 60_000, 115_000));
