@@ -28,8 +28,8 @@ export type CallAIOptions = {
   model?: string;
   /** 思考模式开关（默认disabled=现状）。enabled时API忽略temperature（官方文档行为，不报错） */
   thinking?: "enabled" | "disabled";
-  /** 思考强度low/high/max（仅thinking:enabled时生效，API默认high） */
-  reasoning_effort?: "low" | "high" | "max";
+  /** 思考强度low/medium/high/max（仅thinking:enabled时生效，API默认high）。medium=9/13档位中间档 */
+  reasoning_effort?: "low" | "medium" | "high" | "max";
 };
 
 export class AIRequestError extends Error {

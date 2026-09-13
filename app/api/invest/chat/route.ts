@@ -20,6 +20,7 @@ import { DELIBERATION_BLOCK } from "@/lib/chat-deliberation";
 import { buildCaseLibraryBlock } from "@/lib/case-library";
 import { buildQuoteGuardBlock, buildDivergenceBlock } from "@/lib/master-intel";
 import { buildQuoteLibraryBlock } from "@/lib/quote-library";
+import { runParallelDeliberation } from "@/lib/parallel-deliberation";
 import { ACTION_PLAN_BLOCK } from "@/lib/chat-action-plan";
 import { PLAN_LIFECYCLE_BLOCK } from "@/lib/chat-plan-lifecycle";
 import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
@@ -60,6 +61,8 @@ const messageSchema = z.object({
 const requestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(20),
   style: z.enum(CHAT_STYLES).optional().default("balanced"),
+  // 9/13阶段3：C档并行会诊开关（实验态）——true时深度/blend题走3视角并行→融合仲裁（E队方案三）
+  parallel: z.boolean().optional().default(false),
   // 9/12判断记账（跨会话判断追踪）：前端localStorage存档的历史主判断，结构化传回做回访对账
   historyLedger: z
     .array(
@@ -108,6 +111,8 @@ export async function POST(request: NextRequest) {
   }
 
   const messages = input.data.messages;
+  // C档实验态：parallel=true且blend档（深度旗舰主战场）——触发并行会诊
+  const parallelMode = input.data.parallel === true && input.data.style === "blend";
   const historyLedger = input.data.historyLedger ?? [];
   const imageMessages = messages.filter((message) => message.content.type === "image");
   const hasOversizedImage = imageMessages.some(
@@ -601,6 +606,44 @@ export async function POST(request: NextRequest) {
           /分析|估值|对比|期权|计划|拆解|全面|持仓|加仓|减仓|买卖|怎么看|该不该|备兑|行权/.test(
             lastUserText || trimmedQuestion || ""
           );
+        // 9/13阶段3 C档并行会诊（实验态）：parallelMode时先注入注入数据，3视角并行→融合仲裁→替换全文
+        if (parallelMode && isAgentQuestion) {
+          try {
+            send({ type: "status", text: "⚡ C档并行会诊启动：3视角独立分析（基本面/质疑者/周期情绪）" });
+            // 上下文：注入数据（行情/快讯等）+轻量system+历史+当前问题（finalSystemPrompt太大，compact滤除逻辑在lib内做）
+            const delib = await runParallelDeliberation(
+              [
+                ...(injectedContext ? [{ role: "system" as const, content: injectedContext.slice(0, 8000) }] : []),
+                ...historyMessages,
+                { role: "user" as const, content: lastUserText || trimmedQuestion || "" },
+              ],
+              lastUserText || trimmedQuestion || "",
+              (text: string) => send({ type: "status", text }),
+            );
+            if (!delib) throw new Error("deliberation_failed");
+            const delibText = [
+              "【C档并行会诊】（3视角独立分析→融合裁决，视角间互不可见）",
+              "",
+              ...delib.perspectives.map(p => `◆ ${p.name}：${p.stance}`),
+              "",
+              "═══ 融合裁决 ═══",
+              delib.synthesis,
+              "",
+              `（分歧度=${delib.dissent_level}${delib.arbitrator_used ? "，异构裁判已介入" : ""}）`,
+              "",
+              "【判断记账】标的=（见上文分析） | 立场=见融合裁决 | 关键位=见行动分支 | 失效=见各视角失效条件 | 信心度=见裁决表述",
+            ].join("\n");
+            fullText = delibText;
+            send({ type: "patch", text: fullText });
+            send({ type: "chunk", text: "\n\n---\n\n⚠️ C档会诊为实验特性：结论已按ACH淘汰式合成，各视角独立结论在上文保留供审计。" });
+            send({ type: "done" });
+            return;
+          } catch (error) {
+            console.error("[invest/chat] parallel_deliberation_error", error);
+            send({ type: "status", text: "⚠️ 并行会诊异常，回退常规路径" });
+            /* 回退常规blend路径 */
+          }
+        }
         if (isAgentQuestion) {
           try {
             const agentResult = await runAgentDataCollection(
@@ -762,10 +805,9 @@ export async function POST(request: NextRequest) {
                 ? { model: "deepseek-v4-flash", thinking: "enabled" as const, reasoning_effort: "high" as const, timeout: 280_000 }
                 : deepThinking
                   // 详细类问题开flash思维链：推理深度升档，成本仅输出3x；ladder保证被拒时自动退回无思考
-                  // 9/12根因修复：110s是blend截断真凶——timeout=总时长硬顶（含thinking全程），
-                  // blend深度题thinking 4.5-7min必被abort掐流→fullText空→智谱兜底686字"伪装完整"。
-                  // 280s对齐maxDuration=300s窗口（留收尾余量），pro+flash思维链统一
-                  ? { thinking: "enabled" as const, reasoning_effort: "high" as const, timeout: 280_000 }
+                  // 9/13推理链回归修复：1a数据消费率让thinking暴涨（逐点消费自查）挤占答案预算→615字截断。
+                  // effort降medium：深度已由正文推理链结构承担，thinking回归"整理素材"职责
+                  ? { thinking: "enabled" as const, reasoning_effort: "medium" as const, timeout: 280_000 }
                   : { timeout: 90_000 }),
               signal: request.signal,
             },
