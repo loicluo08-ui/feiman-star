@@ -520,6 +520,10 @@ export async function POST(request: NextRequest) {
         // 统一放开到DeepSeek API硬上限8192（≈12000+字中文）。长度约束完全交给prompt层指令（规则7/风格管线），
         // 代码层不再做预算截断；finish_reason=length截断提示+"继续"续写机制保留作安全网
         const chatMaxTokens = 8192;
+        // blend总预算分离（9/13 blend短路实验实锤：2/2复现1486/2336字+finish=length，与9/12晚"1008-2353字"同型——
+        // thinking挤占content回归，9/12切flash的缓解被上游行为漂移/新增prompt块（QG+视角≈1300字）重新触发。
+        // 16384给thinking+content各自足够预算；若API拒绝上限，ladder自动降级兜底不炸
+        const blendMaxTokens = 16384;
         // 9/6质量优化（引擎分层）：详细类问题（非blend）同样开启思维链——
         // flash+thinking推理深度显著提升，成本仅输出3x（¥0.03-0.05/轮 vs 无思考¥0.01）；
         // 短问句保持无思考快路径（省钱+快）。blend是pro模型+thinking的天花板档（9/12起token与各档统一8192）
@@ -736,7 +740,7 @@ export async function POST(request: NextRequest) {
             streamMessages,
             {
               temperature: 0.35,
-              max_tokens: chatMaxTokens,
+              max_tokens: isBlend ? blendMaxTokens : chatMaxTokens,
               retry: 1,
               ...(isBlend
                 // 9/12晚实测裁决（逸翔拍板选A）：v4-pro在9/10模型升级后reasoning额度不再独立，
