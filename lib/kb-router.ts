@@ -58,7 +58,9 @@ function moduleNumber(block: KBBlock): number {
 // ——— 路由规则 ———
 
 // 核心集：框架骨架——方法论/五维驱动/标的识别/仓位矩阵/追问清单/交叉验证附录
-const CORE_MODULES = [3, 4, 5, 7, 99];
+// 9/13审计：模块12实战案例库进核心集——它是"怎么下判断"的思维示范，具体性失分的直接补材；
+// 3.9K代价小，任何标准/深度档都该带（此前只靠标的/关键词触发，苹果微软等大票不在正则里=漏注入）
+const CORE_MODULES = [3, 4, 5, 7, 12, 99];
 
 interface RouteRule {
   module: number;
@@ -67,7 +69,8 @@ interface RouteRule {
 
 const ROUTE_RULES: RouteRule[] = [
   // 模块12b：案例库标的匹配——案例涉及的标的问题触发对应案例
-  { module: 12, pattern: /\b(SMR|IONQ|QUBT|QBTS|TSLA|QQQ|ORCL|OKLO|VST|CEG|BWXT|GEV|MARA|MSTR|AEHR|RKLB|MP|UUUU|NVDA|GOOGL|谷歌|英伟达|特斯拉|甲骨文|NuScale)\b/i },
+  // 9/13修复：中文词不能进\b组（JS \w只含ASCII，中文边界永不命中="英伟达"永假）——ASCII代码保留\b防子串误命中，中文词独立交替无边界
+  { module: 12, pattern: /\b(SMR|IONQ|QUBT|QBTS|TSLA|QQQ|ORCL|OKLO|VST|CEG|BWXT|GEV|MARA|MSTR|AEHR|RKLB|MP|UUUU|NVDA|GOOGL|AAPL|MSFT|TSM|AVGO|META|AMZN|NuScale)\b|谷歌|英伟达|特斯拉|甲骨文|苹果|微软|台积电|亚马逊|Meta|博通/i },
   // 模块1：行业估值基准——行业/板块/估值类问题
   { module: 1, pattern: /估值|行业|板块|半导体|芯片|软件|云服务|银行|保险|医药|医疗|石油|能源|公用事业|REITs|必需消费|可选消费|电信|工业|材料|行业基准/i },
   // 模块2：财务指标——财报/指标/基本面
