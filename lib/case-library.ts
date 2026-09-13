@@ -1,15 +1,88 @@
 /**
- * 案例库（公开经典判断案例）——9/12长线计划阶段一·备选路径
- * 背景：罗竹先案例口述渠道未开放（逸翔9/12确认），按计划备选路径先用公开经典案例
- * 填充"案例库"结构——AI分析时做类比引用的素材，解"平庸的正确"（只有框架没有案例语料）。
+ * 案例库（公开经典判断案例）——9/12长线计划阶段一·备选路径，9/13 B队21案扩容
+ * 来源：B队任务12收尾交付（零编造红线/置信级逐案可查），data/case_library_v2.json
+ * 形态：few-shot检索层（E队方案）——按问题标的/大师/情境检索3-6案注入，非全量（21案全量≈5K tokens）。
  * 边界：全部标注"外部经典案例，非罗竹先框架原生"（规则0g框架边界纪律）。
  * 罗竹先案例到位后逐条替换/追加（格式对齐本文件）。
  */
+import caseData from "../data/case_library_v2.json";
 
-export const CASE_LIBRARY_BLOCK = [
-  "",
-  "【经典判断案例库】（外部经典案例，非罗竹先框架原生——引用时标注「外部案例」，用于类比论证而非替代框架判断）",
-  "案例1｜巴菲特1988年买入可口可乐：背景=1987年股灾后市场恐慌未消；反方论据=估值不便宜（15倍PE高于市场均值）、增长看似平庸；判断依据=品牌护城河+全球消费垄断+管理层配置能力，「以合理价格买伟大公司胜过以便宜价格买平庸公司」；结果=13年约10倍。可迁移模式：好公司估值略贵时，时间的朋友是护城河不是折扣——对照模块7档位使用，不作为贵买理由。",
-  "案例2｜利弗莫尔1907年旧金山地震后做空：背景=地震后市场因重建资金预期先反弹；反方论据=灾难后爱国性买入情绪+流动性注入；判断依据=资金真实流向（铁路运力被救灾占用、银行紧缩）与市场情绪背离，「市场永远对，但情绪会先撒谎」；结果=空头大胜。可迁移模式：关键点不是价格位置本身，是价格与资金/情绪共识的背离度——对接利弗莫尔风格的最小阻力线。",
-  "案例3｜段永平2001-2002年买网易：背景=互联网泡沫破裂+财务风波，股价跌破每股净现金（<$1）；反方论据=可能退市、游戏业务未被验证、中概信任危机；判断依据=「这家公司账上现金比市值还多+我懂游戏（做小霸王出身）+丁磊的产品能力」；结果=此后数年获利数十倍（不同离场口径差异大，不精确标倍数）。可迁移模式：极端错杀+能力圈常识的双重确认——不懂的便宜不碰，懂的错杀重仓（对接段永平风格的能力圈纪律）。",
-].join("\n");
+interface CaseRow { id: string; master: string; target: string; year: string; type: string; confidence: string; lesson: string; source_task: string }
+
+const CASES = (caseData as { cases: CaseRow[]; recurrence_triplets: { pattern: string; case: string; chain: string; note: string }[] }).cases;
+const RECURRENCE = (caseData as { recurrence_triplets: { pattern: string; case: string; chain: string; note: string }[] }).recurrence_triplets;
+
+// 保留的原3案（v1手工版——利弗莫尔1907为v2所无）
+const LEGACY_CASES = [
+  "案例｜利弗莫尔1907年旧金山地震后做空：背景=地震后市场因重建资金预期先反弹；反方论据=灾难后爱国性买入情绪+流动性注入；判断依据=资金真实流向（铁路运力被救灾占用、银行紧缩）与市场情绪背离，「市场永远对，但情绪会先撒谎」；结果=空头大胜。可迁移模式：关键点不是价格位置本身，是价格与资金/情绪共识的背离度。",
+];
+
+// 标的/大师/情境 匹配词表
+const TARGET_KEYWORDS: [string, string[]][] = [
+  ["可口可乐", ["可乐", "coca", "ko "]], ["苹果", ["苹果", "aapl", "iphone"]], ["德克斯特", ["德克斯特", "鞋业"]],
+  ["IBM", ["ibm"]], ["康菲石油", ["康菲", "conoco", "cop ", "石油"]], ["航空", ["航空", "达美", "美联航", "四大航"]],
+  ["中石油", ["中石油", "petrochina"]], ["沃尔玛", ["沃尔玛", "walmart", "wmt"]], ["台积电", ["台积电", "tsm"]],
+  ["网易", ["网易", "ntes"]], ["茅台", ["茅台", "moutai"]], ["腾讯", ["腾讯", "tencent"]],
+  ["拼多多", ["拼多多", "pdd"]], ["比亚迪", ["比亚迪", "byd"]], ["阿里", ["阿里", "alibaba", "阿里巴巴"]],
+  ["英镑", ["英镑", "英国", "erm", "英格兰银行"]], ["德州仪器", ["德州仪器", "德仪", "ti "]], ["通用动力", ["通用动力"]],
+  ["硅谷", ["硅谷", "quantum", "量子基金"]], ["信贷", ["信贷", "高收益债", "垃圾债"]], ["covid", ["疫情", "新冠", "covid", "崩盘"]],
+];
+
+const MASTER_KEYWORDS: [string, string[]][] = [
+  ["巴菲特", ["巴菲特", "buffett", "伯克希尔"]], ["芒格", ["芒格", "munger"]], ["段永平", ["段永平", "duan"]],
+  ["马克斯", ["马克斯", "howard marks", "橡树"]], ["索罗斯", ["索罗斯", "soros"]], ["德鲁肯米勒", ["德鲁肯米勒", "druckenmiller"]],
+  ["费雪", ["费雪", "fisher"]], ["利弗莫尔", ["利弗莫尔", "livermore"]],
+];
+
+const CONTEXT_KEYWORDS: [string, string[]][] = [
+  ["失败/认错", ["认错", "失败", "错在", "误判", "犯错", "教训"]],
+  ["卖出/止损", ["卖出", "清仓", "止损", "离场", "减仓", "卖飞"]],
+  ["危机部署", ["危机", "恐慌", "崩盘", "暴跌", "底部", "别人恐惧"]],
+  ["追高/泡沫", ["追高", "泡沫", "狂热", "顶部", "踏空"]],
+  ["建仓/重仓", ["建仓", "重仓", "下注", "买入", "加仓"]],
+];
+
+function scoreCase(c: CaseRow, q: string): number {
+  let s = 0;
+  const ql = q.toLowerCase();
+  // 标的匹配：查询命中某标的关键词 且 案例标的字段含该标的名
+  for (const [name, kws] of TARGET_KEYWORDS) {
+    if (kws.some(k => ql.includes(k)) && c.target.includes(name)) s += 3;
+  }
+  for (const [id, kws] of MASTER_KEYWORDS) if (kws.some(k => ql.includes(k)) && c.master.includes(id)) s += 2;
+  // 情境词与案例类型匹配
+  const type = c.type;
+  if (/失败|认错/.test(q) && /失败|自省/.test(type)) s += 2;
+  if (/卖出|清仓|止损|离场/.test(q) && type.includes("卖出")) s += 3;
+  if (/危机|恐慌|崩盘|暴跌/.test(q) && /危机/.test(type)) s += 3;
+  if (/追高|泡沫|狂热/.test(q) && /追高/.test(type)) s += 3;
+  if (/建仓|重仓|买入|加仓/.test(q) && /建仓|重仓|部署/.test(type)) s += 2;
+  return s;
+}
+
+function fmtCase(c: CaseRow): string {
+  return `【${c.id}】${c.master.replace(/（.*$/, "")}·${c.target}（${c.year}，${c.type}，置信${c.confidence}）：${c.lesson}`;
+}
+
+/** 按问题检索案例（few-shot检索层）——无命中给三范式默认组（建仓/失败/卖出各一） */
+export function buildCaseLibraryBlock(queryText: string): string {
+  const q = (queryText || "").toLowerCase();
+  const scored = CASES.map(c => ({ c, s: scoreCase(c, q) })).sort((a, b) => b.s - a.s);
+  const hit = scored.filter(x => x.s > 0).slice(0, 5);
+  const picked = hit.length >= 3 ? hit : [
+    ...hit,
+    ...scored.filter(x => x.s === 0 && ["B-001", "B-003", "S-001"].includes(x.c.id)).slice(0, 3 - hit.length),
+  ];
+  // 同构重犯：问题涉认错/失败/重犯情境时带出
+  const recLine = /认错|失败|重犯|又错|再犯/.test(q)
+    ? `\n【同构重犯三件套】同一错误模式跨越30年反复——大师也会重犯：${RECURRENCE.map(r => `${r.case}（${r.pattern}：${r.chain}）`).join("；")}`
+    : "";
+  const lines = [
+    "",
+    "【经典判断案例库】（外部经典案例，非罗竹先框架原生——引用时标注「外部案例」与置信级，用于类比论证而非替代框架判断）",
+    ...picked.map(x => fmtCase(x.c)),
+    ...LEGACY_CASES,
+    recLine,
+  ].filter(Boolean);
+  return lines.join("\n");
+}

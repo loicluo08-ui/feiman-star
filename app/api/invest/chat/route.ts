@@ -17,7 +17,7 @@ import { isOptionQuery, fetchOptionContext, buildOptionBlock } from "@/lib/optio
 import { buildNewsContext } from "@/lib/news-context";
 import { buildEarningsContext } from "@/lib/chat-earnings-context";
 import { DELIBERATION_BLOCK } from "@/lib/chat-deliberation";
-import { CASE_LIBRARY_BLOCK } from "@/lib/case-library";
+import { buildCaseLibraryBlock } from "@/lib/case-library";
 import { ACTION_PLAN_BLOCK } from "@/lib/chat-action-plan";
 import { PLAN_LIFECYCLE_BLOCK } from "@/lib/chat-plan-lifecycle";
 import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
@@ -160,6 +160,11 @@ export async function POST(request: NextRequest) {
   }
 
   // 纯文字对话将费曼星V4.1知识库注入DeepSeek system prompt（按路由选择子集）。
+  // 9/13阶段2：lastUserText声明提前（案例库few-shot检索按问题匹配，声明须在systemPrompt组装前）
+  const lastUserMsgEarly = [...messages].reverse().find((m) => m.role === "user");
+  const lastUserText = lastUserMsgEarly?.content.type === "text"
+    ? lastUserMsgEarly.content.text
+    : (lastUserMsgEarly?.content.text ?? "");
   const systemPrompt = [
     "你是费曼星投资分析平台的专业投资助手。严格基于费曼星投资框架（罗竹先创立）回答。",
     "",
@@ -196,7 +201,8 @@ export async function POST(request: NextRequest) {
     "14. 技术位/价格位数字必须有来源：支撑压力位/目标价/加仓减仓触发价，要么带[数据]（注入锚点直接引用，如近1月低点$410.12），要么带[推导]（标明推导逻辑，如跌破3月前价$41.64后下一参照位=52周低$X）。无来源支撑的点位（凭空生成的平台/支撑位）严禁输出——宁可写「该价位无数据支撑，无法给出」。",
     DELIBERATION_BLOCK,
     DELIBERATION_ENHANCEMENT,
-    CASE_LIBRARY_BLOCK,
+    // 9/13阶段2：案例库few-shot检索层——按问题标的/大师/情境检索3-6案（B队21案，替代静态3案全量注入）
+    buildCaseLibraryBlock(lastUserText || ""),
     ACTION_PLAN_BLOCK,
     PLAN_LIFECYCLE_BLOCK,
     "25. 失效条件预注册（压力测试）：深度档结论在结尾、行动计划之后用1-2句声明（预注册是全文最后一句，其后不再追加任何内容）——本结论最依赖哪个假设？该假设被什么数据支撑？假设崩塌时结论如何变化（如\"本判断最依赖'资本开支周期未逆转'，若下周财报指引下修则立场失效\"）。与规则18的芒格逆向互补：逆向列反方论据，这里预注册可证伪条件。简洁档可省。",
@@ -218,10 +224,8 @@ export async function POST(request: NextRequest) {
   ].join("\n");
 
   // 自动上下文注入：提取用户消息中的股票代码，拉取实时行情
-  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-  const lastUserText = lastUserMsg?.content.type === "text"
-    ? lastUserMsg.content.text
-    : (lastUserMsg?.content.text ?? "");
+  // （lastUserMsg/lastUserText已提前声明供案例库检索使用——此处沿用既有声明）
+  const lastUserMsg = lastUserMsgEarly;
   // 翻供拦截（9/13阶段1.4）：用户质疑词试探（"你确定吗"类短消息）→46%无条件翻供实证（FlipFlop）→注入复核指令：有据坚持/有误明认
   const challengeGuard = isChallenge(lastUserText);
   // 结论快照（9/13阶段1.4）：多轮衰减-39%对策——从assistant历史现场重建快照栈（零服务端状态），最近3轮注入
