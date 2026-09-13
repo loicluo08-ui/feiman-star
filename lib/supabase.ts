@@ -103,7 +103,7 @@ export async function updateKbEmbedding(id: string, vector: number[]): Promise<b
   return out !== null;
 }
 
-// 语义检索：RPC match_kb_dynamic（SQL函数需在Supabase创建，404=未创建则静默回退关键词路由）
+// P2③语义检索：客户端余弦相似度（免DDL——条目<200条性能毫秒级）
 export async function matchKbSemantic(
   queryVector: number[],
   matchCount = 6,
@@ -111,22 +111,35 @@ export async function matchKbSemantic(
 ): Promise<KbDynamicRow[] | null> {
   if (!supabaseConfigured() || queryVector.length === 0) return null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/match_kb_dynamic`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        apikey: SUPABASE_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query_embedding: `[${queryVector.join(",")}]`,
-        match_count: matchCount,
-        max_distance: maxDistance,
-      }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as KbDynamicRow[];
+    const rows = await sbRest<Array<KbDynamicRow & { embedding: string | null }>>(
+      "kb_dynamic?select=id,type,keywords,content,source,created,expires,embedding&order=created.desc&limit=200"
+    );
+    if (!rows) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    const scored: Array<{ row: KbDynamicRow; dist: number }> = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r.embedding || (r.expires && r.expires < today)) continue;
+      let vec: number[] = [];
+      try {
+        vec = typeof r.embedding === "string" ? (JSON.parse(r.embedding) as number[]) : (r.embedding as unknown as number[]);
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(vec) || vec.length !== queryVector.length) continue;
+      let dot = 0, na = 0, nb = 0;
+      for (let j = 0; j < vec.length; j++) {
+        dot += vec[j] * queryVector[j];
+        na += vec[j] * vec[j];
+        nb += queryVector[j] * queryVector[j];
+      }
+      const denom = Math.sqrt(na) * Math.sqrt(nb);
+      if (denom === 0) continue;
+      const dist = 1 - dot / denom;
+      if (dist < maxDistance) scored.push({ row: r, dist });
+    }
+    scored.sort((a, b) => a.dist - b.dist);
+    return scored.slice(0, matchCount).map((x) => x.row);
   } catch {
     return null;
   }
