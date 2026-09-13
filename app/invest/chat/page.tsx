@@ -805,6 +805,18 @@ export default function ChatPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
+              onClick={() => {
+                const el = document.documentElement;
+                const cur = el.dataset.theme === "dark" ? "light" : "dark";
+                el.dataset.theme = cur;
+                try { localStorage.setItem("feimanstar_theme", cur); } catch {}
+              }}
+              className="rounded-md border border-[var(--border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
+              title="切换明暗主题"
+            >
+              ◐ 明暗
+            </button>
+            <button
               onClick={startNewConversation}
               className="rounded-md border border-[var(--border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
               title="开始新对话（当前对话自动存入历史）"
@@ -1051,7 +1063,7 @@ export default function ChatPage() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto max-w-3xl space-y-7">
+          <div className="mx-auto max-w-3xl space-y-7 px-4 sm:px-0">
             {messages.map((m, i) => (
               <div key={i} className={`msg-in ${m.role === "user" ? "flex justify-end" : "flex items-start gap-3"}`}>
                 {m.role === "assistant" ? (
@@ -1257,7 +1269,7 @@ export default function ChatPage() {
               rows={1}
               maxLength={4000}
               placeholder="输入问题，或粘贴/上传截图让AI分析…（Enter发送，Shift+Enter换行）"
-              className="min-h-12 flex-1 resize-none self-center overflow-y-auto rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none transition-colors focus:border-[var(--text)]"
+              className="min-h-12 flex-1 resize-none self-center overflow-y-auto rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-4 py-3 text-[15px] leading-6 outline-none transition-all focus:border-[var(--text)] focus:ring-2 focus:ring-[var(--border-strong)]/40"
             />
             <button
               onClick={loading ? stopGeneration : submit}
