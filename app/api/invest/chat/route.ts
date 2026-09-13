@@ -4,6 +4,7 @@ import { callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type Vis
 import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
 import { buildSourcePool, verifySourceLabels } from "@/lib/source-integrity";
 import { selectKBForQuestion } from "@/lib/kb-router";
+import { selectDynamicKB } from "@/lib/kb-dynamic";
 import { buildSignalContext, type SignalInputStock } from "@/lib/signal-context";
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { getStylePrompt, CHAT_STYLES } from "@/lib/chat-styles";
@@ -147,6 +148,11 @@ export async function POST(request: NextRequest) {
   if (!kbSelection.fullFallback) {
     console.log(`[invest/chat] kb_router modules=${kbSelection.includedModules.join(",")} chars=${kbSelection.selectedChars}/${kbSelection.totalChars}`);
   }
+  // 动态知识层注入（每日cron自动采集沉淀，区别于静态框架KB）
+  const dynKB = selectDynamicKB(kbRouteQuestion, 4000);
+  if (dynKB.count > 0) {
+    console.log(`[invest/chat] kb_dynamic injected=${dynKB.count}条`);
+  }
 
   // 纯文字对话将费曼星V4.1知识库注入DeepSeek system prompt（按路由选择子集）。
   const systemPrompt = [
@@ -163,6 +169,7 @@ export async function POST(request: NextRequest) {
     "0h. 不替用户决策：永远不给\"我建议你买入/卖出\"。给的是条件分支（站稳X加仓/跌破Y减仓）+仓位区间+分界条件。钱和决策权都是用户的。",
     "0i. 指令有歧义按最可能意图执行，末尾一句话标注其他可能意图，不反问等待。",
     "0j. 接话纪律：用户消息里带自己的观点/判断/担忧/打算（如\"我觉得估值高了\"\"要崩吧\"\"我打算加仓\"\"被套了\"）时，回复第一句必须先处理这个观点——同意说同意的理由，反对直接说错在哪，前提没说破就先点破（如\"你说\"贵\"的真实顾虑其实是追高风险\"）。先接话再展开分析；对用户的观点视而不见、直接走五维度扫描=没在对话，在发射报告。讨论档与各档位通用。",
+    "0k. Grok式思维纪律（输出质感对标，高于一切格式规则）：①快：第一句就是判断，零铺垫零过渡；②锋利：同意/不同意说得像刀——\"这个判断错了，因为X\"，禁止\"有一定道理但\"式骑墙；③料：每个论点带具体数字/事件/对比，禁止出现无数字的\"估值偏高/风险较大\"——必须是\"PE 27.6 vs 同行中位22.5\"；④活：推理有跳跃感——敢用类比、敢指出用户没问到但更要紧的点，像聪明人聊天不像论文；⑤敢认错：被数据打脸直接说\"我错了，错在X\"，不找补不防御；⑥密度：删掉一切不推进判断的句子——礼貌填充、总结复述、正确的废话全部删。",
     "",
     "规则：",
     "1. 分析任何标的时，按五维度框架（基本面/水池效应/板块轮动/产业周期/市场情绪）扫描，输出按重要性深挖：最关键的1-2个维度深入（含反转与心理误判检验），其余各1-2句结论——均匀平铺五段等于没有思考。深度档按规则7展开，简洁档按此条压缩。",
@@ -197,6 +204,7 @@ export async function POST(request: NextRequest) {
     "",
     "<knowledge_base>",
     kbSelection.kb,
+    dynKB.block,
     "</knowledge_base>",
   ].join("\n");
 
