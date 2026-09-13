@@ -19,6 +19,7 @@ import { buildEarningsContext } from "@/lib/chat-earnings-context";
 import { DELIBERATION_BLOCK } from "@/lib/chat-deliberation";
 import { buildCaseLibraryBlock } from "@/lib/case-library";
 import { buildQuoteGuardBlock, buildDivergenceBlock } from "@/lib/master-intel";
+import { buildQuoteLibraryBlock } from "@/lib/quote-library";
 import { ACTION_PLAN_BLOCK } from "@/lib/chat-action-plan";
 import { PLAN_LIFECYCLE_BLOCK } from "@/lib/chat-plan-lifecycle";
 import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
@@ -218,6 +219,8 @@ export async function POST(request: NextRequest) {
     // 9/13阶段2第二批：引用防错闸（A队时间线misuse+P1-P9假语录防线，全档位）+分歧对照检索（触及6大分歧主题时注入A/B对照）
     buildQuoteGuardBlock(),
     buildDivergenceBlock(lastUserText || ""),
+    // 9/13阶段2第四批：语录检索层（主题触发2-3条，T3诚实标级，无命中不硬凑）
+    buildQuoteLibraryBlock(lastUserText || ""),
     // 9/13阶段1.2 A档强框架（A队五维映射：分析题视角底座，blend手动会诊之上；短问轻量走原路径不受影响）
     MASTER_PERSPECTIVE_BLOCK,
     "",
