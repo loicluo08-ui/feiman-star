@@ -24,12 +24,27 @@ export async function GET(request: NextRequest) {
   if (!authOk(request)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
-  const token = process.env.GITHUB_TOKEN || "";
+  const token = process.env.GITHUB_TOKEN || null;  // 9/13：GitHub降为可选备份（Supabase主通道）
   if (!token) {
-    return NextResponse.json({ ok: false, error: "GITHUB_TOKEN未配置" }, { status: 501 });
   }
   try {
-    const { entries, sha } = await readKBFromGitHub(token);
+    let entries: import("@/lib/kb-grow-core").DynamicEntry[] = [];
+    let sha: string | null = null;
+    if (token) {
+      const gh = await readKBFromGitHub(token);
+      entries = gh.entries;
+      sha = gh.sha;
+    } else {
+      const { readKbEntries } = await import("@/lib/supabase");
+      const rows = await readKbEntries(200);
+      if (rows) {
+        entries = rows.map((r) => ({
+          id: r.id, type: r.type as import("@/lib/kb-grow-core").DynamicEntry["type"],
+          keywords: r.keywords || [], content: r.content,
+          source: r.source, created: r.created, expires: r.expires ?? undefined,
+        }));
+      }
+    }
     const fresh = await collectSnapshots();
     if (fresh.length === 0) {
       return NextResponse.json({ ok: true, changed: false, reason: "all_sources_failed" });
@@ -38,11 +53,16 @@ export async function GET(request: NextRequest) {
     if (JSON.stringify(merged) === JSON.stringify(entries)) {
       return NextResponse.json({ ok: true, changed: false, total: entries.length });
     }
-    const write = await writeKBToGitHub(token, merged, sha);
-    // 双写：Supabase为读路径主源，git json为备份
+    // 主写：Supabase（读路径主源，无GitHub token也全功能）
+    const { upsertKbEntries, updateKbEmbedding } = await import("@/lib/supabase");
+    await upsertKbEntries(merged);
+    let commitSha: string | undefined;
+    if (token) {
+      const write = await writeKBToGitHub(token, merged, sha);
+      commitSha = write.commitSha?.slice(0, 7);
+    }
     try {
-      const { upsertKbEntries, updateKbEmbedding } = await import("@/lib/supabase");
-      await upsertKbEntries(merged);
+      void 0;
       // P2③向量化：fresh条目生成embedding入库（语义检索底座），失败静默（关键词路由兜底）
       const { embedTexts } = await import("@/lib/kb-embedding");
       const vectors = await embedTexts(fresh.map((f) => f.content));
@@ -55,13 +75,13 @@ export async function GET(request: NextRequest) {
       // DB写失败不影响git json通道
     }
     try {
-      await writeDailySnapshot(token, fresh);
+      if (token) await writeDailySnapshot(token, fresh);
     } catch {
       // 快照沉淀失败不影响主流程
     }
     return NextResponse.json({
       ok: true, changed: true, added, total: merged.length,
-      commit: write.commitSha?.slice(0, 7),
+      commit: commitSha,
       symbols: fresh.map((f) => f.keywords[0]),
     });
   } catch (e) {
