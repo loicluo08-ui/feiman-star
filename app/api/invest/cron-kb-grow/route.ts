@@ -1,0 +1,58 @@
+import { NextRequest, NextResponse } from "next/server";
+
+/**
+ * KB动态层自动生长（Vercel Cron端点，9/13底层建设P0）
+ * 每日自动：拉标的池行情快照→合并（30天过期+同标的替换）→GitHub commit→触发重部署
+ * 摆脱AgentMore外部执行器——服务端自跑，cron配置见vercel.json
+ * 鉴权：Vercel Cron自带 Authorization: Bearer ${CRON_SECRET}；手动触发 ?token=
+ * 时序快照同步沉淀 data/snapshots/——历史底座
+ */
+export const maxDuration = 60;
+
+import { collectSnapshots, mergeEntries, readKBFromGitHub, writeKBToGitHub, writeDailySnapshot } from "@/lib/kb-grow-core";
+
+function authOk(request: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET || "";
+  if (!secret) return false; // 未配置secret=端点关闭（防裸奔）
+  const auth = request.headers.get("authorization") ?? "";
+  if (auth === `Bearer ${secret}`) return true;
+  const url = new URL(request.url);
+  return url.searchParams.get("token") === secret;
+}
+
+export async function GET(request: NextRequest) {
+  if (!authOk(request)) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+  const token = process.env.GITHUB_TOKEN || "";
+  if (!token) {
+    return NextResponse.json({ ok: false, error: "GITHUB_TOKEN未配置" }, { status: 501 });
+  }
+  try {
+    const { entries, sha } = await readKBFromGitHub(token);
+    const fresh = await collectSnapshots();
+    if (fresh.length === 0) {
+      return NextResponse.json({ ok: true, changed: false, reason: "all_sources_failed" });
+    }
+    const { merged, added } = mergeEntries(entries, fresh);
+    if (JSON.stringify(merged) === JSON.stringify(entries)) {
+      return NextResponse.json({ ok: true, changed: false, total: entries.length });
+    }
+    const write = await writeKBToGitHub(token, merged, sha);
+    try {
+      await writeDailySnapshot(token, fresh);
+    } catch {
+      // 快照沉淀失败不影响主流程
+    }
+    return NextResponse.json({
+      ok: true, changed: true, added, total: merged.length,
+      commit: write.commitSha?.slice(0, 7),
+      symbols: fresh.map((f) => f.keywords[0]),
+    });
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : String(e) },
+      { status: 500 }
+    );
+  }
+}
