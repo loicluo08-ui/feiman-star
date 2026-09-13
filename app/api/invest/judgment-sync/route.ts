@@ -68,6 +68,17 @@ export async function POST(request: NextRequest) {
       }),
     });
     if (!put.ok) return NextResponse.json({ error: `github_write_${put.status}` }, { status: 502 });
+    // P2②双写Supabase（服务端闭环——回验管道未来直读库），失败不影响GitHub主通道
+    try {
+      const { insertLedgerRows } = await import("@/lib/supabase");
+      await insertLedgerRows(valid.map((e) => ({
+        symbol: e.symbol, stance: e.stance, key_level: e.keyLevel || null,
+        invalidation: e.invalidation || null, confidence: e.confidence || null,
+        date: e.date, ts: new Date(e.ts).toISOString(),
+      })) as Parameters<typeof insertLedgerRows>[0]);
+    } catch {
+      // DB写失败不影响GitHub通道
+    }
     return NextResponse.json({ ok: true, added: valid.length, total: merged.length });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message.slice(0, 80) : "sync_failed" }, { status: 502 });

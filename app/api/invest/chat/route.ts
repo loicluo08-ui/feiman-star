@@ -567,6 +567,7 @@ export async function POST(request: NextRequest) {
         // —— Agent工具层 Phase 1（9/13）：深度/分析类问题AI按需拉数据 ——
         // 触发：深度档(wantsLong)且含分析意图词；短问/纯认知走原快路径不烧工具轮
         let agentBlocks = "";
+        let agentToolsUsed: string[] = [];
         const isAgentQuestion =
           wantsLong &&
           /分析|估值|对比|期权|计划|拆解|全面|持仓|加仓|减仓|买卖|怎么看|该不该|备兑|行权/.test(
@@ -582,6 +583,7 @@ export async function POST(request: NextRequest) {
               ],
               (text) => send({ type: "status", text })
             );
+            agentToolsUsed = agentResult.toolsUsed;
             if (agentResult.blocks.length > 0) {
               agentBlocks =
                 "【Agent按需查询结果（AI自主决定拉取的实时数据，引用时注明[数据]）】\n\n" +
@@ -941,6 +943,18 @@ export async function POST(request: NextRequest) {
           console.error("[invest/chat] promise_guard_error", error);
         }
 
+        // P2①对话日志入库（评测/反思原料）——done前同步写，失败静默不阻塞
+        try {
+          const { insertChatLog } = await import("@/lib/supabase");
+          await insertChatLog({
+            question: (lastUserText || trimmedQuestion || "").slice(0, 4000),
+            answer: fullText.slice(0, 20000),
+            tools_used: agentToolsUsed,
+            style: input.data.style,
+          });
+        } catch {
+          // 日志写失败不影响对话
+        }
         send({ type: "done" });
       } catch (error) {
         console.error("[invest/chat] stream_error", error);
