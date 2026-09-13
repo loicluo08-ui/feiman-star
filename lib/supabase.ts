@@ -92,6 +92,73 @@ export async function readLedgerBySymbol(symbol: string, limit = 5): Promise<Led
   );
 }
 
+// P2③：向量化写入（pgvector列——REST写入用字符串格式'[0.1,...]'）
+export async function updateKbEmbedding(id: string, vector: number[]): Promise<boolean> {
+  if (!supabaseConfigured() || vector.length === 0) return false;
+  const out = await sbRest(`kb_dynamic?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    prefer: "return=minimal",
+    body: { embedding: `[${vector.join(",")}]` },
+  });
+  return out !== null;
+}
+
+// 语义检索：RPC match_kb_dynamic（SQL函数需在Supabase创建，404=未创建则静默回退关键词路由）
+export async function matchKbSemantic(
+  queryVector: number[],
+  matchCount = 6,
+  maxDistance = 0.75
+): Promise<KbDynamicRow[] | null> {
+  if (!supabaseConfigured() || queryVector.length === 0) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/match_kb_dynamic`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        apikey: SUPABASE_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query_embedding: `[${queryVector.join(",")}]`,
+        match_count: matchCount,
+        max_distance: maxDistance,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as KbDynamicRow[];
+  } catch {
+    return null;
+  }
+}
+
+// P2②用户画像v0：判断账本聚合——关注标的池+各标的最近立场（"认识用户"的地基数据）
+export interface ProfileFocus {
+  symbol: string;
+  stance: string;
+  lastDate: string;
+  count: number;
+}
+
+export async function getFocusPool(): Promise<ProfileFocus[] | null> {
+  const rows = await sbRest<Array<{ symbol: string; stance: string; date: string }>>(
+    "judgment_ledger?select=symbol,stance,date&order=ts.desc&limit=200"
+  );
+  if (!rows) return null;
+  const map = new Map<string, ProfileFocus>();
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const prev = map.get(r.symbol);
+    if (prev) {
+      prev.count += 1;
+      if (r.date > prev.lastDate) prev.lastDate = r.date;
+    } else {
+      map.set(r.symbol, { symbol: r.symbol, stance: r.stance, lastDate: r.date, count: 1 });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, 12);
+}
+
 // ——— 对话日志（评测/反思原料）———
 export async function insertChatLog(row: {
   question: string;

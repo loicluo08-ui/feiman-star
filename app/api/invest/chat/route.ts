@@ -568,6 +568,18 @@ export async function POST(request: NextRequest) {
         // 触发：深度档(wantsLong)且含分析意图词；短问/纯认知走原快路径不烧工具轮
         let agentBlocks = "";
         let agentToolsUsed: string[] = [];
+        // P2②画像v0：关注池聚合（账本数据——AI知道用户常看什么标的，涉及这些标的时自然衔接历史）
+        let focusLine = "";
+        try {
+          const { getFocusPool } = await import("@/lib/supabase");
+          const focusPool = await getFocusPool();
+          if (focusPool && focusPool.length > 0) {
+            const parts = focusPool.map((f) => f.symbol + "(" + f.stance + "×" + f.count + ")");
+            focusLine = "\n[用户关注池（历史判断聚合，按频次）] " + parts.join("、") + "——涉及这些标的时自然衔接历史判断，不用用户重复背景";
+          }
+        } catch {
+          // 画像聚合失败静默
+        }
         const isAgentQuestion =
           wantsLong &&
           /分析|估值|对比|期权|计划|拆解|全面|持仓|加仓|减仓|买卖|怎么看|该不该|备兑|行权/.test(
@@ -688,6 +700,7 @@ export async function POST(request: NextRequest) {
               return "【历史判断记账】（此前对话中AI给出的主判断存档，同标的展示最近2次轨迹；核验=系统用注入行情现价对失效条件的机械判定）\n"
                 + lines.join("\n")
                 + triggeredNote
+                + focusLine
                 + "\n（规则28生效：本轮问题涉及上述标的时，必须先出对账段——对账必须引用核验状态，核验显示「已触发」时禁止维持原立场）";
             })() }] : []),
           ...(turnMessage ? [turnMessage] : []),

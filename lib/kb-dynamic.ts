@@ -38,6 +38,32 @@ export async function selectDynamicKB(
       }
     }
     if (list.length === 0) list = raw.entries || [];
+    // P2③语义检索合并：关键词命中（现有）+向量相似命中（pgvector），id去重
+    try {
+      const { embedTexts } = await import("@/lib/kb-embedding");
+      const { matchKbSemantic } = await import("@/lib/supabase");
+      if ((userText || "").length >= 6) {
+        const qv = await embedTexts([userText.slice(0, 500)]);
+        if (qv && qv[0]) {
+          const semRows = await matchKbSemantic(qv[0], 6);
+          if (semRows && semRows.length > 0) {
+            const seenIds = new Set(list.map((e) => e.id));
+            for (const r of semRows) {
+              if (!seenIds.has(r.id) && (!r.expires || r.expires >= now)) {
+                list.push({
+                  id: r.id, type: r.type, keywords: r.keywords || [],
+                  content: r.content, source: r.source, created: r.created,
+                  expires: r.expires ?? undefined,
+                });
+                seenIds.add(r.id);
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // 语义检索失败静默——关键词路由兜底
+    }
     const picked: Array<{ id: string; type: string; keywords: string[]; content: string; source: string; created: string; expires?: string | null }> = [];
     for (let i = 0; i < list.length; i++) {
       const e = list[i];

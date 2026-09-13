@@ -41,8 +41,16 @@ export async function GET(request: NextRequest) {
     const write = await writeKBToGitHub(token, merged, sha);
     // 双写：Supabase为读路径主源，git json为备份
     try {
-      const { upsertKbEntries } = await import("@/lib/supabase");
+      const { upsertKbEntries, updateKbEmbedding } = await import("@/lib/supabase");
       await upsertKbEntries(merged);
+      // P2③向量化：fresh条目生成embedding入库（语义检索底座），失败静默（关键词路由兜底）
+      const { embedTexts } = await import("@/lib/kb-embedding");
+      const vectors = await embedTexts(fresh.map((f) => f.content));
+      if (vectors) {
+        for (let i = 0; i < fresh.length; i++) {
+          await updateKbEmbedding(fresh[i].id, vectors[i]);
+        }
+      }
     } catch {
       // DB写失败不影响git json通道
     }
