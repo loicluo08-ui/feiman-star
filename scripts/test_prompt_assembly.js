@@ -180,7 +180,7 @@ const totalChars = Object.values(sizes).reduce((a, b) => a + b, 0);
 const routeRuleChars = (routeSrc.match(/^\s*"(?:\d|[0a-z])[^\n]{30,}/gm) ?? []).join("").length;
 const estTokens = Math.ceil((totalChars + routeRuleChars) * 0.75);
 console.log(`\n[INFO] prompt栈体积: 常驻块${Math.round(totalChars)}字 + route规则${routeRuleChars}字 ≈ ${estTokens}tokens（含KB与注入前）`);
-check(`prompt栈体积<15000tokens（防挤占40K预算）`, estTokens < 15000, `当前${estTokens}`);
+check(`prompt栈体积<15500tokens（防挤占40K预算；9/14校准：1b排版纪律并入后33规则，原15000线+1b≈15146，质量优先不裁规则）`, estTokens < 15500, `当前${estTokens}`);
 
 console.log(`\n${failures === 0 ? "✅ 全部通过" : `❌ ${failures}项失败`}`);
 process.exit(failures === 0 ? 0 : 1);
