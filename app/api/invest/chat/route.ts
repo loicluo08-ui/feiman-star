@@ -708,6 +708,10 @@ export async function POST(request: NextRequest) {
         // 9/13流畅性P0-1：思维链句子缓冲——按句子边界透传完整句（业界标准：R1/Open WebUI式原文句子流），
         // 替代旧"每8个chunk取尾40字符"的碎字快照（碎字=廉价感主源）
         let reasonBuf = "";
+        // 9/13阶段1.6推理链披露（E队第3章/Turpin 2023）：CoT可能是"不忠实合理化"——
+        // 行情/快讯注入是天然偏置特征（涨停快讯→事后合理化看多→CoT表面通顺）。质量优先方案：
+        // 转播保留（用户可见性/信任）但首事件挂失真锚定声明 + 校验链真实过程实时上报（正文依据与自述并排对照）
+        let reasoningDeclared = false;
 
         try {
           // request.signal：客户端断开（用户点停止/关页面）时中止上游DeepSeek连接——停止生成=停止烧钱
@@ -754,7 +758,13 @@ export async function POST(request: NextRequest) {
               if (lastEnd > 0) {
                 const sentence = reasonBuf.slice(0, lastEnd).trim().slice(-70);
                 reasonBuf = reasonBuf.slice(lastEnd);
-                if (sentence) send({ type: "status", text: `思考中：${sentence}` });
+                if (sentence) {
+                  if (!reasoningDeclared) {
+                    reasoningDeclared = true;
+                    send({ type: "status", text: "⚠️ 以下思考为模型自述，可能遗漏真实依据来源；最终结论以正文引用与文末校验结果为准。" });
+                  }
+                  send({ type: "status", text: `思考中：${sentence}` });
+                }
               }
               if (reasonBuf.length > 600) reasonBuf = reasonBuf.slice(-300);
               continue;
@@ -868,6 +878,8 @@ export async function POST(request: NextRequest) {
           send({ type: "patch", text: validation.text });
           console.log(`[invest/chat] cross_validate flags=${validation.flags.join("; ")}`);
         }
+        // 9/13阶段1.6：真实校验过程上报（E队"过程记录面板"后端——展示真实发生的工程检查，非模型自述）
+        send({ type: "status", text: validation.cleaned ? `✓ 交叉校验：修正${validation.flags.length}处` : "✓ 交叉校验：通过" });
 
         // 来源标签降级（R4校验层闭环，lib/source-integrity.ts）：[数据]行含池外数字→降级[模型记忆]。
         // prompt层（规则f/R4）教模型自觉，本层工程强制兜底——flash指令遵循有波动（9/6 Q2基线实测：
@@ -883,6 +895,7 @@ export async function POST(request: NextRequest) {
           send({ type: "patch", text: srcLabels.text });
           console.log(`[invest/chat] source_labels_downgraded: ${srcLabels.flags.join(" | ")}`);
         }
+        send({ type: "status", text: srcLabels.verified ? `✓ 来源标签校验：降级${srcLabels.flags.length}处` : "✓ 来源标签校验：通过" });
 
         // 数字锚定验证（9/6深度）：D4规则的事后真实闭环——回答数字与注入行情精确比对，
         // 疑似漂移（±15%区间内但不匹配白名单）→ 末尾附核对警告（只报告不patch，用户口述数字已豁免）
@@ -895,6 +908,7 @@ export async function POST(request: NextRequest) {
           send({ type: "patch", text: numeric.text });
           console.log(`[invest/chat] numeric_anchor flags=${numeric.flags.join("; ")}`);
         }
+        send({ type: "status", text: numeric.verified ? `⚠️ 数字锚定校验：${numeric.flags.length}处待核对（已附警告）` : "✓ 数字锚定校验：通过" });
 
         // 算式回验（9/6深度质量优化）：锚定验证管"引用数字对不对"，这里管"算术对不对"——
         // S1强制AI展示涨跌幅算式→算式是确定性结构可本地重算，红队case2的AI算数方差在chat路径收口。
@@ -908,6 +922,7 @@ export async function POST(request: NextRequest) {
               console.log(`[invest/chat] number_verify checked=${arithmetic.checkedCount} issues=${arithmetic.issues.map((i) => i.detail).join(" | ")}`);
             }
           }
+          send({ type: "status", text: arithmetic.issues.length > 0 ? `⚠️ 算式回验：${arithmetic.checkedCount}项中${arithmetic.issues.length}项存疑` : `✓ 算式回验：${arithmetic.checkedCount}项通过` });
         } catch (error) {
           console.error("[invest/chat] number_verify_error", error);
         }
@@ -921,6 +936,7 @@ export async function POST(request: NextRequest) {
             send({ type: "patch", text: fullText });
             console.log(`[invest/chat] promise_guard blocked=${promiseGuard.flags.length}: ${promiseGuard.flags.join(" | ")}`);
           }
+          send({ type: "status", text: promiseGuard.cleaned ? `⚠️ 承诺语拦截：移除${promiseGuard.flags.length}处` : "✓ 承诺语拦截：0处" });
         } catch (error) {
           console.error("[invest/chat] promise_guard_error", error);
         }
