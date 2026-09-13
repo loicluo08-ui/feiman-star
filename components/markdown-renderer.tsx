@@ -47,8 +47,23 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Prop
               <code className={`block font-mono text-[0.85em] ${className ?? ""}`} {...props} />
             );
           },
-          pre: ({ node, ...props }) => (
-            <pre className="my-3 overflow-x-auto rounded-xl bg-[#1e1e2e] p-4 text-sm text-[#cdd6f4]" {...props} />
+          pre: ({ node, children, ...props }) => (
+            <div className="group/code relative my-3">
+              <pre className="overflow-x-auto rounded-xl bg-[#1e1e2e] p-4 pr-12 text-sm text-[#cdd6f4]" {...props}>{children}</pre>
+              <button
+                onClick={(e) => {
+                  const pre = (e.currentTarget.parentElement as HTMLElement)?.querySelector("pre");
+                  const text = pre?.textContent ?? "";
+                  void navigator.clipboard.writeText(text);
+                  const btn = e.currentTarget;
+                  btn.textContent = "已复制";
+                  setTimeout(() => { btn.textContent = "复制"; }, 1600);
+                }}
+                className="absolute right-2 top-2 rounded-md bg-white/10 px-2 py-1 text-xs text-white/70 opacity-0 transition-opacity group-hover/code:opacity-100"
+              >
+                复制
+              </button>
+            </div>
           ),
           a: ({ node, href, ...props }) => {
             // 9/6红队修复（报告C）：显式协议白名单——react-markdown默认urlTransform已拦

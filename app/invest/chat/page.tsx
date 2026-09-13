@@ -1001,13 +1001,13 @@ export default function ChatPage() {
                 onChange={(event) => setHistoryQuery(event.target.value)}
                 placeholder="搜索历史对话…"
                 aria-label="搜索历史对话"
-                className="min-w-0 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-xs outline-none transition-colors focus:border-[var(--text)]"
+                className="min-w-0 flex-1 rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs outline-none transition-colors focus:border-[var(--text)]"
               />
               <select
                 value={historyRange}
                 onChange={(event) => setHistoryRange(event.target.value as HistoryRange)}
                 aria-label="按日期筛选历史对话"
-                className="rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--text)]"
+                className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--text)]"
               >
                 <option value="7">最近7天</option>
                 <option value="30">最近30天</option>

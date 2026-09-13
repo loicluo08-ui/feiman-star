@@ -27,15 +27,15 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0f1117;
-  --surface: #1a1d28;
-  --surface-subtle: #151821;
-  --surface-muted: #242837;
-  --text: #e5e5e7;
-  --text-secondary: #b7bac4;
-  --text-muted: #8f94a3;
-  --border: #303444;
-  --border-strong: #454a5e;
+  --bg: #0a0a0c;
+  --surface: #131316;
+  --surface-subtle: #101013;
+  --surface-muted: #1c1c21;
+  --text: #e8e8ea;
+  --text-secondary: #a8a8b0;
+  --text-muted: #707078;
+  --border: #242428;
+  --border-strong: #38383e;
   --primary: #e5e5e7;
   --primary-foreground: #0f1117;
   --positive: #22c55e;
