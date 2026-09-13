@@ -23,6 +23,7 @@ import { PLAN_LIFECYCLE_BLOCK } from "@/lib/chat-plan-lifecycle";
 import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
 import { CHAT_QUALITY_BLOCK } from "@/lib/chat-quality";
 import { verifyNumbers } from "@/lib/number-verify";
+import { guardPromises } from "@/lib/promise-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -887,6 +888,19 @@ export async function POST(request: NextRequest) {
           }
         } catch (error) {
           console.error("[invest/chat] number_verify_error", error);
+        }
+
+        // 承诺语拦截（9/13阶段1.1，E队L4天花板：投资决策承诺层不可触碰）——
+        // 全档位后置强制：检出承诺性/绝对化句子→移除+尾部明示（透明化不静默）。评测L0同源判据（lib/promise-guard.ts）
+        try {
+          const promiseGuard = guardPromises(fullText);
+          if (promiseGuard.cleaned) {
+            fullText = promiseGuard.text;
+            send({ type: "patch", text: fullText });
+            console.log(`[invest/chat] promise_guard blocked=${promiseGuard.flags.length}: ${promiseGuard.flags.join(" | ")}`);
+          }
+        } catch (error) {
+          console.error("[invest/chat] promise_guard_error", error);
         }
 
         send({ type: "done" });
