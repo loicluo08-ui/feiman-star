@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
     console.log(`[invest/chat] kb_router modules=${kbSelection.includedModules.join(",")} chars=${kbSelection.selectedChars}/${kbSelection.totalChars}`);
   }
   // 动态知识层注入（每日cron自动采集沉淀，区别于静态框架KB）
-  const dynKB = selectDynamicKB(kbRouteQuestion, 4000);
+  const dynKB = await selectDynamicKB(kbRouteQuestion, 4000);
   if (dynKB.count > 0) {
     console.log(`[invest/chat] kb_dynamic injected=${dynKB.count}条`);
   }
@@ -922,7 +922,7 @@ export async function POST(request: NextRequest) {
               console.log(`[invest/chat] number_verify checked=${arithmetic.checkedCount} issues=${arithmetic.issues.map((i) => i.detail).join(" | ")}`);
             }
           }
-          send({ type: "status", text: arithmetic.issues.length > 0 ? `⚠️ 算式回验：${arithmetic.checkedCount}项中${arithmetic.issues.length}项存疑` : `✓ 算式回验：${arithmetic.checkedCount}项通过` });
+          send({ type: "status", text: arithmetic.checkedCount === 0 ? "✓ 算式回验：无算式可验" : arithmetic.issues.length > 0 ? `⚠️ 算式回验：${arithmetic.checkedCount}项中${arithmetic.issues.length}项存疑` : `✓ 算式回验：${arithmetic.checkedCount}项通过` });
         } catch (error) {
           console.error("[invest/chat] number_verify_error", error);
         }
