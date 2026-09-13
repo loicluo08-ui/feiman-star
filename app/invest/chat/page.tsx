@@ -40,6 +40,7 @@ type ChatItem = {
   imagePreviews?: string[];
   /** GLM-4V转述（两段式管线回存）：追问时以文本复用，图片不再重传 */
   imageAnalysis?: string;
+  injected?: string[];
 };
 
 type ChatHistoryRecord = {
@@ -225,6 +226,7 @@ export default function ChatPage() {
   // 用户看到的是"过程感"（注入行情→注入快讯→生成中）而不是单行覆盖
   const [statusSteps, setStatusSteps] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState(-1);
+  const injectedRef = useRef<string[]>([]);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   // 长对话滚动摘要（窗口外记忆）：会话级状态，随历史持久化
   const summaryRef = useRef("");
@@ -473,6 +475,7 @@ export default function ChatPage() {
   }
 
   async function sendChat(text: string, currentImages: string[], baseMessages: ChatItem[]) {
+    injectedRef.current = [];
     const currentStyle = style;
     const parallelMode = parallelDelib;
     const historyId = activeHistoryId.current || `${Date.now()}`;
@@ -644,6 +647,15 @@ export default function ChatPage() {
                   if (mountedRef.current && epochRef.current === epoch) {
                     const statusText = data.text ?? "";
                     setStatusLine(statusText);
+                    // 注入徽标捕获：status行含"已注入"→拆出数据源列表（完成时写入AI消息）
+                    if (statusText.includes("已注入")) {
+                      injectedRef.current = statusText
+                        .replace(/^已注入/, "")
+                        .split(/、|，/)
+                        .map((x) => x.trim())
+                        .filter((x) => x.length > 0 && x.length < 12)
+                        .slice(0, 6);
+                    }
                     // 步骤栈：同文本去重（重试/续写轮次间不重复堆叠）
                     // 思维链透传（"深度思考中…"+链尾滚动，思考期可达几十次）：
                     // 替换栈顶而非追加——Claude式单行滚动体验，防止思考碎片把
@@ -716,7 +728,7 @@ export default function ChatPage() {
         const completedMessages = [
           ...currentMessages,
           userItem,
-          { role: "assistant" as const, text: displayAnswer },
+          { role: "assistant" as const, text: displayAnswer, injected: injectedRef.current.length > 0 ? [...injectedRef.current] : undefined },
         ];
         const nextHistory = storeConversation(completedMessages, currentStyle, historyId, summary.get() || undefined);
         return {
@@ -734,7 +746,7 @@ export default function ChatPage() {
           const stoppedMessages = [
             ...currentMessages,
             userItem,
-            { role: "assistant" as const, text: `${stripLedgerLines(answer)}\n\n（已停止生成）` },
+            { role: "assistant" as const, text: `${stripLedgerLines(answer)}\n\n（已停止生成）`, injected: injectedRef.current.length > 0 ? [...injectedRef.current] : undefined },
           ];
           const nextHistory = storeConversation(stoppedMessages, currentStyle, historyId, summary.get() || undefined);
           return {
@@ -1064,15 +1076,15 @@ export default function ChatPage() {
               </div>
             ) : null}
             <div className="mb-6 text-center">
-              <h2 className="text-xl font-semibold text-[var(--text)]">投资分析对话</h2>
-              <p className="mt-2 text-sm text-[var(--text-secondary)]">支持K线图、财报、持仓截图分析，也支持纯文字问答</p>
+              <h2 className="text-2xl font-bold tracking-tight text-[var(--text)]">今天想分析什么？</h2>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">K线图、财报、持仓截图，或直接提问——实时行情与快讯自动注入</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {suggestions.map((s) => (
                 <button
                   key={s.title}
                   onClick={() => setQuestion(s.title)}
-                  className="rounded-xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--text)] hover:bg-[var(--surface-subtle)]"
+                  className="rounded-xl bg-[var(--surface-subtle)] p-4 text-left transition-all hover:bg-[var(--surface-muted)]ce-subtle)]"
                 >
                   <p className="text-sm font-medium">{s.title}</p>
                   <p className="mt-1 text-xs text-[var(--text-muted)]">{s.desc}</p>
@@ -1094,6 +1106,15 @@ export default function ChatPage() {
                       : "min-w-0 flex-1 text-[15px] leading-7 text-[var(--text)]"
                   }
                 >
+                  {m.role === "assistant" && m.injected && m.injected.length > 0 ? (
+                    <div className="mb-2.5 flex flex-wrap gap-1.5">
+                      {m.injected.map((tag) => (
+                        <span key={tag} className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   {m.imagePreviews?.length ? (
                     <div className="mb-2 grid grid-cols-3 gap-2">
                       {m.imagePreviews.map((preview, imageIndex) => (
