@@ -3,7 +3,9 @@
 // 表：kb_dynamic / judgment_ledger / chat_logs / user_profile（建表SQL见2026-09-13会话）
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+// 兼容两代变量名：主站8/9配的是SERVICE_ROLE_KEY，新规范名SERVICE_KEY——取其一即可
+const SUPABASE_KEY =
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 export function supabaseConfigured(): boolean {
   return !!(SUPABASE_URL && SUPABASE_KEY);
