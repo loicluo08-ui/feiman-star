@@ -5,6 +5,7 @@ import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
 import { buildSourcePool, verifySourceLabels } from "@/lib/source-integrity";
 import { selectKBForQuestion } from "@/lib/kb-router";
 import { selectDynamicKB } from "@/lib/kb-dynamic";
+import { runAgentDataCollection } from "@/lib/agent-tools";
 import { buildSignalContext, type SignalInputStock } from "@/lib/signal-context";
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { getStylePrompt, CHAT_STYLES } from "@/lib/chat-styles";
@@ -546,10 +547,45 @@ export async function POST(request: NextRequest) {
           ? compactMessages
           : (turnMessage ? compactMessages.slice(0, -1) : compactMessages);
 
+        // —— Agent工具层 Phase 1（9/13）：深度/分析类问题AI按需拉数据 ——
+        // 触发：深度档(wantsLong)且含分析意图词；短问/纯认知走原快路径不烧工具轮
+        let agentBlocks = "";
+        const isAgentQuestion =
+          wantsLong &&
+          /分析|估值|对比|期权|计划|拆解|全面|持仓|加仓|减仓|买卖|怎么看|该不该|备兑|行权/.test(
+            lastUserText || trimmedQuestion || ""
+          );
+        if (isAgentQuestion) {
+          try {
+            const agentResult = await runAgentDataCollection(
+              [
+                { role: "system", content: finalSystemPrompt },
+                ...historyMessages,
+                { role: "user", content: lastUserText || trimmedQuestion },
+              ],
+              (text) => send({ type: "status", text })
+            );
+            if (agentResult.blocks.length > 0) {
+              agentBlocks =
+                "【Agent按需查询结果（AI自主决定拉取的实时数据，引用时注明[数据]）】\n\n" +
+                agentResult.blocks.join("\n\n");
+              send({
+                type: "status",
+                text: `数据就绪（${agentResult.toolsUsed.join("、")}），开始深度分析…`,
+              });
+            } else {
+              send({ type: "status", text: "无需额外实时数据，开始分析…" });
+            }
+          } catch (e) {
+            console.log("[agent] 数据收集失败，走常规注入路径:", e instanceof Error ? e.message : e);
+          }
+        }
+
         const streamMessages: ChatMessage[] = [
           { role: "system", content: finalSystemPrompt },
           { role: "system", content: analysisStyle },
           ...historyMessages,
+          ...(agentBlocks ? [{ role: "system" as const, content: agentBlocks }] : []),
           ...(injectedContext ? [{ role: "system" as const, content: injectedContext }] : []),
           // 9/12材料层修复（机器评分Q1-Q4具体性/快讯引用失分）：R系列教"怎么引用"，配额硬性规定"引用多少"——
           // 量化下限让模型无法用空框架蒙混，是"框架厚材料薄"缺口的指令层收口
