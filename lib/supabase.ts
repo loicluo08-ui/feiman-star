@@ -57,9 +57,9 @@ export async function upsertKbEntries(rows: KbDynamicRow[]): Promise<boolean> {
   return out !== null;
 }
 
-export async function readKbEntries(): Promise<KbDynamicRow[] | null> {
+export async function readKbEntries(limit = 200): Promise<KbDynamicRow[] | null> {
   const out = await sbRest<KbDynamicRow[]>(
-    "kb_dynamic?select=id,type,keywords,content,source,created,expires&order=created.desc&limit=200"
+    `kb_dynamic?select=id,type,keywords,content,source,created,expires&order=created.desc&limit=${limit}`
   );
   return out;
 }

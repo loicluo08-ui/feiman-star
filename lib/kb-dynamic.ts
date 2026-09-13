@@ -4,6 +4,7 @@
 // 注入按关键词命中+新鲜度排序，不注入过期条目——KB永不过时是靠机制不是靠人工
 
 import rawDynamic from "@/data/kb_dynamic.json";
+import { readKbEntries, supabaseConfigured } from "@/lib/supabase";
 
 export interface DynamicEntry {
   id: string;
@@ -17,15 +18,27 @@ export interface DynamicEntry {
 
 const raw = rawDynamic as { entries: DynamicEntry[] };
 
-export function selectDynamicKB(
+export async function selectDynamicKB(
   userText: string,
   maxChars = 4000
-): { block: string; count: number } {
+): Promise<{ block: string; count: number }> {
   try {
     const now = new Date().toISOString().slice(0, 10);
     const q = (userText || "").toLowerCase();
-    const list = raw.entries || [];
-    const picked: DynamicEntry[] = [];
+    // Supabase为主源（服务端cron持续写入），git json为兜底（DB未配置/查询失败时）
+    let list: Array<{ id: string; type: string; keywords: string[]; content: string; source: string; created: string; expires?: string | null }> = [];
+    if (supabaseConfigured()) {
+      const rows = await readKbEntries(80);
+      if (rows && rows.length > 0) {
+        list = rows.map((r) => ({
+          id: r.id, type: r.type, keywords: r.keywords || [],
+          content: r.content, source: r.source, created: r.created,
+          expires: r.expires ?? undefined,
+        }));
+      }
+    }
+    if (list.length === 0) list = raw.entries || [];
+    const picked: Array<{ id: string; type: string; keywords: string[]; content: string; source: string; created: string; expires?: string | null }> = [];
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (e.expires && e.expires < now) continue;

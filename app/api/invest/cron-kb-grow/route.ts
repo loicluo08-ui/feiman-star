@@ -39,6 +39,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: true, changed: false, total: entries.length });
     }
     const write = await writeKBToGitHub(token, merged, sha);
+    // 双写：Supabase为读路径主源，git json为备份
+    try {
+      const { upsertKbEntries } = await import("@/lib/supabase");
+      await upsertKbEntries(merged);
+    } catch {
+      // DB写失败不影响git json通道
+    }
     try {
       await writeDailySnapshot(token, fresh);
     } catch {
