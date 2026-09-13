@@ -24,6 +24,7 @@ import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
 import { CHAT_QUALITY_BLOCK } from "@/lib/chat-quality";
 import { verifyNumbers } from "@/lib/number-verify";
 import { guardPromises } from "@/lib/promise-guard";
+import { extractSnapshot, snapshotsToBlock, isChallenge, CHALLENGE_GUARD_BLOCK } from "@/lib/conclusion-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -215,6 +216,15 @@ export async function POST(request: NextRequest) {
   const lastUserText = lastUserMsg?.content.type === "text"
     ? lastUserMsg.content.text
     : (lastUserMsg?.content.text ?? "");
+  // 翻供拦截（9/13阶段1.4）：用户质疑词试探（"你确定吗"类短消息）→46%无条件翻供实证（FlipFlop）→注入复核指令：有据坚持/有误明认
+  const challengeGuard = isChallenge(lastUserText);
+  // 结论快照（9/13阶段1.4）：多轮衰减-39%对策——从assistant历史现场重建快照栈（零服务端状态），最近3轮注入
+  const snapshotBlock = snapshotsToBlock(
+    messages
+      .filter((m) => m.role === "assistant" && m.content?.type === "text")
+      .map((m, i) => extractSnapshot((m.content as { type: "text"; text: string }).text, i + 1))
+      .filter((s): s is NonNullable<typeof s> => s !== null),
+  );
   // 合并最近2条用户文本提取代码（覆盖"它现在多少钱"代词回指场景）
   // 提取用户文本用于股票/快讯匹配：图片消息的问题文本也算（"这是我买的NVDA持仓图"应触发行情+快讯注入）
   const userTexts = messages
@@ -588,6 +598,9 @@ export async function POST(request: NextRequest) {
           ...historyMessages,
           ...(agentBlocks ? [{ role: "system" as const, content: agentBlocks }] : []),
           ...(injectedContext ? [{ role: "system" as const, content: injectedContext }] : []),
+          // 9/13多轮护栏：结论快照（非空且历史≥1轮时注入）+翻供拦截（质疑词触发）
+          ...(snapshotBlock ? [{ role: "system" as const, content: snapshotBlock }] : []),
+          ...(challengeGuard ? [{ role: "system" as const, content: CHALLENGE_GUARD_BLOCK }] : []),
           // 9/12材料层修复（机器评分Q1-Q4具体性/快讯引用失分）：R系列教"怎么引用"，配额硬性规定"引用多少"——
           // 量化下限让模型无法用空框架蒙混，是"框架厚材料薄"缺口的指令层收口
           // 9/12深度优化：交叉信号池+深度生成纪律（材料层质变——AI直接引用预计算信号，判断层质变——关键变量深挖+裁决必表态）
