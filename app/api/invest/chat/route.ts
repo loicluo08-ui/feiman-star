@@ -596,6 +596,9 @@ export async function POST(request: NextRequest) {
         }
 
         const streamMessages: ChatMessage[] = [
+          // 缓存前缀设计约束（9/13阶段1.5，勿破坏）：system块必须是轮间稳定的（框架/KB/风格），
+          // 历史只追加，行情/快讯/期权等每轮变化的注入一律放historyMessages之后——
+          // 前缀命中价差50倍（0.02 vs 1元/M），把注入挪进systemPrompt=每轮断缓存。KB路由换主题断缓存的成本(≈0.04元/次)远小于KB全量注入的token成本，保持按路由。
           { role: "system", content: finalSystemPrompt },
           { role: "system", content: analysisStyle },
           ...historyMessages,
