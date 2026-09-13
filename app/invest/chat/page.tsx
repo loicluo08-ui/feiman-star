@@ -194,6 +194,8 @@ export default function ChatPage() {
   const [error, setError] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [style, setStyle] = useState<AnalysisStyle>("balanced");
+  // 9/13阶段3：C档并行会诊开关（仅blend档生效）——3视角真并行→融合裁决→高分歧异构裁判
+  const [parallelDelib, setParallelDelib] = useState(false);
   // 大师视角按钮展开态：切到大师风格后保持展开（防「选中项藏在收起组里」的迷失感），关闭新对话不重置
   const [showGurus, setShowGurus] = useState(false);
   // 判断账本面板（9/12）：本设备存档的AI主判断可视化——记账/对账链路的用户可见端
@@ -471,6 +473,7 @@ export default function ChatPage() {
 
   async function sendChat(text: string, currentImages: string[], baseMessages: ChatItem[]) {
     const currentStyle = style;
+    const parallelMode = parallelDelib;
     const historyId = activeHistoryId.current || `${Date.now()}`;
     activeHistoryId.current = historyId;
     const epoch = epochRef.current;
@@ -565,7 +568,7 @@ export default function ChatPage() {
         const res = await fetch("/api/invest/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: apiMessages, style: currentStyle, historyLedger: loadLedger().slice(-8) }),
+          body: JSON.stringify({ messages: apiMessages, style: currentStyle, historyLedger: loadLedger().slice(-8), parallel: currentStyle === "blend" && parallelMode }),
           signal: controller.signal,
         });
 
@@ -892,10 +895,10 @@ export default function ChatPage() {
                   {s.label}
                 </button>
               ))}
-              {/* 大师融合旗舰：多视角审视→交叉检验→融合单一深度输出（v4-pro+thinking）。首字慢（思维链30-60s）但深度最高 */}
+              {/* 大师融合旗舰：3视角独立分析→交叉检验→融合单一深度输出（深度模型+thinking）。新基线：首字约50-70秒 */}
               <button
                 onClick={() => setStyle("blend")}
-                title="大师融合旗舰模式：按标的选3-4位大师视角分别审视+交叉检验，融合为单一深度输出（走v4-pro深度模型，首字约30-60秒）"
+                title="大师融合旗舰模式：多视角独立审视+交叉检验，融合为单一深度输出（深度模型+思维链，首字约50-70秒）"
                 className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
                   style === "blend"
                     ? "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm"
@@ -904,6 +907,20 @@ export default function ChatPage() {
               >
                 ⚡大师融合
               </button>
+              {/* 9/13阶段3：C档并行会诊toggle（仅blend档显示）——3视角真并行互不可见→ACH融合裁决→高分歧触发跨模型异构裁判（实验特性） */}
+              {style === "blend" && (
+                <button
+                  onClick={() => setParallelDelib((v) => !v)}
+                  title="C档并行会诊（实验）：3个视角各自独立分析（互相看不到对方），再由融合裁决按ACH淘汰式合成单一结论；分歧度高时自动引入跨模型异构裁判。与常规融合的区别=视角真实独立、分歧可审计"
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    parallelDelib
+                      ? "bg-[var(--text)] text-[var(--background)] shadow-sm"
+                      : "border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
+                  }`}
+                >
+                  {parallelDelib ? "⚡会诊中" : "⚡并行会诊"}
+                </button>
+              )}
               <button
                 onClick={() => setShowGurus((v) => !v)}
                 className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
