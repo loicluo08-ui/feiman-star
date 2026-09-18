@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { z } from "zod";
 
 /**
  * 判断记账云端同步（9/13自动写入管道①）
  * 前端done后POST新增entries → GitHub Contents API写入 repo data/judgments.json
  * → 回验cron（AgentMore侧）pull repo 读数据
- * 鉴权：origin同域校验+rate limit；数据污染由回验质量闸门兜底（候选池不直进KB）
+ *
+ * 安全（9/18全面漏洞检索P0修复）：
+ * 原实现 origin.includes(host) 两处失效——①curl等无Origin头直接放行
+ * ②子串绕过（sufve.com.evil.com includes "sufve.com"）。
+ * 本路由一旦GITHUB_TOKEN配置即成为「公开写repo+commit触发重部署」通道，
+ * 防护必须硬：严格origin白名单（无Origin=403，非精确同源=403）
+ * + IP限流 + 字段级zod校验（长度/格式收口）+ 服务端时间戳去重。
  */
 export const maxDuration = 30;
 
@@ -37,27 +45,59 @@ async function readRemoteJson(token: string): Promise<{ entries: Entry[]; sha: s
 }
 
 export async function POST(request: NextRequest) {
-  // 同域校验（防外站注入垃圾判断）
-  const origin = request.headers.get("origin") ?? "";
-  const host = request.headers.get("host") ?? "";
-  if (origin && !origin.includes(host)) {
-    return NextResponse.json({ error: "origin_mismatch" }, { status: 403 });
-  }
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) {
-    // 诊断模式：明确定义缺失项，部署侧一键配置后管道即通
-    return NextResponse.json({ ok: false, error: "GITHUB_TOKEN未配置——Vercel环境变量添加后管道激活", needs: ["GITHUB_TOKEN(repo scope)"] }, { status: 501 });
+  // P0①：IP限流（此前缺失——脚本刷写=每次commit烧Vercel构建额度）
+  const limited = await enforceRateLimitAsync(request, "judgmentSync", { maxRequests: 10, windowMs: 60_000 });
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
   }
 
+  // P0②：严格同源校验——浏览器跨域POST必带Origin；无Origin=非浏览器=403。
+  // 精确匹配 scheme+host（端口省略仅允许https默认），不做子串includes。
+  const origin = request.headers.get("origin") ?? "";
+  const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "").split(":")[0];
+  const allowedOrigins = new Set([`https://${host}`, `http://${host}`]);
+  if (!origin || !allowedOrigins.has(origin)) {
+    return NextResponse.json({ error: "origin_mismatch" }, { status: 403 });
+  }
+
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    // 诊断模式：明确定义缺失项，部署侧一键配置后管道即通（GET已不再泄露该状态）
+    return NextResponse.json({ ok: false, error: "sync_disabled" }, { status: 501 });
+  }
+
+  // P0③：字段级zod收口——symbol格式/各字段长度/单次条数，垃圾数据在写入前被拒
+  const entrySchema = z.object({
+    symbol: z.string().trim().regex(/^[A-Z]{1,6}(\.[A-Z])?$/, "代码格式非法"),
+    stance: z.string().trim().min(1).max(40),
+    keyLevel: z.string().trim().max(120).optional().default(""),
+    invalidation: z.string().trim().max(200).optional().default(""),
+    confidence: z.string().trim().max(20).optional().default(""),
+    date: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
+    ts: z.number().int().positive(),
+  });
+  const requestSchema = z.object({ entries: z.array(entrySchema).min(1).max(50) });
+
   const body = await request.json().catch(() => null);
-  const incoming: Entry[] = Array.isArray(body?.entries) ? body.entries : [];
-  const valid = incoming.filter((e) => e.symbol && e.stance && e.ts && e.date);
-  if (valid.length === 0) return NextResponse.json({ error: "无有效entries" }, { status: 400 });
+  const input = requestSchema.safeParse(body);
+  if (!input.success) {
+    return NextResponse.json({ error: "entries格式非法" }, { status: 400 });
+  }
+  const incoming = input.data.entries;
 
   try {
     const { entries: existing, sha } = await readRemoteJson(token);
     const seen = new Set(existing.map((e) => e.ts));
-    const merged = [...existing, ...valid.filter((e) => !seen.has(e.ts))].slice(-500);
+    // P0④：服务端时间戳归一去重——客户端ts可伪造，改为「ts相同即丢弃」，并把未来时间戳钳到当前
+    const now = Date.now();
+    const valid = incoming
+      .map((e) => ({ ...e, ts: Math.min(e.ts, now) }))
+      .filter((e) => !seen.has(e.ts));
+    if (valid.length === 0) return NextResponse.json({ ok: true, added: 0, total: existing.length });
+    const merged = [...existing, ...valid].slice(-500);
     const put = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE_PATH}`, {
       method: "PUT",
       headers: ghHeaders(token),
@@ -86,10 +126,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({
-    endpoint: "judgment-sync",
-    usage: "POST {entries:[{symbol,stance,keyLevel,invalidation,confidence,date,ts}]}",
-    pipeline: "sync → data/judgments.json → 回验cron → 候选池 → 质量闸门 → case-library",
-    tokenConfigured: !!process.env.GITHUB_TOKEN,
-  });
+  // P1：不再泄露 tokenConfigured/pipeline 内部细节——端点存在性本身足够诊断用
+  return NextResponse.json({ ok: true });
 }

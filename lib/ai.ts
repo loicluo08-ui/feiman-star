@@ -42,15 +42,47 @@ export class AIRequestError extends Error {
   }
 }
 
-// ── 9/6红队修复：per-instance AI日预算（KV全局限流未激活前的第三层钱包防线） ──
-// 单实例内计数；多实例会放大上限（N×budget），真正的全局上限=DeepSeek余额+KV限流（待绑定）
-// 默认1500次/日/实例：约为单人正常日用量10倍，攻击者在单实例上的烧钱被截断
+// ── 9/6红队修复：AI日预算（第三层钱包防线） ──
+// 9/18漏洞检索P1升级：原per-instance内存计数在Vercel多实例下敞口=N×budget。
+// 现优先走Vercel KV全局计数（key按UTC自然日对齐，incr原子性防并发超卖），
+// KV未配置/挂掉时降级回单实例内存计数。
+// 默认1500次/日：约为单人正常日用量10倍，攻击者的烧钱被截断
 const AI_DAILY_BUDGET = Math.max(1, Number(process.env.AI_DAILY_BUDGET ?? 1500));
 let budgetDay = "";
 let budgetUsed = 0;
 
-function consumeAIBudget(tag: string): boolean {
+async function consumeAIBudget(tag: string): Promise<boolean> {
   const today = new Date().toISOString().slice(0, 10);
+  const kvUrl = process.env.KV_REST_API_URL;
+  const kvToken = process.env.KV_REST_API_TOKEN;
+  if (kvUrl && kvToken) {
+    try {
+      const dayKey = `budget:ai:${today}`;
+      const countRes = await fetch(`${kvUrl}/incr/${dayKey}`, {
+        headers: { Authorization: `Bearer ${kvToken}` },
+        signal: AbortSignal.timeout(2000),
+      });
+      if (countRes.ok) {
+        const count = parseInt(await countRes.text(), 10);
+        if (count === 1) {
+          // 48h过期：跨日边界残留自清理
+          await fetch(`${kvUrl}/expire/${dayKey}/172800`, {
+            headers: { Authorization: `Bearer ${kvToken}` },
+            signal: AbortSignal.timeout(1000),
+          }).catch(() => null);
+        }
+        budgetDay = today;
+        budgetUsed = count; // 内存镜像供getAIBudgetStatus
+        if (count > AI_DAILY_BUDGET) {
+          console.warn(`[ai-budget] ${tag} blocked: ${count}/${AI_DAILY_BUDGET} (KV global)`);
+          return false;
+        }
+        return true;
+      }
+    } catch {
+      // KV异常→降级内存计数
+    }
+  }
   if (today !== budgetDay) {
     budgetDay = today;
     budgetUsed = 0;
@@ -99,7 +131,7 @@ export async function callAI(
 ): Promise<string | null> {
   const apiKey = process.env.DEEPSEEK_API_KEY || "";
   if (!apiKey) return null;
-  if (!consumeAIBudget("callAI")) return null;
+  if (!(await consumeAIBudget("callAI"))) return null;
 
   const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
   // 2026-09-13官方核验：deepseek-v4-flash旧名对应模型已退役（请求由V4.1-Flash代服），默认值切换到正式名deepseek-flash（1M上下文）
@@ -164,7 +196,7 @@ export async function callVisionAI(
 ): Promise<string | null> {
   const apiKey = process.env.ZHIPU_API_KEY || "";
   if (!apiKey) return null;
-  if (!consumeAIBudget("callVisionAI")) return null;
+  if (!(await consumeAIBudget("callVisionAI"))) return null;
 
   const baseUrl = process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";
   const maxRetries = options.retry ?? 1;
@@ -236,7 +268,7 @@ export async function* callZhipuStream(
 ): AsyncGenerator<StreamChunk> {
   const apiKey = process.env.ZHIPU_API_KEY || "";
   if (!apiKey || messages.length === 0) return;
-  if (!consumeAIBudget("callZhipuStream")) return;
+  if (!(await consumeAIBudget("callZhipuStream"))) return;
 
   const baseUrl = process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";
   const model = process.env.ZHIPU_TEXT_MODEL || "glm-4-flash";
@@ -328,7 +360,7 @@ export async function* callAIStream(
 ): AsyncGenerator<StreamChunk> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey || messages.length === 0) return;
-  if (!consumeAIBudget("callAIStream")) return;
+  if (!(await consumeAIBudget("callAIStream"))) return;
 
   const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
   // 2026-09-13官方核验：切换正式名deepseek-flash（旧名deepseek-v4-flash仍被V4.1-Flash代服，env残留旧值不断供）
