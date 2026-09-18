@@ -110,6 +110,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [runningTaskKey, setRunningTaskKey] = useState<string | null>(null);
   const [runningTaskProgress, setRunningTaskProgress] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  // 100vh固定布局页（聊天）：footer不能进main，否则document多出footer高度的滚动空间，
+  // 内部滚动链会把整页顶出视口（header/消息顶部被裁"脱离原屏"）
+  const isFixedViewportPage = pathname === "/invest/chat";
 
   useEffect(() => {
     const currentTheme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -217,7 +220,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
-      <main className="flex min-w-0 flex-1 flex-col pt-12 md:pt-0">{children}</main>
+      <main className="flex min-w-0 flex-1 flex-col pt-12 md:pt-0">
+        {children}
+        {!isFixedViewportPage ? (
+          <footer className="mt-auto border-t border-[var(--border)] px-6 py-4 text-center">
+            <p className="text-xs text-[var(--text-muted)]">
+              费曼星 · 投资分析工具 · 行情实时更新 · 仅供研究参考，不构成投资建议
+            </p>
+          </footer>
+        ) : null}
+      </main>
     </div>
   );
 }

@@ -1066,7 +1066,7 @@ export default function ChatPage() {
 
       {/* Messages */}
       <div className="relative min-h-0 flex-1">
-        <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto px-5 py-6">
+        <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto overscroll-contain px-5 py-6">
         {messages.length === 0 ? (
           <div className="mx-auto max-w-2xl">
             {loading ? (
