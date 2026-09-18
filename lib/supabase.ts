@@ -98,6 +98,13 @@ export async function readLedgerBySymbol(symbol: string, limit = 5): Promise<Led
   );
 }
 
+// 9/18能力工程：账本全量读取（公开账本页+自动结算cron共用）
+export async function readAllLedger(limit = 500): Promise<LedgerRow[] | null> {
+  return sbRest<LedgerRow[]>(
+    `judgment_ledger?select=symbol,stance,key_level,invalidation,confidence,date,ts&order=ts.desc&limit=${limit}`
+  );
+}
+
 // P2③：向量化写入（pgvector列——REST写入用字符串格式'[0.1,...]'）
 export async function updateKbEmbedding(id: string, vector: number[]): Promise<boolean> {
   if (!supabaseConfigured() || vector.length === 0) return false;

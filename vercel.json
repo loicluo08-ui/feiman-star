@@ -3,6 +3,10 @@
     {
       "path": "/api/invest/cron-kb-grow",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/invest/cron-judgment-settle",
+      "schedule": "0 22 * * *"
     }
   ]
 }
