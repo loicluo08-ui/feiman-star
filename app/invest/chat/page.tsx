@@ -835,14 +835,22 @@ export default function ChatPage() {
             </button>
             <button
               onClick={startNewConversation}
-              className="rounded-md border border-[var(--border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
+              className="grid h-8 w-8 place-items-center rounded-full border border-[var(--border-strong)] text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] lg:hidden"
+              title="开始新对话（当前对话自动存入历史）"
+              aria-label="开始新对话"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            </button>
+            <button
+              onClick={startNewConversation}
+              className="hidden rounded-md border border-[var(--border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] lg:block"
               title="开始新对话（当前对话自动存入历史）"
             >
               新对话
             </button>
             <button
               onClick={() => setShowHistory((visible) => !visible)}
-              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+              className={`hidden rounded-md border px-2.5 py-1 text-xs font-medium transition-colors lg:inline-flex ${
                 showHistory
                   ? "border-[var(--text)] bg-[var(--primary)] text-[var(--primary-foreground)]"
                   : "border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
@@ -852,7 +860,7 @@ export default function ChatPage() {
             </button>
             <button
                 onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); }}
-                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                className={`hidden rounded-md px-2 py-1 text-xs font-medium transition-colors lg:inline-flex ${
                   showLedger
                     ? "border border-[var(--text)] text-[var(--text)]"
                     : "border border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
@@ -914,7 +922,22 @@ export default function ChatPage() {
                 <button aria-label="关闭更多菜单" className="fixed inset-0 z-20 cursor-default" onClick={() => setMoreOpen(false)} />
               )}
               {moreOpen && (
-                <div className="absolute right-0 top-9 z-30 w-32 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
+                <div className="absolute right-0 top-9 z-30 w-36 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
+                  <button
+                    onClick={() => { setShowHistory((v) => !v); setMoreOpen(false); }}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                  >
+                    <span>历史记录</span>
+                    <span className="text-[var(--text-muted)]">{history.length > 0 ? history.length : ""}{showHistory ? " ✓" : ""}</span>
+                  </button>
+                  <button
+                    onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); setMoreOpen(false); }}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                  >
+                    <span>📋 账本</span>
+                    <span className="text-[var(--text-muted)]">{ledgerEntries.length > 0 ? ledgerEntries.length : ""}{showLedger ? " ✓" : ""}</span>
+                  </button>
+                  <div className="my-1 h-px bg-[var(--border)]" />
                   <button
                     onClick={() => {
                       const el = document.documentElement;
@@ -969,7 +992,7 @@ export default function ChatPage() {
                 </div>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-1">
+            <div className="mask-fade-r flex flex-nowrap items-center gap-1 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-x-visible">
               {[
                 { key: "balanced", label: "均衡" },
                 { key: "value", label: "价值" },
@@ -1148,7 +1171,18 @@ export default function ChatPage() {
               <h2 className="text-2xl font-bold tracking-tight text-[var(--text)]">今天想分析什么？</h2>
               <p className="mt-2 hidden text-sm text-[var(--text-secondary)] sm:block">K线图、财报、持仓截图，或直接提问——实时行情与快讯自动注入</p>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+            <div className="mask-fade-r -mx-5 flex flex-nowrap gap-2 overflow-x-auto px-5 pb-1 lg:hidden">
+              {suggestions.map((s) => (
+                <button
+                  key={s.title}
+                  onClick={() => setQuestion(s.title)}
+                  className="shrink-0 whitespace-nowrap rounded-full border border-[var(--border-strong)] bg-[var(--surface-subtle)] px-3.5 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
+                >
+                  {s.title}
+                </button>
+              ))}
+            </div>
+            <div className="hidden gap-2 sm:grid-cols-2 sm:gap-3 lg:grid">
               {suggestions.map((s) => (
                 <button
                   key={s.title}
@@ -1319,7 +1353,7 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-[var(--border)] bg-[var(--surface)] px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="input-safe-bottom px-3 pt-2 sm:px-5">
         {error ? (
           <div className="mb-2 flex items-center gap-2 text-xs text-[var(--negative)]">
             <span>{error}</span>
@@ -1368,7 +1402,7 @@ export default function ChatPage() {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={images.length >= 3}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center self-end rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
               title={images.length >= 3 ? "最多上传3张图片" : "上传截图（最多3张）"}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1407,8 +1441,8 @@ export default function ChatPage() {
               disabled={!loading && !question.trim() && images.length === 0}
               className={
                 loading
-                  ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[var(--text)] transition-opacity active:scale-95"
-                  : "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] transition-transform active:scale-95 disabled:opacity-40"
+                  ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--text)] transition-transform active:scale-95"
+                  : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] transition-transform active:scale-95 disabled:bg-[var(--surface-muted)] disabled:text-[var(--text-muted)] disabled:opacity-100"
               }
               title={loading ? "停止生成" : "发送"}
             >
