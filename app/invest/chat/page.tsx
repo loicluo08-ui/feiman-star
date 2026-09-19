@@ -209,13 +209,6 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 639px)");
-    const sync = () => setIsMobile(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
   const activeHistoryId = useRef("");
   const mountedRef = useRef(false);
   // 会话纪元：新对话/切换历史时+1，旧流的迟到结果不再写UI（防串话）
@@ -235,7 +228,6 @@ export default function ChatPage() {
   const [copiedIndex, setCopiedIndex] = useState(-1);
   const injectedRef = useRef<string[]>([]);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   // 长对话滚动摘要（窗口外记忆）：会话级状态，随历史持久化
   const summaryRef = useRef("");
@@ -919,6 +911,9 @@ export default function ChatPage() {
                 ⋯更多
               </button>
               {moreOpen && (
+                <button aria-label="关闭更多菜单" className="fixed inset-0 z-20 cursor-default" onClick={() => setMoreOpen(false)} />
+              )}
+              {moreOpen && (
                 <div className="absolute right-0 top-9 z-30 w-32 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
                   <button
                     onClick={() => {
@@ -1401,9 +1396,12 @@ export default function ChatPage() {
               onKeyDown={handleKeyDown}
               rows={1}
               maxLength={4000}
-              placeholder={isMobile ? "输入问题，或粘贴截图让AI分析…" : "输入问题，或粘贴/上传截图让AI分析…（Enter发送，Shift+Enter换行）"}
+              placeholder="输入问题，或粘贴截图让AI分析…"
               className="min-h-11 flex-1 resize-none self-center overflow-y-auto bg-transparent px-2 py-2.5 text-[16px] leading-6 outline-none"
             />
+            <span className="hidden shrink-0 self-end pb-2 text-[11px] leading-none text-[var(--text-muted)] sm:block">
+              Enter发送 · Shift+Enter换行
+            </span>
             <button
               onClick={loading ? stopGeneration : submit}
               disabled={!loading && !question.trim() && images.length === 0}
