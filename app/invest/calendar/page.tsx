@@ -150,7 +150,7 @@ export default function CalendarPage() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索股票代码或公司名"
-          className="min-w-0 flex-1 rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none transition-colors focus:border-[var(--text)]"
+          className="min-w-0 flex-1 rounded-xl border border-[var(--border-strong)] px-4 py-3 text-[16px] outline-none transition-colors focus:border-[var(--text)]"
         />
         <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-[var(--surface-subtle)] px-3 py-3 text-xs font-medium text-[var(--text-secondary)]">
           <input

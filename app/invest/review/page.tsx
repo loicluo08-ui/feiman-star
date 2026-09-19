@@ -568,7 +568,7 @@ export default function ReviewPage() {
                 setResolvedPositionCheck(null);
               }}
               placeholder="100000"
-              className="mt-2 w-full rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none focus:border-[var(--text)]"
+              className="mt-2 w-full rounded-xl border border-[var(--border-strong)] px-4 py-3 text-[16px] outline-none focus:border-[var(--text)]"
             />
             <p className="mt-1 text-xs text-[var(--text-muted)]">默认10万美元，用于仓位规则计算</p>
           </div>
@@ -580,7 +580,7 @@ export default function ReviewPage() {
               rows={3}
               maxLength={2000}
               placeholder="如：突破20日均线买入，跌破10日均线卖出"
-              className="mt-2 w-full resize-none rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none focus:border-[var(--text)]"
+              className="mt-2 w-full resize-none rounded-xl border border-[var(--border-strong)] px-4 py-3 text-[16px] outline-none focus:border-[var(--text)]"
             />
           </div>
           <div>

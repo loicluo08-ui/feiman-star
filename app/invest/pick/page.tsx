@@ -714,7 +714,7 @@ export default function PickPage() {
               onFocus={() => { if (suggestions.length > 0) setShowSuggest(true); }}
               onBlur={() => { blurTimer.current = setTimeout(() => setShowSuggest(false), 150); }}
               placeholder="代码或公司名，如 AAPL / 苹果 / Apple / Tesla"
-              className="w-full rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none transition-colors focus:border-[var(--text)]"
+              className="w-full rounded-xl border border-[var(--border-strong)] px-4 py-3 text-[16px] outline-none transition-colors focus:border-[var(--text)]"
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
@@ -915,7 +915,7 @@ export default function PickPage() {
               maxLength={2000}
               rows={2}
               placeholder="补充说明（可选）：如关注的指标、对比公司、特殊问题等"
-              className="mb-3 w-full resize-none rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm outline-none focus:border-[var(--text)]"
+              className="mb-3 w-full resize-none rounded-xl border border-[var(--border-strong)] px-4 py-3 text-[16px] outline-none focus:border-[var(--text)]"
             />
             <button
               onClick={runAnalysis}

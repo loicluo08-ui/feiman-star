@@ -301,7 +301,7 @@ export default function MarketPage() {
           autoCapitalize="characters"
           autoComplete="off"
           spellCheck={false}
-          className="min-w-0 flex-1 rounded-xl border border-[var(--border-strong)] px-4 py-3 text-sm uppercase outline-none transition-colors focus:border-[var(--text)]"
+          className="min-w-0 flex-1 rounded-xl border border-[var(--border-strong)] px-4 py-3 text-[16px] uppercase outline-none transition-colors focus:border-[var(--text)]"
         />
         <button
           type="submit"

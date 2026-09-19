@@ -1265,7 +1265,7 @@ export default function ChatPage() {
           </div>
         ) : null}
         <div className="mx-auto max-w-3xl">
-          <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+          <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1 [mask-image:linear-gradient(to_right,black_90%,transparent)]">
             {sceneTemplates.map((template) => (
               <button
                 key={template.label}
