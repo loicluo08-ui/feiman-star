@@ -209,6 +209,13 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const activeHistoryId = useRef("");
   const mountedRef = useRef(false);
   // 会话纪元：新对话/切换历史时+1，旧流的迟到结果不再写UI（防串话）
@@ -227,6 +234,8 @@ export default function ChatPage() {
   const [statusSteps, setStatusSteps] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState(-1);
   const injectedRef = useRef<string[]>([]);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   // 长对话滚动摘要（窗口外记忆）：会话级状态，随历史持久化
   const summaryRef = useRef("");
@@ -827,7 +836,7 @@ export default function ChatPage() {
                 el.dataset.theme = cur;
                 try { localStorage.setItem("feimanstar_theme", cur); } catch {}
               }}
-              className="rounded-md border border-[var(--border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)]"
+              className="hidden rounded-md border border-[var(--border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] lg:block"
               title="切换明暗主题"
             >
               ◐ 明暗
@@ -849,7 +858,18 @@ export default function ChatPage() {
             >
               历史记录{history.length > 0 ? ` ${history.length}` : ""}
             </button>
-            <div className="flex items-center gap-1">
+            <button
+                onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); }}
+                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                  showLedger
+                    ? "border border-[var(--text)] text-[var(--text)]"
+                    : "border border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
+                }`}
+                title="判断账本：本设备存档的AI主判断，再次问同一标的时AI会主动对账"
+              >
+                📋账本({ledgerEntries.length})
+              </button>
+            <div className="hidden items-center gap-1 lg:flex">
               <button
                 onClick={() => {
                   const data = localStorage.getItem(CHAT_HISTORY_KEY) || "[]";
@@ -888,6 +908,71 @@ export default function ChatPage() {
                   }}
                 />
               </label>
+            </div>
+            {/* 手机：低频功能（明暗/导出/导入）收进更多菜单，保第一行干净 */}
+            <div className="relative lg:hidden">
+              <button
+                onClick={() => setMoreOpen((v) => !v)}
+                className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${moreOpen ? "border-[var(--text)] text-[var(--text)]" : "border-[var(--border-strong)] text-[var(--text-secondary)]"}`}
+                aria-label="更多功能"
+              >
+                ⋯更多
+              </button>
+              {moreOpen && (
+                <div className="absolute right-0 top-9 z-30 w-32 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
+                  <button
+                    onClick={() => {
+                      const el = document.documentElement;
+                      const cur = el.dataset.theme === "dark" ? "light" : "dark";
+                      el.dataset.theme = cur;
+                      try { localStorage.setItem("feimanstar_theme", cur); } catch {}
+                      setMoreOpen(false);
+                    }}
+                    className="block w-full rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                  >
+                    ◐ 切换明暗
+                  </button>
+                  <button
+                    onClick={() => {
+                      const data = localStorage.getItem(CHAT_HISTORY_KEY) || "[]";
+                      const blob = new Blob([data], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `feimanstar-chat-${new Date().toISOString().slice(0, 10)}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      setMoreOpen(false);
+                    }}
+                    className="block w-full rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                  >
+                    导出对话
+                  </button>
+                  <label className="block cursor-pointer rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]">
+                    导入对话
+                    <input
+                      type="file"
+                      accept="application/json"
+                      className="hidden"
+                      onChange={async (e) => {
+                        setMoreOpen(false);
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const text = await file.text();
+                          const imported = JSON.parse(text);
+                          if (Array.isArray(imported)) {
+                            const existing = readChatHistory();
+                            const merged = [...imported, ...existing].slice(0, 50);
+                            localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(merged));
+                            setHistory(merged.slice(0, 20));
+                          }
+                        } catch {}
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-1">
               {[
@@ -944,17 +1029,6 @@ export default function ChatPage() {
                 title="展开6种投资大师视角（基于罗竹先框架的模块11思维框架库）"
               >
                 大师视角
-              </button>
-              <button
-                onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); }}
-                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-                  showLedger
-                    ? "border border-[var(--text)] text-[var(--text)]"
-                    : "border border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
-                }`}
-                title="判断账本：本设备存档的AI主判断，再次问同一标的时AI会主动对账"
-              >
-                📋账本({ledgerEntries.length})
               </button>
               {showGurus &&
                 GURU_STYLES.map((s) => (
@@ -1327,7 +1401,7 @@ export default function ChatPage() {
               onKeyDown={handleKeyDown}
               rows={1}
               maxLength={4000}
-              placeholder="输入问题，或粘贴/上传截图让AI分析…（Enter发送，Shift+Enter换行）"
+              placeholder={isMobile ? "输入问题，或粘贴截图让AI分析…" : "输入问题，或粘贴/上传截图让AI分析…（Enter发送，Shift+Enter换行）"}
               className="min-h-11 flex-1 resize-none self-center overflow-y-auto bg-transparent px-2 py-2.5 text-[16px] leading-6 outline-none"
             />
             <button
