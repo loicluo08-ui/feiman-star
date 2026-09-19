@@ -922,7 +922,7 @@ export default function ChatPage() {
                 <button aria-label="关闭更多菜单" className="fixed inset-0 z-20 cursor-default" onClick={() => setMoreOpen(false)} />
               )}
               {moreOpen && (
-                <div className="absolute right-0 top-9 z-30 w-36 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
+                <div className="absolute left-0 top-9 z-30 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
                   <button
                     onClick={() => { setShowHistory((v) => !v); setMoreOpen(false); }}
                     className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
