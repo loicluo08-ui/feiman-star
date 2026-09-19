@@ -814,11 +814,11 @@ export default function ChatPage() {
   return (
     <div className="flex h-[calc(100dvh-3rem)] flex-col md:h-dvh">
       {/* Header */}
-      <header className="px-5 pb-6 pt-7 sm:px-8">
+      <header className="px-5 pb-3 pt-4 sm:px-8 sm:pb-6 sm:pt-7">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-bold tracking-tight">投资对话</h1>
-            <p className="mt-0.5 text-xs text-[var(--text-muted)]">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek（自动注入实时行情与最新快讯）。</p>
+            <p className="mt-0.5 hidden text-xs text-[var(--text-muted)] sm:block">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek（自动注入实时行情与最新快讯）。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1144,19 +1144,19 @@ export default function ChatPage() {
                 {statusLine || "AI回复中…"}
               </div>
             ) : null}
-            <div className="mb-6 text-center">
+            <div className="mb-4 text-center sm:mb-6">
               <h2 className="text-2xl font-bold tracking-tight text-[var(--text)]">今天想分析什么？</h2>
-              <p className="mt-2 text-sm text-[var(--text-secondary)]">K线图、财报、持仓截图，或直接提问——实时行情与快讯自动注入</p>
+              <p className="mt-2 hidden text-sm text-[var(--text-secondary)] sm:block">K线图、财报、持仓截图，或直接提问——实时行情与快讯自动注入</p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
               {suggestions.map((s) => (
                 <button
                   key={s.title}
                   onClick={() => setQuestion(s.title)}
-                  className="rounded-xl bg-[var(--surface-subtle)] p-4 text-left transition-all hover:bg-[var(--surface-muted)]ce-subtle)]"
+                  className="rounded-xl bg-[var(--surface-subtle)] p-3 text-left transition-all hover:bg-[var(--surface-muted)] sm:p-4"
                 >
                   <p className="text-sm font-medium">{s.title}</p>
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">{s.desc}</p>
+                  <p className="mt-1 hidden text-xs text-[var(--text-muted)] sm:block">{s.desc}</p>
                 </button>
               ))}
             </div>
