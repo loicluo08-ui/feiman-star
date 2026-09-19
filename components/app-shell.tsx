@@ -164,10 +164,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [menuOpen]);
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] md:flex">
+    <div className="min-h-screen bg-[var(--bg)] lg:flex">
       {runningTaskKey ? (
         <div
-          className="fixed inset-x-0 top-0 z-[70] h-1 overflow-hidden bg-[var(--border)] md:left-56"
+          className="fixed inset-x-0 top-0 z-[70] h-1 overflow-hidden bg-[var(--border)] lg:left-56"
           title={runningTaskProgress || ({
             "pick-analysis": "AI选股分析中…",
             "review-analysis": "AI复盘分析中…",
@@ -178,11 +178,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
-      <aside className="sticky top-0 hidden h-screen supports-[height:100dvh]:h-dvh w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] px-3 py-5 md:flex">
+      <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] px-3 py-5 lg:flex">
         <SidebarContent pathname={pathname} theme={theme} onToggleTheme={toggleTheme} />
       </aside>
 
-      <div className="fixed inset-x-0 top-0 z-40 flex h-12 items-center border-b border-[var(--border)] bg-[var(--surface)] px-4 md:hidden">
+      <div className="fixed inset-x-0 top-0 z-40 flex h-12 items-center border-b border-[var(--border)] bg-[var(--surface)] px-4 lg:hidden">
         <button
           onClick={() => setMenuOpen(true)}
           className="mr-3 grid h-8 w-8 place-items-center rounded-lg text-[var(--text)] transition-colors hover:bg-[var(--surface-muted)]"
@@ -203,7 +203,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {menuOpen ? (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden">
           <button
             className="absolute inset-0 bg-black/35"
             onClick={() => setMenuOpen(false)}
@@ -221,7 +221,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
-      <main className="flex min-w-0 flex-1 flex-col pt-12 md:pt-0">
+      <main className="flex min-w-0 flex-1 flex-col pt-12 lg:pt-0">
         {children}
         {!isFixedViewportPage ? (
           <footer className="mt-auto border-t border-[var(--border)] px-6 py-4 text-center">

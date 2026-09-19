@@ -811,7 +811,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3rem)] flex-col md:h-screen">
+    <div className="flex h-[calc(100dvh-3rem)] flex-col md:h-dvh">
       {/* Header */}
       <header className="px-5 pb-6 pt-7 sm:px-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1144,10 +1144,10 @@ export default function ChatPage() {
                         <>
                           <MarkdownRenderer content={m.text} />
                           <div className="mt-2 flex items-center gap-3">
-                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 max-sm:opacity-100">
+                            <div className="flex items-center gap-1 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/msg:opacity-100">
                               <button
                                 onClick={() => void copyAnswer(m.text, i)}
-                                className="rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
+                                className="rounded-md p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
                                 aria-label="复制本条AI回答"
                                 title="复制"
                               >
@@ -1250,7 +1250,7 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-[var(--border)] bg-[var(--surface)] px-5 py-4">
+      <div className="border-t border-[var(--border)] bg-[var(--surface)] px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {error ? (
           <div className="mb-2 flex items-center gap-2 text-xs text-[var(--negative)]">
             <span>{error}</span>
@@ -1328,15 +1328,15 @@ export default function ChatPage() {
               rows={1}
               maxLength={4000}
               placeholder="输入问题，或粘贴/上传截图让AI分析…（Enter发送，Shift+Enter换行）"
-              className="min-h-11 flex-1 resize-none self-center overflow-y-auto bg-transparent px-2 py-2.5 text-[15px] leading-6 outline-none"
+              className="min-h-11 flex-1 resize-none self-center overflow-y-auto bg-transparent px-2 py-2.5 text-[16px] leading-6 outline-none"
             />
             <button
               onClick={loading ? stopGeneration : submit}
               disabled={!loading && !question.trim() && images.length === 0}
               className={
                 loading
-                  ? "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--text)] transition-opacity hover:opacity-80"
-                  : "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+                  ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[var(--text)] transition-opacity active:scale-95"
+                  : "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] transition-transform active:scale-95 disabled:opacity-40"
               }
               title={loading ? "停止生成" : "发送"}
             >
