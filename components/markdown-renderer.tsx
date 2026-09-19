@@ -28,7 +28,12 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Prop
     <div className="feiman-md">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+        rehypePlugins={[[rehypeHighlight, {
+          detect: false,
+          ignoreMissing: true,
+          // 语言子集：全语言包~200KB是大头，投资场景实际只出这些——bundle省~25%
+          subset: ["bash", "javascript", "typescript", "json", "python", "sql", "xml", "css", "diff", "plaintext", "yaml", "markdown"],
+        }]]}
         components={{
           h1: ({ node, ...props }) => <h3 className="mb-3 mt-4 text-base font-semibold text-[var(--text)]" {...props} />,
           h2: ({ node, ...props }) => <h4 className="mb-2 mt-4 text-sm font-semibold text-[var(--text)]" {...props} />,
