@@ -43,8 +43,8 @@ function livermoreRule(s: QtStock): JudgmentCandidate | null {
     stance: up ? "多" : "空",
     keyLevel: up ? `突破确认位 ${s.high.toFixed(2)}` : `跌破确认位 ${s.low.toFixed(2)}`,
     invalidation: up
-      ? `跌破 ${s.low.toFixed(2)}（今日低点失守=关键点失效）`
-      : `突破 ${s.high.toFixed(2)}（今日高点收复=空头关键点失效）`,
+      ? `跌破 ${s.low.toFixed(2)}（触发日低点失守=关键点失效）`
+      : `突破 ${s.high.toFixed(2)}（触发日高点收复=空头关键点失效）`,
     confidence: "55%", master: "利弗莫尔（关键点）",
     basis: `[数据]qt实时：单日${s.changePct > 0 ? "+" : ""}${s.changePct.toFixed(1)}%（规则触发信号，非大师本人观点）`,
     date: todayStr(), ts: Date.now(), status: "pending",
@@ -58,24 +58,30 @@ function grahamRule(s: QtStock): JudgmentCandidate | null {
     id: mkId(s.code, "graham"), symbol: s.code,
     stance: "观望",
     keyLevel: `PE ${s.pe.toFixed(1)}（<15观察阈值）`,
-    invalidation: `PE升破 20（估值修复完成，观察信号失效）`,
+    invalidation: `突破 ${(s.price * 20 / (s.pe ?? 15)).toFixed(2)}（价格修复至PE约20，观察信号失效）`,
     confidence: "50%", master: "格雷厄姆（估值低位）",
     basis: `[数据]qt实时：PE=${s.pe.toFixed(1)}（规则触发信号，非投资建议）`,
     date: todayStr(), ts: Date.now(), status: "pending",
   };
 }
 
-/** 规则3：马克斯——钟摆极端警示（单日±8%=情绪极端段，失效=回归±3%内） */
+/** 规则3：马克斯——钟摆极端警示（单日±8%以上；失效=价格回归昨收±3%内——绝对点位可机械核验） */
 function marksRule(s: QtStock): JudgmentCandidate | null {
   if (s.changePct === null || Math.abs(s.changePct) < 8 || !s.price) return null;
   const greedy = s.changePct > 0;
+  const anchor = s.previousClose;
+  if (!anchor) return null;
+  const band = anchor * 1.03;
+  const floor = anchor * 0.97;
   return {
     id: mkId(s.code, "marks"), symbol: s.code,
     stance: "观望",
-    keyLevel: `钟摆${greedy ? "贪婪" : "恐惧"}段（单日${s.changePct > 0 ? "+" : ""}${s.changePct.toFixed(1)}%）`,
-    invalidation: `涨跌幅回归 ±3% 以内（钟摆离开极端段，警示失效）`,
+    keyLevel: `钟摆${greedy ? "贪婪" : "恐惧"}段（单日${greedy ? "+" : ""}${s.changePct.toFixed(1)}%，昨收${anchor.toFixed(2)}）`,
+    invalidation: greedy
+      ? `跌破 ${floor.toFixed(2)}（价格回落至昨收-3%，情绪极端消解，警示失效）`
+      : `突破 ${band.toFixed(2)}（价格收复至昨收+3%，情绪极端消解，警示失效）`,
     confidence: "50%", master: "马克斯（钟摆定位）",
-    basis: `[数据]qt实时：单日${s.changePct > 0 ? "+" : ""}${s.changePct.toFixed(1)}%（情绪极端警示，非方向判断）`,
+    basis: `[数据]qt实时：单日${greedy ? "+" : ""}${s.changePct.toFixed(1)}%（情绪极端警示，非方向判断）`,
     date: todayStr(), ts: Date.now(), status: "pending",
   };
 }
