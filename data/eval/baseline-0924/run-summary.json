@@ -1,0 +1,30 @@
+{
+  "ts": "2026-09-24",
+  "mode": "live (线上balanced档)",
+  "target": "https://sufve.com/api/invest/chat",
+  "runs": [
+    {
+      "id": "G-001",
+      "sec": null,
+      "ansLen": null,
+      "done": true,
+      "note": "主脚本执行,会话504前完成,流完整含done标记"
+    },
+    {
+      "id": "G-002",
+      "sec": null,
+      "ansLen": null,
+      "done": true,
+      "note": "同上"
+    },
+    {
+      "id": "G-003",
+      "sec": 90,
+      "ansLen": 1577,
+      "done": true,
+      "note": "主脚本被会话504中断后由run-g003.mjs补跑,done=yes"
+    }
+  ],
+  "judge": "alex-glm (DEEPSEEK_API_KEY仅存Vercel,本地无凭据;待key到位后双跑校准裁判口径)",
+  "total": "28/30 (93.3%)"
+}

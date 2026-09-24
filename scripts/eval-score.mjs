@@ -37,7 +37,7 @@ for (const c of gold.cases) {
     structErrors++;
   }
 }
-console.log(`金标集 ${gold.name}：${gold.cases.length} 题，结构校验 ${structErrors === 0 ? "✓ 通过" : `✗ ${structErrors} 处问题`}`);
+console.log(`金标集 ${gold.meta?.name || gold.name}：${gold.cases.length} 题，结构校验 ${structErrors === 0 ? "✓ 通过" : `✗ ${structErrors} 处问题`}`);
 if (structErrors > 0) process.exit(1);
 
 if (!live) {
@@ -96,3 +96,19 @@ for (const c of gold.cases) {
 const sum = results.reduce((s, r) => s + r.total, 0);
 const maxSum = results.reduce((s, r) => s + r.max, 0);
 console.log(`\n总分 ${sum}/${maxSum}（${((sum / maxSum) * 100).toFixed(1)}%）——历史曲线追加至 data/eval/score-history.jsonl`);
+
+// 0-1闭环（9/24补全）：live结果自动落盘score-history.jsonl，不再依赖手动记录
+import { appendFileSync } from "node:fs";
+const record = {
+  date: new Date().toISOString().slice(0, 10),
+  set: gold.meta?.name || "golden-set",
+  mode: "live",
+  target: base,
+  judge: "deepseek-flash(脚本内置裁判)",
+  results: results.map((r) => ({ id: r.id, scores: r.scores ?? null, total: r.total, notes: r.notes ?? null })),
+  total: sum,
+  max: maxSum,
+  pct: Number(((sum / maxSum) * 100).toFixed(1)),
+};
+appendFileSync(join(ROOT, "data", "eval", "score-history.jsonl"), JSON.stringify(record) + "\n");
+console.log(`已写入 data/eval/score-history.jsonl（${record.date} ${sum}/${maxSum}）`);
