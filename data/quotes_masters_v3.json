@@ -1,0 +1,1153 @@
+{
+ "quotes": [
+  {
+   "master": "段永平",
+   "theme": "通用",
+   "quote": "买股票就是买公司，买公司就是买其未来现金流的折现",
+   "anchor": "问答录核心句",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "通用",
+   "quote": "本分：做对的事情，把事情做对。发现错了就马上停，因为这时停止就是进步",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "情绪",
+   "quote": "平常心不是心态，是理性。理性就是回到事物本源，做该做的事",
+   "anchor": "2025.12华尔街见闻，严谨定义",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "通用",
+   "quote": "缺钱可能是因为总想赚快钱",
+   "anchor": "2025.1浙大实录",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "风险",
+   "quote": "Stop Doing List：不做空、不用margin、不做不懂的东西",
+   "anchor": "多场合确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "段永平",
+   "theme": "能力圈",
+   "quote": "投资最重要的是投在你真正懂的东西上……不懂的，再热闹也不碰",
+   "anchor": "问答录语境",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "估值",
+   "quote": "A股我只买了茅台。苹果未来翻1-3倍存在可能，只是现在不便宜",
+   "anchor": "2025.11方略对话",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "通用",
+   "quote": "如何低门槛投资美股？买标普500指数",
+   "anchor": "2025.11方略，大意",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "段永平",
+   "theme": "通用",
+   "quote": "没有人可以改变市场，没有人可以预测市场，你只能利用市场",
+   "anchor": "问答录语境",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "估值",
+   "quote": "差异化就是用户需要而别人没有满足的东西，没有差异化最后只能打价格战",
+   "anchor": "问答录商业逻辑篇",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "通用",
+   "quote": "敢为天下后，后中争先",
+   "anchor": "步步高方法论",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "估值",
+   "quote": "本分文化和'和'文化：有争议时先反省自己，宁可自己吃亏也不占便宜",
+   "anchor": "OPPO/vivo文化，大意",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "段永平",
+   "theme": "情绪",
+   "quote": "平常心就是让心回到事物的本源去想问题",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "段永平",
+   "theme": "通用",
+   "quote": "发现错了马上改，不管多大的代价都是最小的代价",
+   "anchor": "问答录，多次复现",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "通用",
+   "quote": "华尔街没有新鲜事，因为投机像山岳一样古老",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "通用",
+   "quote": "钱是坐着赚来的，不是靠思考得来的",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "通用",
+   "quote": "赚大钱不是靠个股起伏，而是靠主要波动——评估整个市场和趋势",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "通用",
+   "quote": "只要认识到趋势在什么地方出现，顺着潮流驾驭你的投机之舟，就能从中得到好处",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "通用",
+   "quote": "只要股票走势正常，就不要急着获利了结",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "通用",
+   "quote": "我从来不在最低点买，也从来不在最高点卖",
+   "anchor": "大意，原典语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "决策",
+   "quote": "优秀的投机客总是在等待，总是有耐心，等待市场证实他们的判断",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "长期持有",
+   "quote": "在牛市里你要做的只是买入并持有，直到你认为牛市接近尾声",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "长期持有",
+   "quote": "市场永远是对的，错的从来只是人的操作",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "通用",
+   "quote": "当我看见一个危险信号时，我不跟它争执，我离开几天后再看",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "风险",
+   "quote": "亏损从来不会自己照顾自己，利润才会",
+   "anchor": "profit takes care of itself, losses never do",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "风险",
+   "quote": "我自己的止损规则：亏损绝不超过10%",
+   "anchor": "《股票操盘术》明确规则",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "决策",
+   "quote": "分批试探：先小仓试错，市场证明对了再加——用最小代价确认判断",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "利弗莫尔",
+   "theme": "风险",
+   "quote": "不要摊平亏损——这是我见过所有人破产的共同路径",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "我做了三份职业：数学家、商人、慈善家。但贯穿我一生始终的，是数学",
+   "anchor": "自传，一手",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "我们不是一个靠直觉的公司，我们靠的是数据和统计",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "如果数据不支持，再漂亮的理论也要扔掉",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "有运气成分——但运气偏爱准备好的统计系统",
+   "anchor": "大意，多访谈语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "碰到好运气，要一直跟着它走",
+   "anchor": "确认原文",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "我们不预测市场，我们寻找可以重复的统计规律",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "大奖章不是魔法，它是数据、统计、以及非常聪明的人",
+   "anchor": "大意，访谈",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "能力圈",
+   "quote": "我雇人从来不看他懂不懂金融，我只看他是不是顶尖的科学家",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "好的数学家和好的交易员有一个共同点：面对自己错了的时候，反应都是修正而不是辩护",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "我们所有人共享一个奖金池——如果文艺复兴赚了钱，那是所有人一起赚的",
+   "anchor": "事实转述",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "把最聪明的人放在一起，给他们共同的问题和共同的回报",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "我不是最聪明的人，我只是和最聪明的人一起工作",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "科学才是我的热爱，钱是副产品",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "西蒙斯",
+   "theme": "通用",
+   "quote": "我碰巧在正确的时间进入了正确的领域——我不认为这是必然的",
+   "anchor": "访谈语境",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "知是行之始，行是知之成",
+   "anchor": "《传习录》",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "未有知而不行者。知而不行，只是未知",
+   "anchor": "《传习录》",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "知行原是两个字，说一个工夫，须要识得头脑",
+   "anchor": "大意，传习录语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "心即理也。天下又有心外之事、心外之理乎？",
+   "anchor": "《传习录》",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "圣人之道，吾性自足，向之求理于事物者误也",
+   "anchor": "龙场悟道原文",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "尔那一点良知，是尔自家底准则。尔意念着处，他是便知是，非便知非，更瞒他一些不得",
+   "anchor": "《传习录》",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "良知之外，更无知；致知之外，更无学",
+   "anchor": "凤凰网确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "人胸中各有个圣人，只自信不及，都自埋倒了",
+   "anchor": "《传习录》",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "人须在事上磨，方立得住，方能静亦定，动亦定",
+   "anchor": "《传习录》",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "人须在事上磨炼做功夫，乃有益。若只好静，遇事便乱，终无长进",
+   "anchor": "《传习录》",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "区区格物致知之功，正是要人于事上实用力",
+   "anchor": "大意，传习录语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "无善无恶心之体，有善有恶意之动，知善知恶是良知，为善去恶是格物",
+   "anchor": "原文，天泉证道记",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "破山中贼易，破心中贼难",
+   "anchor": "书信原文",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "王阳明",
+   "theme": "通用",
+   "quote": "种树者必培其根，种德者必养其心",
+   "anchor": "凤凰网确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "估值",
+   "quote": "以合理的价格买一家好公司，胜过以便宜的价格买一家普通的公司",
+   "anchor": "致股东信确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "估值",
+   "quote": "价格是你付出的，价值是你得到的",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "通用",
+   "quote": "只有退潮时，才知道谁在裸泳",
+   "anchor": "2001信",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "长期持有",
+   "quote": "第一条规则：永远不要亏钱；第二条规则：永远不要忘记第一条",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "风险",
+   "quote": "风险来自于你不知道自己在做什么",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "情绪",
+   "quote": "别人贪婪时恐惧，别人恐惧时贪婪",
+   "anchor": "1986信语境确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "长期持有",
+   "quote": "我们最喜欢的持有期限是永远",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "长期持有",
+   "quote": "如果你不愿意持有一只股票十年，就不要考虑持有它十分钟",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "通用",
+   "quote": "时间是优秀企业的朋友，是平庸企业的敌人",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "通用",
+   "quote": "投资者在一个自己能理解的公司上犯错，好过在自己不理解的伟大公司上侥幸成功",
+   "anchor": "大意，多信件语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "护城河",
+   "quote": "我们喜欢的企业：宽广且持久的护城河+勇敢忠诚的守卫+城堡里全是一磅重的金条",
+   "anchor": "大意，1987信语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "决策",
+   "quote": "一美元原则：留存利润每留一美元，必须至少创造一美元的市值",
+   "anchor": "1984信原文规则",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "通用",
+   "quote": "用4.33亿股买了一家一文不值的公司，损失的账面价值相当于今天的35亿美元",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "巴菲特",
+   "theme": "通用",
+   "quote": "我在美国航空上犯了很多错",
+   "anchor": "大意，多信件",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "反过来想，总是反过来想",
+   "anchor": "常引数学家雅各比",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "长期持有",
+   "quote": "如果我知道我会死在哪里，我就永远不去那里",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "长期持有",
+   "quote": "我只想知道我将来会死在什么地方，这样我就可以永远不去那里",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "在手握锤子的人眼里，世界就是一颗钉子",
+   "anchor": "单思维模型警告",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "你必须把经验挂在思维模型的格栅上",
+   "anchor": "大意，格栅理论",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "芒格",
+   "theme": "周期",
+   "quote": "宏观是我们必须接受的，微观才是我们能有所作为的",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "社会认同倾向：人自动按他认可的人的方式思考和行动",
+   "anchor": "确认条目",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "剥夺反应：失去已有的比得不到新的痛苦得多",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "避免不一致性：人抗拒改变已有结论",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "激励倾向：'给我看激励，我给你看结果。'（Feedback确认）",
+   "anchor": "Feedback确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "lollapalooza效应：多种倾向一起作用时，结果不是相加是相乘",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "能力圈",
+   "quote": "知道自己的能力圈边界，比能力圈本身的大小重要得多",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "我这一生聪明来自于：知道自己不知道什么",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "芒格",
+   "theme": "通用",
+   "quote": "如果你不能比你的对手更清晰地反驳自己的立场，你就没有资格拥有那个立场",
+   "anchor": "大意，经典表述",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "能力圈",
+   "quote": "反身性：参与者的认知与现实互相影响，形成双向反馈",
+   "anchor": "金融炼金术核心定义",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "通用",
+   "quote": "市场并不总是趋向均衡，而是处于不断的动态失衡中",
+   "anchor": "书评确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "通用",
+   "quote": "金融市场不反映现实，而是塑造现实",
+   "anchor": "大意，反身性推论",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "通用",
+   "quote": "盛衰序列：偏见强化趋势，趋势强化偏见，直到逆转点",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "通用",
+   "quote": "重要的不是你对还是错，而是你对时赚多少、错时亏多少",
+   "anchor": "确认，最广为引用",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "通用",
+   "quote": "我富有只是因为我知道我什么时候错了",
+   "anchor": "大意，多次访谈",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "通用",
+   "quote": "先生存，再赚钱",
+   "anchor": "1992英镑之战原则",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "通用",
+   "quote": "我靠意识到自己的错误而生存",
+   "anchor": "大意语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "风险",
+   "quote": "错了但活下来并修正",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "通用",
+   "quote": "我什么都听得进去，但我只相信自己能证明的",
+   "anchor": "大意",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "索罗斯",
+   "theme": "通用",
+   "quote": "承认错误是值得骄傲的事。我从不因承认错误而羞愧",
+   "anchor": "大意，其哲学贯穿",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "马斯克",
+   "theme": "通用",
+   "quote": "第一性原理：用物理学的方式看世界——把事物剥到最基本的事实，从那里开始推理",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马斯克",
+   "theme": "估值",
+   "quote": "电池真的很贵吗？如果按伦敦金属交易所的材料价算，只要600美元/千瓦时。大家说贵，是因为习惯了按成品价格想问题",
+   "anchor": "大意，Tesla早期访谈经典案例",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "马斯克",
+   "theme": "通用",
+   "quote": "第一性原理可以简单解释为：打破现状，持续问为什么，直到问到事物本质",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马斯克",
+   "theme": "通用",
+   "quote": "大多数人用类比生活，意思是复制别人做过的微小变体",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马斯克",
+   "theme": "通用",
+   "quote": "Failure is an option here. If things are not failing, you are not innovating enough.",
+   "anchor": "确认原文",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "马斯克",
+   "theme": "通用",
+   "quote": "如果一件事足够重要，即使胜算不大也要去做",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马斯克",
+   "theme": "通用",
+   "quote": "我宁愿乐观而错误，也不愿悲观而正确",
+   "anchor": "大意，多次语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "马斯克",
+   "theme": "通用",
+   "quote": "反馈循环极其重要——不停地想自己做错了什么以及怎么改进",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马斯克",
+   "theme": "估值",
+   "quote": "制造业的难度被严重低估，工厂本身就是产品",
+   "anchor": "2017-2018",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马斯克",
+   "theme": "通用",
+   "quote": "我在特斯拉生产爬坡上犯的所有错误，都是过于自动化",
+   "anchor": "大意，2018推文确认语境——过度自动化承认",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "格雷厄姆",
+   "theme": "估值",
+   "quote": "价格波动对真正的投资者只有一个意义：给他低买高卖的机会",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "格雷厄姆",
+   "theme": "通用",
+   "quote": "投资者的主要问题——甚至是他最大的敌人——很可能就是他自己",
+   "anchor": "大意，第8章语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "格雷厄姆",
+   "theme": "估值",
+   "quote": "安全边际：以显著低于内在价值的价格买入——4毛买1块",
+   "anchor": "核心概念",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "格雷厄姆",
+   "theme": "通用",
+   "quote": "投资操作是基于详尽的分析，承诺本金安全并满足合理回报的操作。不满足这些要求的，就是投机",
+   "anchor": "《证券分析》定义原文",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "格雷厄姆",
+   "theme": "估值",
+   "quote": "债券的限制性条款，本质上都是安全边际的表现形式",
+   "anchor": "大意",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "格雷厄姆",
+   "theme": "通用",
+   "quote": "过去的数据只能暗示未来，不能保证未来",
+   "anchor": "大意",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "格雷厄姆",
+   "theme": "通用",
+   "quote": "我不再追求用精细的选股技巧跑赢市场，我支持指数化",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马克斯",
+   "theme": "估值",
+   "quote": "第二层思维：这个价格price in了什么共识？共识错在哪里？我的判断是一层还是二层？",
+   "anchor": "投资最重要的事核心",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马克斯",
+   "theme": "通用",
+   "quote": "你不能在和别人做同样的事的情况下，指望取得超过平均的业绩",
+   "anchor": "大意",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "马克斯",
+   "theme": "通用",
+   "quote": "我们无法预测，但我们可以准备",
+   "anchor": "You can't predict. You can prepare.——确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "马克斯",
+   "theme": "周期",
+   "quote": "周期不会消失。最关键的问题不是'接下来会怎样'，而是'我们现在在哪里'",
+   "anchor": "原文精神",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "马克斯",
+   "theme": "通用",
+   "quote": "中段只能应对，无法定位",
+   "anchor": "费曼星库引用原文——周期中段强行定位=伪精确",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "马克斯",
+   "theme": "情绪",
+   "quote": "钟摆：市场在贪婪与恐惧之间摆动，但极少停在中间",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马克斯",
+   "theme": "风险",
+   "quote": "风险不是波动，风险是永久损失的可能性",
+   "anchor": "重要的事核心重定义",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "马克斯",
+   "theme": "风险",
+   "quote": "最大的风险不是波动，是在高点买入并被套",
+   "anchor": "大意语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "马克斯",
+   "theme": "风险",
+   "quote": "最危险的状态：所有人都觉得没有风险的时候",
+   "anchor": "大意，风险反直觉",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "马克斯",
+   "theme": "通用",
+   "quote": "留意别人在做什么：当投资者变得无所畏惧时，才是最危险的时刻",
+   "anchor": "大意",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "马克斯",
+   "theme": "通用",
+   "quote": "Coronavirus: 您现在应该买入吗？",
+   "anchor": "\"Coronavirus: 您现在应该买入吗？\"——他明确反对精确抄底，主张分批",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "费雪",
+   "theme": "成长",
+   "quote": "未来3年这家公司的销售曲线由什么驱动？",
+   "anchor": "要点1改编——费曼星库原句确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "费雪",
+   "theme": "成长",
+   "quote": "研发是在延续今天的生意，还是在创造明天的生意？",
+   "anchor": "费曼星库原句确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "费雪",
+   "theme": "护城河",
+   "quote": "竞争对手最怕它什么？——那才是真护城河",
+   "anchor": "费曼星库原句确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "费雪",
+   "theme": "成长",
+   "quote": "销售组织的能力和产品本身同样重要",
+   "anchor": "15要点之销售组织",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "费雪",
+   "theme": "通用",
+   "quote": "利润率不够高的增长，不是投资机会是陷阱",
+   "anchor": "要点改编",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "费雪",
+   "theme": "通用",
+   "quote": "去和客户聊、和对手聊、和前员工聊、和供应商聊——行业圈子里的人都知道真相",
+   "anchor": "scuttlebutt方法核心",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "费雪",
+   "theme": "通用",
+   "quote": "闲聊法无渠道时，研究质量降一档，必须标注[推导]",
+   "anchor": "费曼星库熔炉规则",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "费雪",
+   "theme": "长期持有",
+   "quote": "如果买入时功课做足（优秀的公司），卖出时机几乎永远不会到来",
+   "anchor": "优秀的公司",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "费雪",
+   "theme": "长期持有",
+   "quote": "我宁愿深度理解少数几家公司，也不愿泛泛持有几十家",
+   "anchor": "集中投资先驱",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "费雪",
+   "theme": "通用",
+   "quote": "保守的投资者睡得着觉，靠的是对公司理解的深度，不是持仓的分散度",
+   "anchor": "大意",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "费雪",
+   "theme": "长期持有",
+   "quote": "集中持有+不卖出",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "通用",
+   "quote": "反脆弱：有些事物在冲击中受益，脆弱的事物在波动中断裂",
+   "anchor": "核心定义",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "风险",
+   "quote": "杠铃策略：90%极端保守+10%极端高风险，永远避开中间地带",
+   "anchor": "确认结构",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "通用",
+   "quote": "脆弱的系统怕波动，反脆弱的系统靠波动变强",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "通用",
+   "quote": "火鸡的错觉：被喂养1000天的火鸡，在感恩节前一天对未来的信心达到最大",
+   "anchor": "《黑天鹅》经典寓言",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "风险",
+   "quote": "黑天鹅：极不可能发生、一旦发生影响巨大、事后人人都能'解释'的事件",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "通用",
+   "quote": "平均斯坦（体重身高）可预测，极端斯坦（财富/市场）不可预测——市场属于极端斯坦",
+   "anchor": "体重身高",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "风险",
+   "quote": "活下来是第一策略——不要把尾部风险当不存在",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "风险",
+   "quote": "把自己暴露在正面黑天鹅面前，同时隔离负面黑天鹅",
+   "anchor": "结构化不对称",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "通用",
+   "quote": "预测是很困难的，尤其是关于未来的预测",
+   "anchor": "他常引的老话，借波尔/马克吐温",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "通用",
+   "quote": "世界上有两种人：一种是'火鸡'（靠过去的平稳外推未来），一种是知道自己是火鸡的人",
+   "anchor": "靠过去的平稳外推未来",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "通用",
+   "quote": "对华尔街分析师最大的冒犯：让他们公开自己的预测记录",
+   "anchor": "大意，反专家权威",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "塔勒布",
+   "theme": "通用",
+   "quote": "沉默的证据：我们只看到成功者，看不到墓地里的人",
+   "anchor": "survivorship bias",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "达里奥",
+   "theme": "情绪",
+   "quote": "把你的决策标准写下来，变成原则——算法化的决策比情绪化决策可靠",
+   "anchor": "原则核心",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "达里奥",
+   "theme": "通用",
+   "quote": "痛苦+反思=进步",
+   "anchor": "确认公式",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "达里奥",
+   "theme": "通用",
+   "quote": "极度求真，极度透明",
+   "anchor": "桥水文化，确认",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "达里奥",
+   "theme": "通用",
+   "quote": "做一个超级现实主义者：梦想+拥抱现实+决心=成功的生活",
+   "anchor": "原则第一公式",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "达里奥",
+   "theme": "长期持有",
+   "quote": "经济像机器：生产率长期缓慢上升，债务周期围绕它波动——短期债务周期（5-8年）+长期债务周期（75-100年）",
+   "anchor": "5-8年",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "达里奥",
+   "theme": "周期",
+   "quote": "历史不会重复，但会押韵——研究过去500年的债务周期，范式总会重演",
+   "anchor": "大意，其历史研究方法",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "达里奥",
+   "theme": "通用",
+   "quote": "利率触及零下限时，央行印钞买金融资产——这一步会拉大贫富差距并催生民粹主义",
+   "anchor": "债务周期推演，大意确认",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "达里奥",
+   "theme": "通用",
+   "quote": "你必须独立思考——因为你不会在大家都有共识的地方赚到钱",
+   "anchor": "确认精神",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "达里奥",
+   "theme": "通用",
+   "quote": "可信度加权：不是所有意见平等——在相关领域有实战成绩的人意见权重更高",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "达里奥",
+   "theme": "风险",
+   "quote": "多元化的圣杯：找到15-20个相互不相关的好回报流，能把风险降低80%而不减收益",
+   "anchor": "确认精神，Holy Grail",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "达里奥",
+   "theme": "通用",
+   "quote": "这是一生中最重要的转折——从此不再相信自己的'确定性'",
+   "anchor": "",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "卡拉曼",
+   "theme": "估值",
+   "quote": "价值投资的核心：以显著低于内在价值的价格买入，用价格差对冲自己的错误",
+   "anchor": "Margin of Safety核心",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "卡拉曼",
+   "theme": "估值",
+   "quote": "安全边际是为犯错、坏运气、以及残酷的市场准备的",
+   "anchor": "确认精神",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "卡拉曼",
+   "theme": "情绪",
+   "quote": "投资者最大的敌人是情绪，其次是通胀",
+   "anchor": "大意语境",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "卡拉曼",
+   "theme": "长期持有",
+   "quote": "现金也是一种资产——当没有好机会时，持有现金是最佳投资",
+   "anchor": "确认精神，Baupost常年高现金",
+   "confidence": "T2确认"
+  },
+  {
+   "master": "卡拉曼",
+   "theme": "长期持有",
+   "quote": "永远不要为了投资而投资——宁可错过，不可做错",
+   "anchor": "Baupost风格转述",
+   "confidence": "T3通行"
+  },
+  {
+   "master": "卡拉曼",
+   "theme": "长期持有",
+   "quote": "市场的无效性来自人的情绪与机构约束，这两样永远不会消失",
+   "anchor": "大意，价值投资长期有效的前提",
+   "confidence": "T3转述"
+  },
+  {
+   "master": "卡拉曼",
+   "theme": "风险",
+   "quote": "大多数投资者把'低波动'当安全，把'高波动'当风险——恰好理解反了",
+   "anchor": "大意语境",
+   "confidence": "T3转述"
+  }
+ ],
+ "note": "V3语料锚点库：nuwa-v3蒸馏，每人≤14条，暂存疑已排除"
+}

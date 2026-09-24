@@ -6,10 +6,14 @@
  * 罗竹先案例到位后逐条替换/追加（格式对齐本文件）。
  */
 import caseData from "../data/case_library_v2.json";
+import nuwaData from "../data/case_library_v3_nuwa.json";
 
 interface CaseRow { id: string; master: string; target: string; year: string; type: string; confidence: string; lesson: string; source_task: string }
 
-const CASES = (caseData as { cases: CaseRow[]; recurrence_triplets: { pattern: string; case: string; chain: string; note: string }[] }).cases;
+const CASES = [
+  ...(caseData as { cases: CaseRow[]; recurrence_triplets: { pattern: string; case: string; chain: string; note: string }[] }).cases,
+  ...(nuwaData as { cases: CaseRow[] }).cases, // 9/25 nuwa-v3蒸馏案例库（14大师31案，T2公开资料整理）
+];
 const RECURRENCE = (caseData as { recurrence_triplets: { pattern: string; case: string; chain: string; note: string }[] }).recurrence_triplets;
 
 // 保留的原3案（v1手工版——利弗莫尔1907为v2所无）
@@ -32,6 +36,11 @@ const MASTER_KEYWORDS: [string, string[]][] = [
   ["巴菲特", ["巴菲特", "buffett", "伯克希尔"]], ["芒格", ["芒格", "munger"]], ["段永平", ["段永平", "duan"]],
   ["马克斯", ["马克斯", "howard marks", "橡树"]], ["索罗斯", ["索罗斯", "soros"]], ["德鲁肯米勒", ["德鲁肯米勒", "druckenmiller"]],
   ["费雪", ["费雪", "fisher"]], ["利弗莫尔", ["利弗莫尔", "livermore"]],
+  // 9/25 nuwa-v3扩展
+  ["西蒙斯", ["西蒙斯", "文艺复兴", "simons"]], ["王阳明", ["王阳明", "阳明", "心学"]],
+  ["马斯克", ["马斯克", "musk", "第一性"]], ["格雷厄姆", ["格雷厄姆", "graham", "市场先生"]],
+  ["塔勒布", ["塔勒布", "taleb", "黑天鹅", "反脆弱"]], ["达里奥", ["达里奥", "桥水", "dalio", "原则"]],
+  ["卡拉曼", ["卡拉曼", "klarman", "安全边际"]],
 ];
 
 const CONTEXT_KEYWORDS: [string, string[]][] = [

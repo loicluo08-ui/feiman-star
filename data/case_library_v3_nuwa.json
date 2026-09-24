@@ -1,0 +1,314 @@
+{
+ "cases": [
+  {
+   "id": "nuwa_buffett_1",
+   "master": "巴菲特",
+   "target": "可口可乐",
+   "year": "1988",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "可口可乐：对当下启示：护城河存在≠增长永续，两件事要分开判断",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_buffett_2",
+   "master": "巴菲特",
+   "target": "德克斯特",
+   "year": "1993",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "德克斯特鞋业：对当下启示：任何\"持久\"判断必须过全球化/技术替代压力测试",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_buffett_3",
+   "master": "巴菲特",
+   "target": "苹果",
+   "year": "2016",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "苹果：对当下启示：能力圈边界的移动有真实信号（看懂用户粘性）而非追赶时髦",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_buffett_4",
+   "master": "巴菲特",
+   "target": "比亚迪",
+   "year": "2008",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "比亚迪：对当下启示：16年不动摇的前提=每年都重新验证过\"看懂\"",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_munger_1",
+   "master": "芒格",
+   "target": "喜诗",
+   "year": "1972",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "喜诗糖果：累计为伯克希尔创造超20亿美元税前利润，是\"伟大公司\"路线的启蒙案例",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_munger_2",
+   "master": "芒格",
+   "target": "拼多多",
+   "year": "2021",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "阿里巴巴：对当下启示：①\"最重要的公司\"≠\"最好的投资\"（价格与格局都要过）②芒格式的\"能力圈\"在中国市场失灵——跨市场投资连他也会把旧地图用在新大陆",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_munger_3",
+   "master": "芒格",
+   "target": "Costco",
+   "year": "1997",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "Costco：对当下启示：能一句话说清的商业模式优先进入研究池",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_soros_1",
+   "master": "索罗斯",
+   "target": "英镑",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "1992年狙击英镑：对当下启示：反身性机会的识别=找\"政策/事实矛盾到无法持续\"的定价",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_soros_2",
+   "master": "索罗斯",
+   "target": "通用",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "1987年股灾：对当下启示：错判后的修正速度决定年化收益——扛单是最差策略",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_soros_3",
+   "master": "索罗斯",
+   "target": "通用",
+   "year": "1982",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "2000年科网泡沫：对当下启示：框架再对，共识压力下也会变形——需要制度化防线（费曼星的仓位矩阵就是这种防线）",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_musk_1",
+   "master": "马斯克",
+   "target": "通用",
+   "year": "2008",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "SpaceX 2008：对当下启示：成本问题先拆物理层再谈市场层——降本10倍的路径藏在\"大家都这么贵\"的惯例里",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_musk_2",
+   "master": "马斯克",
+   "target": "通用",
+   "year": "2017",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "Model 3量产地狱：对当下启示：\"自动化幻觉\"在所有行业存在——流程里\"看起来必须机器做\"的环节，先问人为什么做不了",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_musk_3",
+   "master": "马斯克",
+   "target": "通用",
+   "year": "2016",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "FSD十年跳票：对当下启示：对\"承诺驱动型创始人\"的言论，用行动数据（交付记录）而非语言数据评估",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_graham_1",
+   "master": "格雷厄姆",
+   "target": "通用",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "北方输油管：对当下启示：买入低估前先问\"谁来修复低估？\"",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_graham_2",
+   "master": "格雷厄姆",
+   "target": "GEICO",
+   "year": "1948",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "GEICO：对当下启示：低估值买入是对的，但一生的大钱来自\"看懂了好东西\"——安全边际是防守，商业洞察是进攻",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_graham_3",
+   "master": "格雷厄姆",
+   "target": "通用",
+   "year": "1929",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "1929-1932：对当下启示：风控规则的重量来自经历过的深坑——没有经历过的规则只是建议",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_marks_1",
+   "master": "马克斯",
+   "target": "通用",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "2008年危机投资：对当下启示：底部是区间不是点——分批定速是唯一不需要预测的底部策略",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_marks_2",
+   "master": "马克斯",
+   "target": "通用",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "2020年3月新冠崩盘：对当下启示：备忘录不给答案是诚实不是懦弱——\"我不知道\"+框架>假装知道+点位",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_marks_3",
+   "master": "马克斯",
+   "target": "通用",
+   "year": "2000",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "90年代后半段错过科技：对当下启示：区分\"研究了不投\"与\"没研究就不投\"——前者是纪律，后者是懒惰",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_fisher_1",
+   "master": "费雪",
+   "target": "摩托罗拉",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "摩托罗拉：对当下启示：长期持有的技术含量在\"每年的重新验证\"，不在\"买入的决心\"",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_fisher_2",
+   "master": "费雪",
+   "target": "德州仪器",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "德州仪器：复盘：费雪体系的盲区——只解决\"买什么\"，对\"贵了怎么办\"回答模糊（\"几乎不卖\"）；这是他与芒格/巴菲特后期\"好公司也要好价格\"的差距；对当下启示：成长投资必须补一条价格纪律——这正是费曼星\"费雪+格雷厄姆联动\"的出处",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_fisher_3",
+   "master": "费雪",
+   "target": "通用",
+   "year": "1947",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "福特：对当下启示：一级信息源（供应链/渠道/员工）比二级信息源（研报/新闻）领先一个身位——现代版：招聘网站/供应链工商数据/APP评分",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_taleb_1",
+   "master": "塔勒布",
+   "target": "通用",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "1987年黑色星期一：对当下启示：不对称结构>对错预测——问\"错了会怎样\"比\"对不对\"重要",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_taleb_2",
+   "master": "塔勒布",
+   "target": "通用",
+   "year": "2007",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "2008年次贷危机：对当下启示：反脆弱结构的最大敌人不是市场是客户的耐心——费曼星启示：仓位矩阵里的尾部对冲要按\"保险费\"记账，不按\"投资收益\"考核",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_taleb_3",
+   "master": "塔勒布",
+   "target": "通用",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "火鸡寓言的亲历版：对当下启示：任何\"这次不一样\"的稳定叙事，都要问一句\"火鸡在感恩节前也这么说\"",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_dalio_1",
+   "master": "达里奥",
+   "target": "黄金",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "1982年萧条预测：对当下启示：体系化决策的价值在\"错误可归因\"——凭感觉亏钱学不到东西，原则化亏损是学费",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_dalio_2",
+   "master": "达里奥",
+   "target": "黄金",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "2008年提前预警+全天气正收益：对当下启示：历史同构比对+算法纪律的组合，是普通人也能部分复制的宏观方法（不依赖内部信息）",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_dalio_3",
+   "master": "达里奥",
+   "target": "通用",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "2020s风险平价失效争议：背景：2022年通胀30年新高，股债双杀——风险平价（股债负相关假设）失效，全天气跑输；判断承认：达里奥公开承认\"长期债务周期末端+货币政策转向的组合，是我们框架里最困难的区段\"（大意）；结果：桥水调整（加入更多通胀挂钩资产），但2022-2023年业绩仍平庸；复盘：其体系的诚实之处——公开写\"我们的框架在这里失效\"；范式的边界被自己标注；对当下启示：任何框架都有\"失效区段\"——知道自己的失效区比知道自己的强项更重要（费曼星失效条件纪律的同构）",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_klarman_1",
+   "master": "卡拉曼",
+   "target": "通用",
+   "year": "2008",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "2008-2009危机部署：对当下启示：把现金当\"未来机会的所有权凭证\"来管理，而不是\"没有机会的失败\"",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_klarman_2",
+   "master": "卡拉曼",
+   "target": "希腊",
+   "year": "2012",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "希腊债务危机：对当下启示：逆向投资的含金量取决于\"逆向的理由\"——是恐慌导致的错杀（买）还是基本面崩坏（不买），分析必须在场",
+   "source_task": "nuwa-v3蒸馏"
+  },
+  {
+   "id": "nuwa_klarman_3",
+   "master": "卡拉曼",
+   "target": "通用",
+   "year": "",
+   "type": "实战案例",
+   "confidence": "T2公开资料整理",
+   "lesson": "2000年科技泡沫末期：对当下启示：策略的\"社交成本\"是真实成本——孤独感会让最好的投资者背叛自己的框架；制度化（写下来的规则）是对抗孤独感的唯一解",
+   "source_task": "nuwa-v3蒸馏"
+  }
+ ]
+}
