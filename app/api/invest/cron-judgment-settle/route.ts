@@ -132,10 +132,10 @@ export async function GET(request: NextRequest) {
     }
     const parsed = parseInvalidation(r.invalidation!);
     if (!parsed) continue;
-    let result = judge(price, parsed.direction, parsed.level);
+    let result: string = judge(price, parsed.direction, parsed.level);
     // 9/25二轮交叉验证：工厂信号类判断（[信号完成]尾标）失效条件触发=信号完成非证伪——
     // result="signal_done"避免观望警示被计入"判断错误"污染对错率计量（能力工程命门）
-    if (r.invalidation.includes("[信号完成]") && result === "invalidated") result = "signal_done";
+    if (r.invalidation!.includes("[信号完成]") && result === "invalidated") result = "signal_done";
     rows.push({
       id: `settle-${r.symbol}-${r.date}`,
       type: "insight",
