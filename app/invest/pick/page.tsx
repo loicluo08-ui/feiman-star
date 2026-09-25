@@ -414,7 +414,7 @@ export default function PickPage() {
       const generatingMessage = "AI正在生成深度分析报告，约15-90秒…";
       updateTaskProgress(PICK_TASK_KEY, generatingMessage);
       if (mountedRef.current) setLoadingStep(generatingMessage);
-      const retryMessage = "首次请求响应较慢，DeepSeek正在自动重试…";
+      const retryMessage = "首次请求响应较慢，正在自动重试…";
       const retryTimer = window.setTimeout(() => {
         updateTaskProgress(PICK_TASK_KEY, retryMessage);
         if (mountedRef.current) setLoadingStep(retryMessage);
@@ -472,7 +472,7 @@ export default function PickPage() {
         }
       }
 
-      if (!analysis.trim()) throw new Error("DeepSeek未返回有效内容，请重试");
+      if (!analysis.trim()) throw new Error("未返回有效内容，请重试");
       const nextGeneratedAt = new Date().toISOString();
       return {
         analysis,

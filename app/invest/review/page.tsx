@@ -361,7 +361,7 @@ export default function ReviewPage() {
         }
       }
 
-      const retryMessage = "首次请求响应较慢，DeepSeek正在自动重试…";
+      const retryMessage = "首次请求响应较慢，正在自动重试…";
       const retryTimer = window.setTimeout(() => {
         updateTaskProgress(REVIEW_TASK_KEY, retryMessage);
         if (mountedRef.current) setProgressStep(retryMessage);
@@ -417,7 +417,7 @@ export default function ReviewPage() {
         }
       }
 
-      if (!result.trim()) throw new Error("DeepSeek未返回有效内容，请重试");
+      if (!result.trim()) throw new Error("未返回有效内容，请重试");
       const record: ReviewRecord = {
         id: `${Date.now()}`,
         date: new Date().toISOString(),

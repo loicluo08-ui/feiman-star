@@ -818,7 +818,7 @@ export default function ChatPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-bold tracking-tight">投资对话</h1>
-            <p className="mt-0.5 hidden text-xs text-[var(--text-muted)] sm:block">发文字或截图，AI帮你分析。截图走智谱GLM-4V，文字走DeepSeek（自动注入实时行情与最新快讯）。</p>
+            <p className="mt-0.5 hidden text-xs text-[var(--text-muted)] sm:block">发文字或截图，AI帮你分析。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button

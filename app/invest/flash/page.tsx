@@ -486,10 +486,10 @@ export default function FlashPage() {
               {/* 底部 */}
               <div className="border-t border-[var(--border)] px-4 py-2">
                 <p className="text-[10px] text-[var(--text-muted)]">
-                  AI分析由DeepSeek生成，仅供研究参考，不构成投资建议
+                  AI分析，仅供研究参考，不构成投资建议
                 </p>
                 <p className="mt-0.5 text-[10px] text-[var(--text-muted)] opacity-60">
-                  已通过交叉验证：过滤绝对化用语 · 标注风险边界 · 仅基于公开信息
+                  内容仅基于公开信息
                 </p>
               </div>
             </div>
