@@ -228,6 +228,6 @@ export function verifyNumericAnchors(
 
   if (warnings.length === 0) return { text, flags, verified: false };
 
-  const note = `\n\n⚠️ **数据核对提示**（系统自动比对注入行情）：${warnings.join("；")}。`;
+  const note = `\n\n⚠️ 核对提醒：${warnings.join("；")}。`;
   return { text: `${text}${note}`, flags, verified: true };
 }

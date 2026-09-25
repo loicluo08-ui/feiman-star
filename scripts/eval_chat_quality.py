@@ -89,12 +89,14 @@ def evaluate(path: Path) -> dict:
     data_tags = tags.count("数据")
     inference_tags = tags.count("推导")
     other_tags = total_tags - data_tags - inference_tags
-    density_target = max(4, round(len(full) / 300) + 2)
-    if total_tags >= density_target + 2:
+    # 9/25减法同步：标签=可信度声明非装饰，密度奖励线降低（防"为凑数贴标"的论文腔）
+    # 核心判据=数字行标签覆盖率（下方），总标签量只做下限防完全裸奔
+    density_target = max(2, round(len(full) / 600) + 1)
+    if total_tags >= density_target:
         score += 25
-    elif total_tags >= density_target:
-        score += 18
-    det.append(f"来源标签×{total_tags}（数据{data_tags}/推导{inference_tags}/其他{other_tags}，密度线{density_target}）")
+    elif total_tags >= max(1, density_target - 2):
+        score += 15
+    det.append(f"来源标签×{total_tags}（数据{data_tags}/推导{inference_tags}/其他{other_tags}，下限线{density_target}）")
     if data_tags == 0 and len(full) >= 600:
         score = max(score - 30, 0)
         det.append("⚠ 全文无[数据]标签——分析无数据支撑")
@@ -158,9 +160,10 @@ def evaluate(path: Path) -> dict:
     else:
         score += 20
         det.append("绝对化用语清零")
+    # 9/25减法：【已验证】行已从输出协议废除（技术自白=无必要注释，过滤动作静默执行）
+    # 不再计分；历史存档回答中的该行由绝对化扫描排除逻辑兼容（body_for_abs过滤保留）
     if "已验证" in full or "已过滤" in full:
-        score += 15
-        det.append("交叉验证声明存在")
+        det.append("（历史格式）含旧版交叉验证声明，不计分")
     details_all["边界纪律"] = {"score": min(score, 100), "details": det}
 
     total = sum(v["score"] for v in details_all.values())
