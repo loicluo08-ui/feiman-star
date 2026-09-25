@@ -25,7 +25,7 @@ from pathlib import Path
 ABSOLUTE_TERM_PATTERNS = [r"永久(?!授权|记忆)", r"必涨", r"必定", r"稳赚", r"保证收益", r"零风险", r"无风险(?!利率)", r"肯定翻", r"百分百"]
 
 MODULE_REF = re.compile(r"模块\s*(\d+)")
-SOURCE_TAGS = re.compile(r"\[(数据|推导|经验|模型记忆|已注入)\]")
+SOURCE_TAGS = re.compile(r"\[(数据|推导|经验|模型记忆|已注入)\]")  # 9/25标签废除后仅存档解析用，评分不再依赖
 # [模块N]/[大师名]也是正当来源标注（新格式把出处标注迁移进方括号体系）——纳入密度统计
 ATTRIB_TAGS = re.compile(r"\[(数据|推导|经验|模型记忆|已注入|模块\d+|芒格|格雷厄姆|利弗莫尔|巴菲特|索罗斯|段永平)\]")
 CALC_FORMULA = re.compile(r"\([\d.,$%\s+*-]+[+/÷×-][\d.,$%\s+*-]+\)|[\d.,]+\s*[/÷×]\s*[\d.,]+\s*[÷×]\s*100|≈\s*\$?\d")
@@ -81,34 +81,39 @@ def evaluate(path: Path) -> dict:
         det.append("⚠ 全文无挑战用户立场的标记")
     details_all["对抗性"] = {"score": min(score, 100), "details": det}
 
-    # ——— B 来源纪律 ———
+    # ——— B 来源纪律（9/25二次减法重写：方括号标签全面废除，输出层自然语言来源） ———
     score = 0
     det = []
     tags = ATTRIB_TAGS.findall(full)
-    total_tags = len(tags)
-    data_tags = tags.count("数据")
-    inference_tags = tags.count("推导")
-    other_tags = total_tags - data_tags - inference_tags
-    # 9/25减法同步：标签=可信度声明非装饰，密度奖励线降低（防"为凑数贴标"的论文腔）
-    # 核心判据=数字行标签覆盖率（下方），总标签量只做下限防完全裸奔
-    density_target = max(2, round(len(full) / 600) + 1)
-    if total_tags >= density_target:
-        score += 25
-    elif total_tags >= max(1, density_target - 2):
-        score += 15
-    det.append(f"来源标签×{total_tags}（数据{data_tags}/推导{inference_tags}/其他{other_tags}，下限线{density_target}）")
-    if data_tags == 0 and len(full) >= 600:
-        score = max(score - 30, 0)
-        det.append("⚠ 全文无[数据]标签——分析无数据支撑")
-    tag_lines = sum(1 for l in full.split("\n") if SOURCE_TAGS.search(l))
+    if tags:
+        score = max(score - 40, 0)
+        det.append(f"⚠ 方括号技术标签残留×{len(tags)}: {','.join(sorted(set(tags))[:5])}——输出协议已废除标签")
+    else:
+        score += 30
+        det.append("方括号标签零残留")
+    mod_refs = re.findall(r"模块\d+", full)
+    if mod_refs:
+        score = max(score - 25, 0)
+        det.append(f"⚠ 内部模块编号泄漏×{len(mod_refs)}: {sorted(set(mod_refs))[:3]}")
+    else:
+        score += 20
+        det.append("内部模块编号零泄漏")
+    # 正向：数字行来源/语境词覆盖（自然语言来源说明的量化）
+    src_words = re.compile(r"显示|报收|收于|注入|推算|推导|历史|框架|快讯|盘[中后前]|较|隐含|对照|口径")
+    tag_lines = sum(1 for l in full.split("\n") if src_words.search(l))
     num_lines = sum(1 for l in full.split("\n") if PRICE_NUM.search(l) or PCT_NUM.search(l))
     if num_lines > 0:
         ratio = tag_lines / num_lines
-        if ratio >= 0.8:
-            score += 25
-        elif ratio >= 0.5:
-            score += 15
-        det.append(f"数字行标签覆盖率{ratio:.0%}")
+        if ratio >= 0.7:
+            score += 30
+        elif ratio >= 0.4:
+            score += 18
+        det.append(f"数字行来源语境覆盖率{ratio:.0%}")
+    else:
+        det.append("无价格数字行（跳过覆盖率）")
+    if "模型记忆" in full or "可能过时" in full:
+        score = min(score + 20, 100)
+        det.append("历史数据过时提示存在（诚信层）")
     details_all["来源纪律"] = {"score": min(score, 100), "details": det}
 
     # ——— C 数字锚定 ———
@@ -124,9 +129,7 @@ def evaluate(path: Path) -> dict:
         det.append(f"算式展示×{len(formulas)}")
     elif len(prices) >= 3:
         det.append("⚠ 多个价格数字但零算式——S1纪律未执行")
-    if "[模型记忆]" in full:
-        score += 10
-        det.append("模型记忆已显式降级标注（诚信层生效）")
+    # 9/25二次减法：[模型记忆]标签废除——历史数据过时提示在B维度量化（"可能过时"自然语言）
     details_all["数字锚定"] = {"score": min(score, 100), "details": det}
 
     # ——— D 结构完整 ———
