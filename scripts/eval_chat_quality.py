@@ -141,6 +141,18 @@ def evaluate(path: Path) -> dict:
         det.append("S3五件套齐")
     else:
         det.append(f"⚠ 缺结构块: {', '.join(missing)}")
+    # 9/25三次减法同步：导航句+术语小白解释=不必要介绍
+    nav_hits = re.findall(r"下面(从|我们|来看)|首先(看|分析|来)|接下来(我们|分析)|让我们来", full)
+    if nav_hits:
+        score = max(score - 20, 0)
+        det.append(f"⚠ 导航句×{len(nav_hits)}（下面/首先/让我们）——路线图句子应删")
+    else:
+        score += 15
+        det.append("零导航句")
+    rookie = re.findall(r"(PE|PB|ROE|EPS|VIX|MA)（[市盈净资收益波报均每动率价]+）", full)
+    if rookie:
+        score = max(score - 15, 0)
+        det.append(f"⚠ 常用指标小白解释×{len(rookie)}: {rookie[:2]}")
     details_all["结构完整"] = {"score": score, "details": det}
 
     # ——— E 边界纪律 ———
