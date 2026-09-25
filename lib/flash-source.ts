@@ -32,7 +32,8 @@ function stripHtml(html: string): string {
 }
 
 function hasBoldTag(html: string): boolean {
-  return /<b>|<strong/.test(html);
+  // <b[\s>]兼容带属性的加粗标签（<b class="hot">此前漏判——2026-09-26快讯审计P3-5）
+  return /<b[\s>]|<strong[\s>]/.test(html);
 }
 
 function formatRelativeTime(ts: number): string {

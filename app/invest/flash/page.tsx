@@ -36,6 +36,7 @@ export default function FlashPage() {
   const [refreshing, setRefreshing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevIdsRef = useRef<Set<string>>(new Set());
+  const inFlightRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // AI分析面板状态
@@ -115,7 +116,9 @@ export default function FlashPage() {
           .replace(/&amp;/g, "&")
           .trim();
         const cleanTitle = (item.data.title || "").replace(/<[^>]+>/g, "").trim();
-        const ts = Math.floor(new Date(item.time + " UTC+8").getTime() / 1000);
+        // Safari(JSC)兼容："UTC+8"非IANA时区名，非ISO格式解析有NaN风险——转标准ISO偏移写法（2026-09-26快讯审计P2-3）
+        const parsed = new Date(item.time.replace(" ", "T") + "+08:00").getTime();
+        const ts = Math.floor((isNaN(parsed) ? 0 : parsed) / 1000);
         const now = Math.floor(Date.now() / 1000);
         const diff = now - ts;
         let timeStr: string;
@@ -132,7 +135,7 @@ export default function FlashPage() {
           content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
           time_str: timeStr,
           timestamp: ts,
-          is_important: item.important === 1 || /<b>|<strong/.test(content),
+          is_important: item.important === 1 || /<b[\s>]|<strong[\s>]/.test(content),
           channels: item.channel || [],
           source: "金十数据",
         };
@@ -142,27 +145,32 @@ export default function FlashPage() {
     }
   }, []);
 
-  // 服务端API（华尔街见闻+财联社补充+金十兜底）
+  // 服务端API（华尔街见闻+财联社补充+金十兜底）——透传HTTP状态，503/0=源不可用（2026-09-26审计P1-1）
   const fetchServerFlash = useCallback(async (): Promise<{
     data: FlashItem[];
     source: string;
     stats?: Record<string, number>;
+    status: number;
   }> => {
     try {
       const res = await fetch("/api/invest/flash", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) return { data: [], source: "", status: res.status };
       const json = await res.json();
       return {
         data: json.data || [],
         source: json.source || "",
         stats: json.stats,
+        status: 200,
       };
     } catch {
-      return { data: [], source: "" };
+      return { data: [], source: "", status: 0 };
     }
   }, []);
 
   const fetchFlash = useCallback(async () => {
+    // 并发锁：慢网络下5秒interval叠加会导致prevIds覆盖/漏弹NEW/双倍请求（2026-09-26审计P1-2）
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setRefreshing(true);
     try {
       // 并行：客户端直连金十 + 服务端API
@@ -207,12 +215,18 @@ export default function FlashPage() {
         }
       }
 
-      prevIdsRef.current = new Set(newItems.map((i) => i.id));
-      setItems(newItems);
-      setError(null);
+      // 双源全挂：保留旧列表+错误横幅（还原服务端503语义，此前被catch吞掉用户误以为真没快讯——2026-09-26审计P1-1）
+      if (newItems.length === 0 && jin10Items.length === 0 && (serverData.status >= 500 || serverData.status === 0)) {
+        setError(serverData.status === 0 ? "快讯数据源网络异常，当前显示最后成功拉取的数据" : "快讯数据源暂时不可用，当前显示最后成功拉取的数据");
+      } else {
+        setError(null);
+        prevIdsRef.current = new Set(newItems.map((i) => i.id));
+        setItems(newItems);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "获取失败");
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
