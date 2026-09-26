@@ -115,7 +115,8 @@ export async function runParallelDeliberation(
 
   // 分歧检测（E队OpenQ：阈值需实验定标——首版用方向词对立启发式）
   const bull = /看多|买入|增持|做多/.test(ok.map(r => r.stance).join(""));
-  const bear = /看空|卖出|减持|回避|做空/.test(ok.map(r => r.stance).join(""));
+  // 9/26修复：词表与视角实际输出格式脱节（实测stance写"不建仓/观望/中性偏空"——旧表全脱靶→高分歧几乎无法触发=GLM裁判事实死代码）
+  const bear = /看空|卖出|减持|回避|做空|不建仓|观望|偏空|谨慎/.test(ok.map(r => r.stance).join(""));
   const dissent_level: DeliberationResult["dissent_level"] = bull && bear ? "高" : synthesis.includes("分歧") ? "中" : "低";
 
   // 异构裁判：分歧度高时GLM复核（跨模型）
