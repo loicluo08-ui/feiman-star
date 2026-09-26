@@ -128,7 +128,7 @@ export default function CalendarPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
-      <header className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-[var(--text-muted)]">
             {weekOffset === 0 ? "本周事件" : weekOffset < 0 ? `${Math.abs(weekOffset)}周前` : `${weekOffset}周后`}

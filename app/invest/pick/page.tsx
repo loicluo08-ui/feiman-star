@@ -1315,7 +1315,7 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
             MA20
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-3 rounded-sm bg-orange-500"></span>
+            <span className="inline-block h-2 w-3 rounded-sm" style={{ background: "var(--warning)" }}></span>
             MA60
           </span>
           <span className={`font-medium ${isUp ? "text-[var(--positive)]" : "text-[var(--negative)]"}`}>
@@ -1357,7 +1357,7 @@ function MiniChart({ candles, high52, low52 }: { candles: Candle[]; high52: numb
         {/* 成交量标签 */}
         <text x={padding.left} y={volBottom - 4} fontSize="9" fill="var(--text-muted)">成交量</text>
         {/* MA60 */}
-        {ma60D && <path d={ma60D} fill="none" stroke="#f97316" strokeWidth="1.5" opacity={0.8} />}
+        {ma60D && <path d={ma60D} fill="none" stroke="var(--warning)" strokeWidth="1.5" opacity={0.8} />}
         {/* MA20 */}
         {ma20D && <path d={ma20D} fill="none" stroke="var(--positive)" strokeWidth="1.5" opacity={0.8} />}
         {/* 价格线 */}

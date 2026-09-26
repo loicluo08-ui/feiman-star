@@ -817,7 +817,7 @@ export default function ChatPage() {
       <header className="px-5 pb-3 pt-4 sm:px-8 sm:pb-6 sm:pt-7">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">投资对话</h1>
+            <h1 className="text-xl font-semibold tracking-tight">投资对话</h1>
             <p className="mt-0.5 hidden text-xs text-[var(--text-muted)] sm:block">发文字或截图，AI帮你分析。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

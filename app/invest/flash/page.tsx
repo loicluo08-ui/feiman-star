@@ -304,14 +304,14 @@ export default function FlashPage() {
   const filtered = filter === "important" ? items.filter((i) => i.is_important) : items;
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
+    <div className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
       <div className="flex gap-6">
         {/* 左侧：快讯列表 */}
         <div className={`flex-1 ${selectedItem ? "hidden lg:block" : "block"}`}>
           {/* Header */}
-          <header className="mb-6 flex items-center justify-between">
+          <header className="mb-8 flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-[var(--text)]">实时快讯</h1>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">实时快讯</h1>
               <p className="mt-1 text-xs text-[var(--text-muted)]">
                 来源：{source || "金十数据"} · 更新于 {lastUpdate || "—"}
               </p>
@@ -342,7 +342,7 @@ export default function FlashPage() {
                 title={notifEnabled ? "关闭重要快讯提醒" : "开启重要快讯提醒"}
                 className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   notifEnabled
-                    ? "bg-orange-500 text-white"
+                    ? "bg-[var(--warning)] text-white"
                     : "bg-[var(--surface-muted)] text-[var(--text-muted)]"
                 }`}
               >

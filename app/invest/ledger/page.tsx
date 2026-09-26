@@ -87,7 +87,7 @@ export default async function LedgerPage() {
   return (
     <div className="mx-auto max-w-3xl px-5 py-8">
       <header className="mb-8">
-        <h1 className="text-2xl font-semibold text-[var(--text)]">判断账本</h1>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">判断账本</h1>
         <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">
           AI每条判断都带失效条件，由程序按行情机械结算——不靠AI自评，不挑着展示。
           <span className="text-[var(--text)]">被证伪的判断同样公开</span>
@@ -99,8 +99,8 @@ export default async function LedgerPage() {
         {[
           { label: "判断总数", value: items.length },
           { label: "已结算", value: settledCount },
-          { label: "失效触发", value: invalidated, tone: "down" as const },
-          { label: "存活率", value: surviveRate == null ? "—" : `${surviveRate}%`, tone: "up" as const },
+          { label: "失效触发", value: invalidated },
+          { label: "存活率", value: surviveRate == null ? "—" : `${surviveRate}%` },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
             <div className="text-2xl font-semibold text-[var(--text)]">{s.value}</div>
@@ -127,9 +127,9 @@ export default async function LedgerPage() {
                   <span
                     className={`rounded-md px-2 py-0.5 text-xs font-medium ${
                       stanceLabel(it.stance) === "看多"
-                        ? "bg-red-500/10 text-red-500"
+                        ? "bg-[var(--positive-bg)] text-[var(--positive)]"
                         : stanceLabel(it.stance) === "看空"
-                          ? "bg-emerald-500/10 text-emerald-500"
+                          ? "bg-[var(--negative-bg)] text-[var(--negative)]"
                           : "bg-[var(--border)] text-[var(--text-muted)]"
                     }`}
                   >
@@ -140,7 +140,7 @@ export default async function LedgerPage() {
                     <span
                       className={`ml-auto rounded-md px-2 py-0.5 text-xs font-semibold ${
                         settle.result === "invalidated"
-                          ? "bg-amber-500/10 text-amber-500"
+                          ? "bg-[var(--warning-bg)] text-[var(--warning)]"
                           : "bg-sky-500/10 text-sky-500"
                       }`}
                     >
