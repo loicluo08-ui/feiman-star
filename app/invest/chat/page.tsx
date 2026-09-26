@@ -813,335 +813,163 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-[calc(100dvh-3rem)] flex-col md:h-dvh">
-      {/* Header——单行工具条：标题左+操作右，固定视口页省高（9/26全面整改） */}
-      <header className="border-b border-[var(--border)] px-5 pb-3 pt-3.5 sm:px-8 sm:pb-4 sm:pt-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-baseline gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">投资对话</h1>
-            <p className="hidden text-xs text-[var(--text-muted)] sm:block">发文字或截图，AI帮你分析。</p>
+      {/* Header——三层结构：身份行/工具行/内容区（逸翔"要分层"定稿9/26） */}
+      <header className="border-b border-[var(--border)] px-5 pb-2.5 pt-4 sm:px-8 sm:pt-5">
+        {/* 身份行：页面身份 + 主操作（新对话=唯一深色主按钮） */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight">投资对话</h1>
+            <p className="mt-0.5 hidden text-xs text-[var(--text-muted)] sm:block">发文字或截图，AI帮你分析</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={startNewConversation}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] transition-opacity hover:opacity-90 sm:hidden"
+            title="开始新对话（当前对话自动存入历史）"
+            aria-label="开始新对话"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          </button>
+          <button
+            onClick={startNewConversation}
+            className="hidden h-8 items-center rounded-lg bg-[var(--primary)] px-3.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 sm:inline-flex"
+            title="开始新对话（当前对话自动存入历史）"
+          >
+            新对话
+          </button>
+        </div>
+        {/* 工具行：面板开关（开启态=accent信息蓝，语义"面板进行中"）+低频收纳 */}
+        <div className="mt-2.5 flex items-center gap-2">
+          <button
+            onClick={() => setShowHistory((visible) => !visible)}
+            className={`inline-flex h-7 items-center rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+              showHistory
+                ? "border-[var(--accent)] bg-[var(--accent-surface)] text-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text)]"
+            }`}
+          >
+            历史{history.length > 0 ? ` ${history.length}` : ""}
+          </button>
+          <button
+            onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); }}
+            className={`inline-flex h-7 items-center rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+              showLedger
+                ? "border-[var(--accent)] bg-[var(--accent-surface)] text-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text)]"
+            }`}
+            title="判断账本：本设备存档的AI主判断，再次问同一标的时AI会主动对账"
+          >
+            账本{ledgerEntries.length > 0 ? ` ${ledgerEntries.length}` : ""}
+          </button>
+          <div className="ml-auto hidden items-center gap-1 lg:flex">
             <button
-              onClick={startNewConversation}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border-strong)] text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] sm:hidden"
-              title="开始新对话（当前对话自动存入历史）"
-              aria-label="开始新对话"
+              onClick={() => {
+                const data = localStorage.getItem(CHAT_HISTORY_KEY) || "[]";
+                const blob = new Blob([data], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `feimanstar-chat-${new Date().toISOString().slice(0, 10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="inline-flex h-7 items-center rounded-lg px-2.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
+              title="导出对话记录"
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              导出
             </button>
-            <button
-              onClick={startNewConversation}
-              className="hidden h-8 items-center rounded-lg border border-[var(--border-strong)] px-3 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] sm:inline-flex"
-              title="开始新对话（当前对话自动存入历史）"
-            >
-              新对话
-            </button>
-            <button
-              onClick={() => setShowHistory((visible) => !visible)}
-              className={`hidden h-8 items-center rounded-lg border px-3 text-xs font-medium transition-colors sm:inline-flex ${
-                showHistory
-                  ? "border-[var(--text)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                  : "border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
-              }`}
-            >
-              历史{history.length > 0 ? ` ${history.length}` : ""}
-            </button>
-            <button
-              onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); }}
-              className={`hidden h-8 items-center rounded-lg border px-3 text-xs font-medium transition-colors sm:inline-flex ${
-                showLedger
-                  ? "border-[var(--text)] bg-[var(--primary)] text-[var(--primary-foreground)]"
-                  : "border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
-              }`}
-              title="判断账本：本设备存档的AI主判断，再次问同一标的时AI会主动对账"
-            >
-              账本{ledgerEntries.length > 0 ? ` ${ledgerEntries.length}` : ""}
-            </button>
-            <div className="hidden items-center gap-1 lg:flex">
-              <button
-                onClick={() => {
-                  const data = localStorage.getItem(CHAT_HISTORY_KEY) || "[]";
-                  const blob = new Blob([data], { type: "application/json" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `feimanstar-chat-${new Date().toISOString().slice(0, 10)}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
+            <label className="inline-flex h-7 cursor-pointer items-center rounded-lg px-2.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]">
+              导入
+              <input
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const text = await file.text();
+                    const imported = JSON.parse(text);
+                    if (Array.isArray(imported)) {
+                      const existing = readChatHistory();
+                      const merged = [...imported, ...existing].slice(0, 50);
+                      localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(merged));
+                      setHistory(merged.slice(0, 20));
+                    }
+                  } catch {}
                 }}
-                className="h-8 rounded-lg px-2.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
-                title="导出对话记录"
-              >
-                导出
-              </button>
-              <label className="h-8 cursor-pointer inline-flex items-center rounded-lg px-2.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]">
-                导入
-                <input
-                  type="file"
-                  accept="application/json"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    try {
-                      const text = await file.text();
-                      const imported = JSON.parse(text);
-                      if (Array.isArray(imported)) {
-                        const existing = readChatHistory();
-                        const merged = [...imported, ...existing].slice(0, 50);
-                        localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(merged));
-                        setHistory(merged.slice(0, 20));
-                      }
-                    } catch {}
+              />
+            </label>
+          </div>
+          {/* 移动：低频（明暗/导出/导入）收进更多菜单；历史/账本已在工具行直接可见 */}
+          <div className="relative ml-auto sm:hidden">
+            <button
+              onClick={() => setMoreOpen((v) => !v)}
+              className={`inline-flex h-7 items-center rounded-lg border px-2.5 text-xs font-medium transition-colors ${moreOpen ? "border-[var(--text)] text-[var(--text)]" : "border-[var(--border)] text-[var(--text-secondary)]"}`}
+              aria-label="更多功能"
+            >
+              ⋯
+            </button>
+            {moreOpen && (
+              <button aria-label="关闭更多菜单" className="fixed inset-0 z-20 cursor-default" onClick={() => setMoreOpen(false)} />
+            )}
+            {moreOpen && (
+              <div className="absolute right-0 top-9 z-30 w-44 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
+                <button
+                  onClick={() => {
+                    const el = document.documentElement;
+                    const cur = el.dataset.theme === "dark" ? "light" : "dark";
+                    el.dataset.theme = cur;
+                    try { localStorage.setItem("feimanstar_theme", cur); } catch {}
+                    setMoreOpen(false);
                   }}
-                />
-              </label>
-            </div>
-            {/* 手机：<sm时历史/账本也收进更多菜单；明暗切换仅移动端需要（桌面走侧栏） */}
-            <div className="relative sm:hidden">
-              <button
-                onClick={() => setMoreOpen((v) => !v)}
-                className={`inline-flex h-8 items-center rounded-lg border px-3 text-xs font-medium transition-colors ${moreOpen ? "border-[var(--text)] text-[var(--text)]" : "border-[var(--border-strong)] text-[var(--text-secondary)]"}`}
-                aria-label="更多功能"
-              >
-                ⋯
-              </button>
-              {moreOpen && (
-                <button aria-label="关闭更多菜单" className="fixed inset-0 z-20 cursor-default" onClick={() => setMoreOpen(false)} />
-              )}
-              {moreOpen && (
-                <div className="absolute right-0 top-10 z-30 w-44 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
-                  <button
-                    onClick={() => { setShowHistory((v) => !v); setMoreOpen(false); }}
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
-                  >
-                    <span>历史记录</span>
-                    <span className="text-[var(--text-muted)]">{history.length > 0 ? history.length : ""}{showHistory ? " ✓" : ""}</span>
-                  </button>
-                  <button
-                    onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); setMoreOpen(false); }}
-                    className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
-                  >
-                    <span>账本</span>
-                    <span className="text-[var(--text-muted)]">{ledgerEntries.length > 0 ? ledgerEntries.length : ""}{showLedger ? " ✓" : ""}</span>
-                  </button>
-                  <div className="my-1 h-px bg-[var(--border)]" />
-                  <button
-                    onClick={() => {
-                      const el = document.documentElement;
-                      const cur = el.dataset.theme === "dark" ? "light" : "dark";
-                      el.dataset.theme = cur;
-                      try { localStorage.setItem("feimanstar_theme", cur); } catch {}
-                      setMoreOpen(false);
-                    }}
-                    className="block w-full rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
-                  >
-                    切换明暗
-                  </button>
-                  <button
-                    onClick={() => {
-                      const data = localStorage.getItem(CHAT_HISTORY_KEY) || "[]";
-                      const blob = new Blob([data], { type: "application/json" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `feimanstar-chat-${new Date().toISOString().slice(0, 10)}.json`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                      setMoreOpen(false);
-                    }}
-                    className="block w-full rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
-                  >
-                    导出对话
-                  </button>
-                  <label className="block cursor-pointer rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]">
-                    导入对话
-                    <input
-                      type="file"
-                      accept="application/json"
-                      className="hidden"
-                      onChange={async (e) => {
-                        setMoreOpen(false);
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        try {
-                          const text = await file.text();
-                          const imported = JSON.parse(text);
-                          if (Array.isArray(imported)) {
-                            const existing = readChatHistory();
-                            const merged = [...imported, ...existing].slice(0, 50);
-                            localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(merged));
-                            setHistory(merged.slice(0, 20));
-                          }
-                        } catch {}
-                      }}
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
-            <div className="mask-fade-r flex flex-nowrap items-center gap-1 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-x-visible">
-              {[
-                { key: "balanced", label: "均衡" },
-                { key: "value", label: "价值" },
-                { key: "growth", label: "成长" },
-                { key: "quant", label: "量化" },
-              ].map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() => setStyle(s.key as typeof style)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                    style === s.key
-                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                      : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
-                  }`}
+                  className="block w-full rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
                 >
-                  {s.label}
+                  切换明暗
                 </button>
-              ))}
-              {/* 大师融合旗舰：3视角独立分析→交叉检验→融合单一深度输出（深度模型+thinking）。新基线：首字约50-70秒 */}
-              <button
-                onClick={() => setStyle("blend")}
-                title="大师融合旗舰模式：多视角独立审视+交叉检验，融合为单一深度输出（深度模型+思维链，首字约50-70秒）"
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  style === "blend"
-                    ? "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm"
-                    : "border border-[var(--primary)]/60 text-[var(--primary)] hover:bg-[var(--primary)]/10"
-                }`}
-              >
-                ⚡大师融合
-              </button>
-              {/* 9/13阶段3：C档并行会诊toggle（仅blend档显示）——3视角真并行互不可见→ACH融合裁决→高分歧触发跨模型异构裁判（实验特性） */}
-              {style === "blend" && (
+                <div className="my-1 h-px bg-[var(--border)]" />
                 <button
-                  onClick={() => setParallelDelib((v) => !v)}
-                  title="C档并行会诊（实验）：3个视角各自独立分析（互相看不到对方），再由融合裁决按ACH淘汰式合成单一结论；分歧度高时自动引入跨模型异构裁判。与常规融合的区别=视角真实独立、分歧可审计"
-                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    parallelDelib
-                      ? "bg-[var(--text)] text-[var(--background)] shadow-sm"
-                      : "border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
-                  }`}
+                  onClick={() => {
+                    const data = localStorage.getItem(CHAT_HISTORY_KEY) || "[]";
+                    const blob = new Blob([data], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `feimanstar-chat-${new Date().toISOString().slice(0, 10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    setMoreOpen(false);
+                  }}
+                  className="block w-full rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
                 >
-                  {parallelDelib ? "⚡会诊中" : "⚡并行会诊"}
+                  导出对话
                 </button>
-              )}
-              <button
-                onClick={() => setShowGurus((v) => !v)}
-                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-                  showGurus || GURU_STYLES.some((g) => g.key === style)
-                    ? "border border-[var(--text)] text-[var(--text)]"
-                    : "border border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
-                }`}
-                title="展开6种投资大师视角（基于罗竹先框架的模块11思维框架库）"
-              >
-                大师视角
-              </button>
-              {showGurus &&
-                GURU_STYLES.map((s) => (
-                  <button
-                    key={s.key}
-                    onClick={() => setStyle(s.key as typeof style)}
-                    title={s.hint}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                      style === s.key
-                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                        : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-            </div>
+                <label className="block cursor-pointer rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]">
+                  导入对话
+                  <input
+                    type="file"
+                    accept="application/json"
+                    className="hidden"
+                    onChange={async (e) => {
+                      setMoreOpen(false);
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const text = await file.text();
+                        const imported = JSON.parse(text);
+                        if (Array.isArray(imported)) {
+                          const existing = readChatHistory();
+                          const merged = [...imported, ...existing].slice(0, 50);
+                          localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(merged));
+                          setHistory(merged.slice(0, 20));
+                        }
+                      } catch {}
+                    }}
+                  />
+                </label>
+              </div>
+            )}
           </div>
         </div>
-
-        {showLedger && (
-          <div className="mx-auto mt-3 w-full max-w-3xl rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold">判断账本（本设备存档的AI主判断）</span>
-              {ledgerEntries.length > 0 && (
-                <button
-                  onClick={() => { clearLedger(); setLedgerEntries([]); }}
-                  className="text-[var(--text-secondary)] underline hover:text-[var(--text)]"
-                >
-                  清空
-                </button>
-              )}
-            </div>
-            {ledgerEntries.length === 0 ? (
-              <p className="mt-2 text-[var(--text-secondary)]">暂无记账。AI给出主判断时自动存档（90天），再次问同一标的会主动对账。</p>
-            ) : (
-              <ul className="mt-2 space-y-1.5">
-                {[...ledgerEntries].reverse().map((e, i) => (
-                  <li key={`${e.ts}-${i}`} className="border-l-2 border-[var(--primary)]/40 pl-2">
-                    <span className="font-medium">{e.date} {e.symbol}</span>：立场={e.stance}
-                    {e.keyLevel ? <> | 关键位={e.keyLevel}</> : null}
-                    {e.invalidation ? <> | 失效={e.invalidation}</> : null}
-                    {e.confidence ? <> | 信心度={e.confidence}</> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {showHistory ? (
-          <div className="mx-auto mt-4 max-h-64 max-w-3xl overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-            <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-[var(--border)] bg-[var(--surface)] p-3 sm:flex-row">
-              <input
-                value={historyQuery}
-                onChange={(event) => setHistoryQuery(event.target.value)}
-                placeholder="搜索历史对话…"
-                aria-label="搜索历史对话"
-                className="min-w-0 flex-1 rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs outline-none transition-colors focus:border-[var(--text)]"
-              />
-              <select
-                value={historyRange}
-                onChange={(event) => setHistoryRange(event.target.value as HistoryRange)}
-                aria-label="按日期筛选历史对话"
-                className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--text)]"
-              >
-                <option value="7">最近7天</option>
-                <option value="30">最近30天</option>
-                <option value="all">全部</option>
-              </select>
-            </div>
-            {history.length === 0 ? (
-              <p className="px-4 py-5 text-center text-sm text-[var(--text-muted)]">还没有历史对话</p>
-            ) : filteredHistory.length === 0 ? (
-              <p className="px-4 py-5 text-center text-sm text-[var(--text-muted)]">没有匹配的历史对话</p>
-            ) : (
-              filteredHistory.map((record) => {
-                const snippet = getMatchedSnippet(record, historyQuery);
-                return (
-                <div key={record.id} className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-0">
-                  <button onClick={() => loadConversation(record)} className="min-w-0 flex-1 text-left">
-                    <p className="truncate text-sm font-medium text-[var(--text)]">
-                      <HighlightedText text={record.title} query={historyQuery} />
-                    </p>
-                    {snippet && snippet !== record.title ? (
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">
-                        <HighlightedText text={snippet} query={historyQuery} />
-                      </p>
-                    ) : null}
-                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                      {new Date(record.date).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })}
-                      {` · ${Math.ceil(record.messages.length / 2)}轮`}
-                    </p>
-                  </button>
-                  <button
-                    onClick={() => deleteConversation(record.id)}
-                    className="shrink-0 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--negative)]"
-                    aria-label={`删除历史对话：${record.title}`}
-                  >
-                    删除
-                  </button>
-                </div>
-                );
-              })
-            )}
-          </div>
-        ) : null}
       </header>
 
       {/* Messages */}
