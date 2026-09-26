@@ -813,29 +813,17 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-[calc(100dvh-3rem)] flex-col md:h-dvh">
-      {/* Header */}
-      <header className="px-5 pb-3 pt-4 sm:px-8 sm:pb-6 sm:pt-7">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">投资对话</h1>
-            <p className="mt-0.5 hidden text-xs text-[var(--text-muted)] sm:block">发文字或截图，AI帮你分析。</p>
+      {/* Header——单行工具条：标题左+操作右，固定视口页省高（9/26全面整改） */}
+      <header className="border-b border-[var(--border)] px-5 pb-3 pt-3.5 sm:px-8 sm:pb-4 sm:pt-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-baseline gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">投资对话</h1>
+            <p className="hidden text-xs text-[var(--text-muted)] sm:block">发文字或截图，AI帮你分析。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => {
-                const el = document.documentElement;
-                const cur = el.dataset.theme === "dark" ? "light" : "dark";
-                el.dataset.theme = cur;
-                try { localStorage.setItem("feimanstar_theme", cur); } catch {}
-              }}
-              className="hidden rounded-md border border-[var(--border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] lg:block"
-              title="切换明暗主题"
-            >
-              ◐ 明暗
-            </button>
-            <button
               onClick={startNewConversation}
-              className="grid h-8 w-8 place-items-center rounded-full border border-[var(--border-strong)] text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] lg:hidden"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border-strong)] text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] sm:hidden"
               title="开始新对话（当前对话自动存入历史）"
               aria-label="开始新对话"
             >
@@ -843,32 +831,32 @@ export default function ChatPage() {
             </button>
             <button
               onClick={startNewConversation}
-              className="hidden rounded-md border border-[var(--border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] lg:block"
+              className="hidden h-8 items-center rounded-lg border border-[var(--border-strong)] px-3 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--text)] hover:text-[var(--text)] sm:inline-flex"
               title="开始新对话（当前对话自动存入历史）"
             >
               新对话
             </button>
             <button
               onClick={() => setShowHistory((visible) => !visible)}
-              className={`hidden rounded-md border px-2.5 py-1 text-xs font-medium transition-colors lg:inline-flex ${
+              className={`hidden h-8 items-center rounded-lg border px-3 text-xs font-medium transition-colors sm:inline-flex ${
                 showHistory
                   ? "border-[var(--text)] bg-[var(--primary)] text-[var(--primary-foreground)]"
                   : "border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
               }`}
             >
-              历史记录{history.length > 0 ? ` ${history.length}` : ""}
+              历史{history.length > 0 ? ` ${history.length}` : ""}
             </button>
             <button
-                onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); }}
-                className={`hidden rounded-md px-2 py-1 text-xs font-medium transition-colors lg:inline-flex ${
-                  showLedger
-                    ? "border border-[var(--text)] text-[var(--text)]"
-                    : "border border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
-                }`}
-                title="判断账本：本设备存档的AI主判断，再次问同一标的时AI会主动对账"
-              >
-                📋账本({ledgerEntries.length})
-              </button>
+              onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); }}
+              className={`hidden h-8 items-center rounded-lg border px-3 text-xs font-medium transition-colors sm:inline-flex ${
+                showLedger
+                  ? "border-[var(--text)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+                  : "border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
+              }`}
+              title="判断账本：本设备存档的AI主判断，再次问同一标的时AI会主动对账"
+            >
+              账本{ledgerEntries.length > 0 ? ` ${ledgerEntries.length}` : ""}
+            </button>
             <div className="hidden items-center gap-1 lg:flex">
               <button
                 onClick={() => {
@@ -881,12 +869,12 @@ export default function ChatPage() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+                className="h-8 rounded-lg px-2.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
                 title="导出对话记录"
               >
                 导出
               </button>
-              <label className="cursor-pointer rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]">
+              <label className="h-8 cursor-pointer inline-flex items-center rounded-lg px-2.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text)]">
                 导入
                 <input
                   type="file"
@@ -909,20 +897,20 @@ export default function ChatPage() {
                 />
               </label>
             </div>
-            {/* 手机：低频功能（明暗/导出/导入）收进更多菜单，保第一行干净 */}
-            <div className="relative lg:hidden">
+            {/* 手机：<sm时历史/账本也收进更多菜单；明暗切换仅移动端需要（桌面走侧栏） */}
+            <div className="relative sm:hidden">
               <button
                 onClick={() => setMoreOpen((v) => !v)}
-                className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${moreOpen ? "border-[var(--text)] text-[var(--text)]" : "border-[var(--border-strong)] text-[var(--text-secondary)]"}`}
+                className={`inline-flex h-8 items-center rounded-lg border px-3 text-xs font-medium transition-colors ${moreOpen ? "border-[var(--text)] text-[var(--text)]" : "border-[var(--border-strong)] text-[var(--text-secondary)]"}`}
                 aria-label="更多功能"
               >
-                ⋯更多
+                ⋯
               </button>
               {moreOpen && (
                 <button aria-label="关闭更多菜单" className="fixed inset-0 z-20 cursor-default" onClick={() => setMoreOpen(false)} />
               )}
               {moreOpen && (
-                <div className="absolute left-0 top-9 z-30 w-40 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
+                <div className="absolute right-0 top-10 z-30 w-44 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-xl">
                   <button
                     onClick={() => { setShowHistory((v) => !v); setMoreOpen(false); }}
                     className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
@@ -934,7 +922,7 @@ export default function ChatPage() {
                     onClick={() => { setLedgerEntries(loadLedger()); setShowLedger((v) => !v); setMoreOpen(false); }}
                     className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
                   >
-                    <span>📋 账本</span>
+                    <span>账本</span>
                     <span className="text-[var(--text-muted)]">{ledgerEntries.length > 0 ? ledgerEntries.length : ""}{showLedger ? " ✓" : ""}</span>
                   </button>
                   <div className="my-1 h-px bg-[var(--border)]" />
@@ -948,7 +936,7 @@ export default function ChatPage() {
                     }}
                     className="block w-full rounded-lg px-3 py-2.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
                   >
-                    ◐ 切换明暗
+                    切换明暗
                   </button>
                   <button
                     onClick={() => {

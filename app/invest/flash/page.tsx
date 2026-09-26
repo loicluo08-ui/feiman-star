@@ -380,7 +380,7 @@ export default function FlashPage() {
 
           {/* Error */}
           {error && !loading && (
-            <div className="rounded-xl border border-[var(--negative)] bg-[var(--negative-surface)] p-4 text-center text-sm text-[var(--negative)]">
+            <div className="rounded-xl border border-[var(--negative)] bg-[var(--negative-bg)] p-4 text-center text-sm text-[var(--negative)]">
               快讯加载失败：{error}
               <button onClick={fetchFlash} className="mt-2 block w-full text-xs underline">点击重试</button>
             </div>
@@ -442,7 +442,7 @@ export default function FlashPage() {
             >
               {/* 分析面板Header */}
               <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-                <h2 className="text-sm font-bold text-[var(--text)]">AI 分析</h2>
+                <h2 className="text-sm font-semibold text-[var(--text)]">AI 分析</h2>
                 <button
                   onClick={closeAnalysis}
                   className="rounded-lg p-1 text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--text)]"
@@ -453,7 +453,7 @@ export default function FlashPage() {
 
               {/* 原文（默认折叠，点开查看） */}
               <details className="border-b border-[var(--border)] px-4 py-3">
-                <summary className="cursor-pointer select-none text-xs font-bold text-[var(--text-muted)]">
+                <summary className="cursor-pointer select-none text-xs font-semibold text-[var(--text-muted)]">
                   查看快讯原文
                 </summary>
                 <div className="mt-2">
@@ -477,7 +477,7 @@ export default function FlashPage() {
 
               {/* AI分析内容 */}
               <div className="flex-1 overflow-y-auto px-4 py-3">
-                <div className="mb-1 text-xs font-bold text-[var(--accent)]">AI 分析结果</div>
+                <div className="mb-1 text-xs font-semibold text-[var(--accent)]">AI 分析结果</div>
                 {aiLoading && !aiAnalysis && (
                   <div className="flex items-center gap-2 py-4">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
@@ -485,7 +485,7 @@ export default function FlashPage() {
                   </div>
                 )}
                 {aiError && (
-                  <div className="rounded-lg border border-[var(--negative)] bg-[var(--negative-surface)] p-3 text-xs text-[var(--negative)]">
+                  <div className="rounded-lg border border-[var(--negative)] bg-[var(--negative-bg)] p-3 text-xs text-[var(--negative)]">
                     分析失败：{aiError}
                     <button onClick={() => analyzeItem(selectedItem)} className="mt-2 block text-xs underline">重试</button>
                   </div>

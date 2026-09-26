@@ -381,13 +381,13 @@ export default function MarketPage() {
                   {pulse.sentiment}
                 </p>
               </div>
-              <div className="text-right">
+              <div>
                 <p className="text-sm text-[var(--text-muted)]">最强板块</p>
-                <p className="mt-1 text-sm font-medium text-[var(--positive)]">{pulse.strongestSector || "—"}</p>
+                <p className="mt-1 text-sm font-medium leading-7 text-[var(--positive)]">{pulse.strongestSector || "—"}</p>
               </div>
-              <div className="text-right">
+              <div>
                 <p className="text-sm text-[var(--text-muted)]">最弱板块</p>
-                <p className="mt-1 text-sm font-medium text-[var(--negative)]">{pulse.weakestSector || "—"}</p>
+                <p className="mt-1 text-sm font-medium leading-7 text-[var(--negative)]">{pulse.weakestSector || "—"}</p>
               </div>
             </div>
           </div>

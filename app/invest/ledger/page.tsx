@@ -103,7 +103,7 @@ export default async function LedgerPage() {
           { label: "存活率", value: surviveRate == null ? "—" : `${surviveRate}%` },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-            <div className="text-2xl font-semibold text-[var(--text)]">{s.value}</div>
+            <div className="text-2xl font-semibold tabular-nums text-[var(--text)]">{s.value}</div>
             <div className="mt-1 text-xs text-[var(--text-muted)]">{s.label}</div>
           </div>
         ))}
@@ -141,7 +141,7 @@ export default async function LedgerPage() {
                       className={`ml-auto rounded-md px-2 py-0.5 text-xs font-semibold ${
                         settle.result === "invalidated"
                           ? "bg-[var(--warning-bg)] text-[var(--warning)]"
-                          : "bg-sky-500/10 text-sky-500"
+                          : "bg-[var(--accent-surface)] text-[var(--accent)]"
                       }`}
                     >
                       {settle.result === "invalidated" ? "✗ 已证伪" : "✓ 存活中"}
@@ -163,8 +163,8 @@ export default async function LedgerPage() {
                 ) : null}
                 {settle ? (
                   <p className="mt-1 text-xs text-[var(--text-muted)]">
-                    结算价 <span className="text-[var(--text)]">{settle.settle_price}</span> ·
-                    失效位 {settle.level} · {settle.settled_at.slice(0, 10)}由程序机械核验
+                    结算价 <span className="font-medium tabular-nums text-[var(--text)]">{settle.settle_price}</span> ·
+                    失效位 <span className="tabular-nums">{settle.level}</span> · {settle.settled_at.slice(0, 10)}由程序机械核验
                   </p>
                 ) : null}
                 {it.confidence ? (
