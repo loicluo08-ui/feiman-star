@@ -53,6 +53,7 @@ async function runOnePerspective(
   messages: { role: string; content: string }[],
   persp: { name: string; prompt: string },
   apiKeyPresent: boolean,
+  signal?: AbortSignal,
 ): Promise<{ name: string; stance: string; key_args: string; ok: boolean }> {
   if (!apiKeyPresent) return { name: persp.name, stance: "", key_args: "", ok: false };
   let full = "";
@@ -63,7 +64,7 @@ async function runOnePerspective(
       { role: "user" as const, content: persp.prompt },
     ];
     // C档视角调用：短输出+thinking关闭（速度优先，深度靠分工）——每视角30s级
-    for await (const chunk of callAIStream(msgs as never, { temperature: 0.35, max_tokens: 1500, timeout: 60_000 })) {
+    for await (const chunk of callAIStream(msgs as never, { temperature: 0.35, max_tokens: 1500, timeout: 60_000, signal })) {
       if (chunk.kind === "text") {
         full += chunk.text;
       }
@@ -79,6 +80,7 @@ export async function runParallelDeliberation(
   streamMessages: unknown[],
   question: string,
   onStatus: (text: string) => void,
+  signal?: AbortSignal,
 ): Promise<DeliberationResult | null> {
   const apiKey = process.env.DEEPSEEK_API_KEY || "";
   if (!apiKey) return null;
@@ -88,9 +90,10 @@ export async function runParallelDeliberation(
   const compact = (streamMessages as { role: string; content: string }[]).filter(
     m => m.role !== "system" || String(m.content).length < 200,
   );
-  const results = await Promise.all(PERSPECTIVE_PROMPTS.map(p => runOnePerspective(compact, p, !!apiKey)));
+  const results = await Promise.all(PERSPECTIVE_PROMPTS.map(p => runOnePerspective(compact, p, !!apiKey, signal)));
   const ok = results.filter(r => r.ok);
-  if (ok.length < 2) return null; // <2视角成功=数据不足，回退默认路径
+  // 9/26 P2修复：≥1视角即融合（单视角时ACH退化为单审直通，总有产出）；0成功才回退——避免用户白等60s后再等90s
+  if (ok.length === 0) return null;
   onStatus(`✓ 3视角完成（${ok.length}/3成功），融合仲裁中…`);
 
   // 融合调用（DeepSeek，effort低——融合是结构化任务非深度推理）
@@ -101,7 +104,7 @@ export async function runParallelDeliberation(
         { role: "system" as const, content: SYNTHESIS_PROMPT(ok.map(r => r.stance), question) },
         { role: "user" as const, content: "输出裁决。" },
       ] as never,
-      { temperature: 0.3, max_tokens: 3000, timeout: 90_000 },
+      { temperature: 0.3, max_tokens: 3000, timeout: 90_000, signal },
     )) {
       synthesis += (chunk as { text?: string }).text ?? "";
     }

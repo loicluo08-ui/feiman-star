@@ -620,7 +620,8 @@ export async function POST(request: NextRequest) {
             lastUserText || trimmedQuestion || ""
           );
         // 9/13阶段3 C档并行会诊（实验态）：parallelMode时先注入注入数据，3视角并行→融合仲裁→替换全文
-        if (parallelMode && isAgentQuestion) {
+        // 9/26 P1修复：用户显式开⚡开关=直接触发，不再被isAgentQuestion正则门控静默否决（按钮亮着却没会诊=状态欺骗）
+        if (parallelMode) {
           try {
             send({ type: "status", text: "⚡ C档并行会诊启动：3视角独立分析（基本面/质疑者/周期情绪）" });
             // 上下文：注入数据（行情/快讯等）+轻量system+历史+当前问题（finalSystemPrompt太大，compact滤除逻辑在lib内做）
@@ -632,23 +633,21 @@ export async function POST(request: NextRequest) {
               ],
               lastUserText || trimmedQuestion || "",
               (text: string) => send({ type: "status", text }),
+              request.signal,
             );
             if (!delib) throw new Error("deliberation_failed");
+            // 9/26 P2修复：裁决置顶（第一句=核心判断，符合结论式锚），三视角原文降为尾部审计附录；删机制自白（9/25减法口径）
             const delibText = [
-              "【C档并行会诊】（3视角独立分析→融合裁决，视角间互不可见）",
-              "",
-              ...delib.perspectives.map(p => `◆ ${p.name}：${p.stance}`),
-              "",
-              "═══ 融合裁决 ═══",
               delib.synthesis,
               "",
-              `（分歧度=${delib.dissent_level}${delib.arbitrator_used ? "，异构裁判已介入" : ""}）`,
+              "---",
+              `**三视角原文（独立分析互不可见；分歧度=${delib.dissent_level}${delib.arbitrator_used ? "，异构裁判已介入" : ""}）**`,
+              ...delib.perspectives.map(p => `◆ ${p.name}：${p.stance}`),
               "",
               "【判断记账】标的=（见上文分析） | 立场=见融合裁决 | 关键位=见行动分支 | 失效=见各视角失效条件 | 信心度=见裁决表述",
             ].join("\n");
             fullText = delibText;
             send({ type: "patch", text: fullText });
-            send({ type: "chunk", text: "\n\n---\n\n⚠️ C档会诊为实验特性：结论已按ACH淘汰式合成，各视角独立结论在上文保留供审计。" });
             send({ type: "done" });
             return;
           } catch (error) {
