@@ -131,9 +131,14 @@ export async function runParallelDeliberation(
       if (arbit) {
         arbitrator_used = true;
         synthesis += `\n\n【异构仲裁注记（GLM）】${arbit.slice(0, 400)}`;
+      } else {
+        // 9/26：裁判缺席可观测（大概率=ZHIPU_API_KEY未配置，callAI空key静默return null）
+        console.error("[parallel-deliberation] arbitrator_absent: ZHIPU_API_KEY missing or callAI returned null");
+        onStatus("⚠️ 异构裁判缺席（GLM不可用），仅融合裁决输出");
       }
-    } catch {
-      /* 裁判失败不阻塞 */
+    } catch (e) {
+      console.error("[parallel-deliberation] arbitrator_error", e);
+      onStatus("⚠️ 异构裁判调用失败，仅融合裁决输出");
     }
   }
 
