@@ -970,6 +970,165 @@ export default function ChatPage() {
             )}
           </div>
         </div>
+            <div className="mt-2.5 mask-fade-r flex flex-nowrap items-center gap-1 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-x-visible">
+              {[
+                { key: "balanced", label: "均衡" },
+                { key: "value", label: "价值" },
+                { key: "growth", label: "成长" },
+                { key: "quant", label: "量化" },
+              ].map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setStyle(s.key as typeof style)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    style === s.key
+                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+              {/* 大师融合旗舰：3视角独立分析→交叉检验→融合单一深度输出（深度模型+thinking）。新基线：首字约50-70秒 */}
+              <button
+                onClick={() => setStyle("blend")}
+                title="大师融合旗舰模式：多视角独立审视+交叉检验，融合为单一深度输出（深度模型+思维链，首字约50-70秒）"
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  style === "blend"
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm"
+                    : "border border-[var(--primary)]/60 text-[var(--primary)] hover:bg-[var(--primary)]/10"
+                }`}
+              >
+                ⚡大师融合
+              </button>
+              {/* 9/13阶段3：C档并行会诊toggle（仅blend档显示）——3视角真并行互不可见→ACH融合裁决→高分歧触发跨模型异构裁判（实验特性） */}
+              {style === "blend" && (
+                <button
+                  onClick={() => setParallelDelib((v) => !v)}
+                  title="C档并行会诊（实验）：3个视角各自独立分析（互相看不到对方），再由融合裁决按ACH淘汰式合成单一结论；分歧度高时自动引入跨模型异构裁判。与常规融合的区别=视角真实独立、分歧可审计"
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    parallelDelib
+                      ? "bg-[var(--text)] text-[var(--background)] shadow-sm"
+                      : "border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
+                  }`}
+                >
+                  {parallelDelib ? "⚡会诊中" : "⚡并行会诊"}
+                </button>
+              )}
+              <button
+                onClick={() => setShowGurus((v) => !v)}
+                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                  showGurus || GURU_STYLES.some((g) => g.key === style)
+                    ? "border border-[var(--text)] text-[var(--text)]"
+                    : "border border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
+                }`}
+                title="展开6种投资大师视角（基于罗竹先框架的模块11思维框架库）"
+              >
+                大师视角
+              </button>
+              {showGurus &&
+                GURU_STYLES.map((s) => (
+                  <button
+                    key={s.key}
+                    onClick={() => setStyle(s.key as typeof style)}
+                    title={s.hint}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      style === s.key
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        : "bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:bg-[var(--border)]"
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+            </div>
+        {showLedger && (
+          <div className="mx-auto mt-3 w-full max-w-3xl rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold">判断账本（本设备存档的AI主判断）</span>
+              {ledgerEntries.length > 0 && (
+                <button
+                  onClick={() => { clearLedger(); setLedgerEntries([]); }}
+                  className="text-[var(--text-secondary)] underline hover:text-[var(--text)]"
+                >
+                  清空
+                </button>
+              )}
+            </div>
+            {ledgerEntries.length === 0 ? (
+              <p className="mt-2 text-[var(--text-secondary)]">暂无记账。AI给出主判断时自动存档（90天），再次问同一标的会主动对账。</p>
+            ) : (
+              <ul className="mt-2 space-y-1.5">
+                {[...ledgerEntries].reverse().map((e, i) => (
+                  <li key={`${e.ts}-${i}`} className="border-l-2 border-[var(--primary)]/40 pl-2">
+                    <span className="font-medium">{e.date} {e.symbol}</span>：立场={e.stance}
+                    {e.keyLevel ? <> | 关键位={e.keyLevel}</> : null}
+                    {e.invalidation ? <> | 失效={e.invalidation}</> : null}
+                    {e.confidence ? <> | 信心度={e.confidence}</> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {showHistory ? (
+          <div className="mx-auto mt-4 max-h-64 max-w-3xl overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+            <div className="sticky top-0 z-10 flex flex-col gap-2 border-b border-[var(--border)] bg-[var(--surface)] p-3 sm:flex-row">
+              <input
+                value={historyQuery}
+                onChange={(event) => setHistoryQuery(event.target.value)}
+                placeholder="搜索历史对话…"
+                aria-label="搜索历史对话"
+                className="min-w-0 flex-1 rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs outline-none transition-colors focus:border-[var(--text)]"
+              />
+              <select
+                value={historyRange}
+                onChange={(event) => setHistoryRange(event.target.value as HistoryRange)}
+                aria-label="按日期筛选历史对话"
+                className="rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--text)]"
+              >
+                <option value="7">最近7天</option>
+                <option value="30">最近30天</option>
+                <option value="all">全部</option>
+              </select>
+            </div>
+            {history.length === 0 ? (
+              <p className="px-4 py-5 text-center text-sm text-[var(--text-muted)]">还没有历史对话</p>
+            ) : filteredHistory.length === 0 ? (
+              <p className="px-4 py-5 text-center text-sm text-[var(--text-muted)]">没有匹配的历史对话</p>
+            ) : (
+              filteredHistory.map((record) => {
+                const snippet = getMatchedSnippet(record, historyQuery);
+                return (
+                <div key={record.id} className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3 last:border-0">
+                  <button onClick={() => loadConversation(record)} className="min-w-0 flex-1 text-left">
+                    <p className="truncate text-sm font-medium text-[var(--text)]">
+                      <HighlightedText text={record.title} query={historyQuery} />
+                    </p>
+                    {snippet && snippet !== record.title ? (
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">
+                        <HighlightedText text={snippet} query={historyQuery} />
+                      </p>
+                    ) : null}
+                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                      {new Date(record.date).toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" })}
+                      {` · ${Math.ceil(record.messages.length / 2)}轮`}
+                    </p>
+                  </button>
+                  <button
+                    onClick={() => deleteConversation(record.id)}
+                    className="shrink-0 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--negative)]"
+                    aria-label={`删除历史对话：${record.title}`}
+                  >
+                    删除
+                  </button>
+                </div>
+                );
+              })
+            )}
+          </div>
+        ) : null}
       </header>
 
       {/* Messages */}
