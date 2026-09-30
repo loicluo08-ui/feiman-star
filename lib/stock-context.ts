@@ -204,10 +204,22 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
             const mm = mjson?.metric ?? {};
             const revG = mm.revenueGrowthTTMYoy, gm = mm.grossMarginTTM, npm = mm.netProfitMarginTTM, roe = mm.roeTTM;
             const fparts: string[] = [];
-            if (revG != null) fparts.push(`营收TTM同比${revG > 0 ? "+" : ""}${(revG * 100).toFixed(1)}%`);
-            if (gm != null) fparts.push(`毛利率${(gm * 100).toFixed(1)}%`);
-            if (npm != null) fparts.push(`净利率${(npm * 100).toFixed(1)}%`);
-            if (roe != null) fparts.push(`ROE ${(roe * 100).toFixed(1)}%`);
+            // 单位自适应+合理性闸（9/30诊断Q6根因修复：Finnhub个别标的返回已百分数形式（TSLA毛利率18.85被×100=1885%实锤）——
+            // |v|≤3视为小数×100；3<|v|≤上限视为已是百分数直接用；超上限=物理不可能，剔除防注入
+            const smartPct = (v: number | null | undefined, cap: number): number | null => {
+              if (v == null || !Number.isFinite(v)) return null;
+              const a = Math.abs(v);
+              if (a <= 3) return v * 100;
+              if (a <= cap) return v;
+              return null;
+            };
+            const gmF = smartPct(gm, 150), npmF = smartPct(npm, 150), roeF = smartPct(roe, 300);
+            const revF = revG == null ? null : (Math.abs(revG) <= 5 ? revG * 100 : Math.abs(revG) <= 300 ? revG : null);
+            if (revF != null) fparts.push(`营收TTM同比${revF > 0 ? "+" : ""}${revF.toFixed(1)}%`);
+            if (gmF != null) fparts.push(`毛利率${gmF.toFixed(1)}%`);
+            if (npmF != null) fparts.push(`净利率${npmF.toFixed(1)}%`);
+            if (roeF != null) fparts.push(`ROE ${roeF.toFixed(1)}%`);
+            if (fparts.length < 2) financialLine = ""; // 可信字段不足2条，宁缺毋注（9/30 Q6：坏快照不如没快照）
             if (fparts.length >= 2) financialLine = ` | [财务快照·Finnhub] ${fparts.join("、")}（真实财报值[数据]，替代行业经验基准）`;
           } catch {}
         }

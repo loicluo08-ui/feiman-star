@@ -344,6 +344,26 @@ export async function GET(request: NextRequest) {
         }
       : null;
 
+    // 数据合理性机械闸（9/30诊断Q6：TSLA毛利率1885%直注实锤——物理不可能值上游剔除+留痕）
+    let dataQualityFlags: string[] = [];
+    if (financials && typeof financials === "object") {
+      const fin = financials as Record<string, unknown>;
+      const bad = (label: string, key: string, v: unknown, lo: number, hi: number, unit: string) => {
+        if (typeof v === "number" && (v > hi || v < lo)) {
+          dataQualityFlags.push(`${label}=${v}${unit}超出合理区间[${lo},${hi}]，已剔除（上游数据异常）`);
+          delete fin[key];
+        }
+      };
+      bad("毛利率", "grossMargin", fin.grossMargin, -100, 100, "%");
+      bad("营业利润率", "operatingMargin", fin.operatingMargin, -300, 100, "%");
+      bad("净利润率", "profitMargin", fin.profitMargin, -300, 100, "%");
+      bad("ROE", "roe", fin.roe, -300, 300, "%");
+      bad("营收增速", "revenueGrowth", fin.revenueGrowth, -95, 500, "%");
+      bad("EPS增速", "earningsGrowth", fin.earningsGrowth, -200, 1000, "%");
+      bad("PE", "pe", fin.pe, 0, 1000, "");
+      if (dataQualityFlags.length > 0) fin.dataQualityFlags = dataQualityFlags;
+    }
+
     return NextResponse.json({
       data: {
         code,
