@@ -8,7 +8,7 @@ const tools = [
   {
     number: "01",
     title: "实时快讯",
-    description: "金十数据实时快讯，重要消息高亮，5秒自动刷新。",
+    description: "金十数据+华尔街见闻实时快讯，重要消息高亮，5秒自动刷新。",
     href: "/invest/flash",
     tags: ["实时", "全球", "A股"],
   },
@@ -29,7 +29,7 @@ const tools = [
   {
     number: "04",
     title: "AI选股助手",
-    description: "输入美股代码或公司名，拉取行情+24个财务指标，AI生成6维度分析报告。",
+    description: "输入美股代码或公司名，拉取行情+20余项核心财务指标，AI生成6维度分析报告。",
     href: "/invest/pick",
     tags: ["财务指标", "AI分析", "6维度评分"],
   },
@@ -45,7 +45,7 @@ const tools = [
     title: "投资对话",
     description: "发文字或截图，AI帮你分析。K线图/财报/持仓截图都能读，支持多轮对话。",
     href: "/invest/chat",
-    tags: ["截图分析", "多轮对话", "GLM-4V"],
+    tags: ["截图分析", "多轮对话", "GLM-4V读图·DeepSeek分析"],
   },
 ];
 

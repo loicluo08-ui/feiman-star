@@ -18,7 +18,14 @@ export async function GET(request: Request) {
   }
 
   const feed = await getFlashFeed();
-  const items: FlashItem[] = feed.items;
+  const raw: FlashItem[] = feed.items;
+  // 契约兜底（9/30诊断P2-1）：金十短讯常无标题，空title统一降级为content截断，保证API契约非空
+  const items: FlashItem[] = raw.map((it) => {
+    const t = (it.title || "").trim();
+    if (t) return it;
+    const body = ((it.content_text || it.content || "").replace(/\s+/g, " ")).trim();
+    return { ...it, title: body.slice(0, 42) + (body.length > 42 ? "…" : "") };
+  });
 
   if (items.length === 0) {
     return NextResponse.json(
