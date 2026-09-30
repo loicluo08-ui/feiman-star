@@ -10,6 +10,7 @@ import { buildSignalContext, type SignalInputStock } from "@/lib/signal-context"
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { getStylePrompt, CHAT_STYLES } from "@/lib/chat-styles";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { aiBudgetGuard } from "@/lib/ai-budget";
 import { extractStockCodes, extractCryptoSymbols, buildStockContext, fetchStockData, fetchVix, buildMarketMoodBlock } from "@/lib/stock-context";
 import { fetchPeerComparison } from "@/lib/sector-peers";
 import { isMacroQuery, fetchMacroContext } from "@/lib/macro-context";
@@ -97,6 +98,15 @@ const CROSS_VALIDATION_BLOCK = [
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "chat", RATE_LIMITS.chat);
+
+  // AI预算熔断（P1第二道闸）：余额低于熔断线时全站AI停服，损失封顶
+  const budget = await aiBudgetGuard();
+  if (!budget.allowed) {
+    return NextResponse.json(
+      { error: budget.reason },
+      { status: 503, headers: { "Retry-After": "600" } },
+    );
+  }
   if (limited) {
     return NextResponse.json(
       { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },

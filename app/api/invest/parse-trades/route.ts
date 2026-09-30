@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { callAI } from "@/lib/ai";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { aiBudgetGuard } from "@/lib/ai-budget";
 import { sortTradesByDate } from "@/lib/trade-stats";
 
 export const runtime = "nodejs";
@@ -28,6 +29,15 @@ const parsedTradeSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "parseTrades", RATE_LIMITS.parseTrades);
+
+  // AI预算熔断（P1第二道闸）：余额低于熔断线时全站AI停服，损失封顶
+  const budget = await aiBudgetGuard();
+  if (!budget.allowed) {
+    return NextResponse.json(
+      { error: budget.reason },
+      { status: 503, headers: { "Retry-After": "600" } },
+    );
+  }
   if (limited) {
     return NextResponse.json(
       { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
