@@ -1175,7 +1175,7 @@ export default function ChatPage() {
             {messages.map((m, i) => (
               <div key={i} className={`msg-in group/msg ${m.role === "user" ? "mt-8 flex justify-end" : "mt-4 flex items-start gap-3"}`}>
                 {m.role === "assistant" ? (
-                  <div aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-full bg-[var(--primary)] text-[13px] font-semibold text-[var(--primary-foreground)]">星</div>
+                  <img aria-hidden src="/ai-avatar.svg" alt="" className="mt-0.5 h-7 w-7 shrink-0 select-none rounded-full" />
                 ) : null}
                 <div
                   className={
