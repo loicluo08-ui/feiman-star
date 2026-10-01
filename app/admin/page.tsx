@@ -14,6 +14,53 @@ type UsageData = {
   chats: Array<{ id: number; question: string; style: string; ip: string | null; created_at: string }>;
 };
 
+// 10/1逸翔令：监控内容用中文自然语言——路径与动作全部翻译成人话
+const PAGE_NAMES: Record<string, string> = {
+  "/": "主页",
+  "/invest": "投资工作台",
+  "/invest/chat": "AI对话",
+  "/invest/flash": "实时快讯",
+  "/invest/market": "市场快报",
+  "/invest/calendar": "财报日历",
+  "/invest/pick": "AI选股",
+  "/invest/review": "交易复盘",
+  "/invest/ledger": "判断账本",
+  "/invest/admin": "监控后台",
+};
+
+const API_NAMES: Record<string, string> = {
+  "/api/invest/chat": "AI对话分析",
+  "/api/invest/pick": "AI选股分析",
+  "/api/invest/review-summary": "复盘摘要生成",
+  "/api/invest/flash-analyze": "快讯AI解读",
+  "/api/invest/flash": "快讯数据刷新",
+  "/api/invest/market-pulse": "行情数据刷新",
+  "/api/invest/stock": "个股行情查询",
+  "/api/invest/search": "股票搜索",
+  "/api/invest/calendar": "财报数据查询",
+  "/api/invest/judgment-cloud": "判断云端存档",
+  "/api/invest/judgment-sync": "判断云端同步",
+  "/api/admin/usage": "监控后台读取",
+  "/api/admin/cleanup": "数据清理",
+};
+
+function cnPath(path: string | null | undefined): string {
+  if (!path) return "未知页面";
+  if (PAGE_NAMES[path]) return PAGE_NAMES[path];
+  if (API_NAMES[path]) return API_NAMES[path];
+  // 前缀匹配（带参数的API）
+  const base = Object.keys(API_NAMES).find((k) => path.startsWith(k));
+  if (base) return API_NAMES[base];
+  const page = Object.keys(PAGE_NAMES).find((k) => path.startsWith(k) && k !== "/");
+  return page ? PAGE_NAMES[page] : path;
+}
+
+function cnAction(method: string | null | undefined, path: string | null | undefined): string {
+  const isAPI = (path || "").startsWith("/api/");
+  if (method === "POST") return isAPI ? "调用" : "提交";
+  return "浏览";
+}
+
 function fmtTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -145,7 +192,7 @@ export default function AdminPage() {
                   <td className="px-3 py-2 text-[var(--text-muted)]">{[r.country, safeDecode(r.city)].filter(Boolean).join(" ") || "—"}</td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.first)}</td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.last)}</td>
-                  <td className="px-3 py-2 font-mono text-[10px] text-[var(--text-muted)]">{r.paths.join(" ")}</td>
+                  <td className="px-3 py-2 text-[10px] text-[var(--text-muted)]">{r.paths.map(cnPath).join("、")}</td>
                 </tr>
               ))}
               {data.ipRows.length === 0 ? (
@@ -190,7 +237,7 @@ export default function AdminPage() {
         <div className="max-h-96 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 font-mono text-[11px] leading-5 text-[var(--text-muted)]">
           {data.recent.map((r, i) => (
             <div key={i} className="border-b border-[var(--border)] py-1 last:border-0">
-              {fmtTime(r.ts)} · {r.ip} · {r.method} {r.path}
+              {fmtTime(r.ts)} · {r.ip} · {cnAction(r.method, r.path)}{cnPath(r.path)}
               {r.city ? ` · ${r.country || ""} ${safeDecode(r.city)}` : ""}
             </div>
           ))}
