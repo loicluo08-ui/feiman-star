@@ -23,14 +23,31 @@ type LedgerRow = {
   confidence?: string;
   date: string;
   ts?: string;
+  time_box?: number | null;
+  env_tags?: string | null;
+  failure_strictness?: string | null;
+  exec_plan?: string | null;
+  corrects?: string | null;
 };
 
 type SettleInfo = {
-  result: "invalidated" | "alive";
+  result: "invalidated" | "alive" | "signal_done" | "expired";
   settle_price: number;
   level: number;
   direction: string;
   settled_at: string;
+  time_box?: number | null;
+  env_tags?: string | null;
+  exec_plan?: string | null;
+  failure_strictness?: string | null;
+};
+
+// Schema V2结算态语义（宪法2：错账=数据点+失效条件复盘+环境标签，不是红字惩罚）
+const SETTLE_LABEL: Record<SettleInfo["result"], string> = {
+  invalidated: "✗ 失效触发（数据点）",
+  alive: "✓ 存活中",
+  signal_done: "⊘ 信号完成",
+  expired: "⏱ 时间盒到期",
 };
 
 function stanceLabel(stance: string): string {
@@ -42,7 +59,7 @@ function stanceLabel(stance: string): string {
 function parseSettle(content: string): SettleInfo | null {
   try {
     const obj = JSON.parse(content) as { kind?: string } & SettleInfo;
-    if (obj.kind === "judgment_settle" && (obj.result === "invalidated" || obj.result === "alive")) {
+    if (obj.kind === "judgment_settle" && ["invalidated", "alive", "signal_done", "expired"].includes(obj.result)) {
       return obj;
     }
     return null;
@@ -76,13 +93,18 @@ export default async function LedgerPage() {
 
   let invalidated = 0;
   let alive = 0;
+  let signalDone = 0;
+  let expired = 0;
   for (const it of items) {
     const s = settleMap.get(`${it.symbol}|${it.date}`);
     if (s?.result === "invalidated") invalidated += 1;
     else if (s?.result === "alive") alive += 1;
+    else if (s?.result === "signal_done") signalDone += 1;
+    else if (s?.result === "expired") expired += 1;
   }
-  const settledCount = invalidated + alive;
-  const surviveRate = settledCount > 0 ? Math.round((alive / settledCount) * 100) : null;
+  const settledCount = invalidated + alive + signalDone + expired;
+  const surviveRate = invalidated + alive > 0 ? Math.round((alive / (invalidated + alive)) * 100) : null;
+  const watching = items.length - settledCount;
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8">
@@ -95,12 +117,14 @@ export default async function LedgerPage() {
         </p>
       </header>
 
-      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
         {[
           { label: "判断总数", value: items.length },
-          { label: "已结算", value: settledCount },
-          { label: "失效触发", value: invalidated },
-          { label: "存活率", value: surviveRate == null ? "—" : `${surviveRate}%` },
+          { label: "失效触发（数据点）", value: invalidated },
+          { label: "存活率（失效位核验）", value: surviveRate == null ? "—" : `${surviveRate}%` },
+          { label: "信号完成", value: signalDone },
+          { label: "时间盒到期", value: expired },
+          { label: "观察中", value: Math.max(watching, 0) },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
             <div className="text-2xl font-semibold tabular-nums text-[var(--text)]">{s.value}</div>
@@ -117,10 +141,20 @@ export default async function LedgerPage() {
         <div className="flex flex-col gap-3">
           {items.map((it) => {
             const settle = settleMap.get(`${it.symbol}|${it.date}`);
+            const isInvalidated = settle?.result === "invalidated";
+            const settleStyle =
+              settle?.result === "invalidated"
+                ? "bg-[var(--warning-bg)] text-[var(--warning)]"
+                : settle?.result === "alive"
+                  ? "bg-[var(--accent-surface)] text-[var(--accent)]"
+                  : "bg-[var(--border)] text-[var(--text-muted)]";
+            const envTags = (settle?.env_tags ?? it.env_tags ?? "").split(/[,，]/).filter(Boolean);
             return (
               <article
                 key={`${it.symbol}-${it.date}-${it.ts ?? ""}`}
-                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4"
+                className={`rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 ${
+                  isInvalidated ? "border-l-2 border-l-[var(--warning)]" : ""
+                }`}
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-base font-semibold text-[var(--text)]">{it.symbol}</span>
@@ -136,15 +170,14 @@ export default async function LedgerPage() {
                     {stanceLabel(it.stance)}
                   </span>
                   <span className="text-xs text-[var(--text-muted)]">{it.date}</span>
+                  {it.time_box ? (
+                    <span className="rounded-md bg-[var(--border)] px-2 py-0.5 text-xs text-[var(--text-muted)]">
+                      时间盒{it.time_box}日
+                    </span>
+                  ) : null}
                   {settle ? (
-                    <span
-                      className={`ml-auto rounded-md px-2 py-0.5 text-xs font-semibold ${
-                        settle.result === "invalidated"
-                          ? "bg-[var(--warning-bg)] text-[var(--warning)]"
-                          : "bg-[var(--accent-surface)] text-[var(--accent)]"
-                      }`}
-                    >
-                      {settle.result === "invalidated" ? "✗ 已证伪" : "✓ 存活中"}
+                    <span className={`ml-auto rounded-md px-2 py-0.5 text-xs font-semibold ${settleStyle}`}>
+                      {SETTLE_LABEL[settle.result]}
                     </span>
                   ) : (
                     <span className="ml-auto rounded-md bg-[var(--border)] px-2 py-0.5 text-xs text-[var(--text-muted)]">
@@ -152,6 +185,15 @@ export default async function LedgerPage() {
                     </span>
                   )}
                 </div>
+                {envTags.length > 0 ? (
+                  <p className="mt-2 flex flex-wrap gap-1.5">
+                    {envTags.map((t) => (
+                      <span key={t} className="rounded bg-[var(--border)] px-1.5 py-0.5 text-xs text-[var(--text-muted)]">
+                        {t}
+                      </span>
+                    ))}
+                  </p>
+                ) : null}
                 {it.invalidation ? (
                   <p className="mt-2 text-sm leading-6 text-[var(--text)]">
                     <span className="text-[var(--text-muted)]">失效条件：</span>
@@ -160,6 +202,9 @@ export default async function LedgerPage() {
                 ) : null}
                 {it.key_level ? (
                   <p className="mt-1 text-xs text-[var(--text-muted)]">关键位：{it.key_level}</p>
+                ) : null}
+                {it.exec_plan ? (
+                  <p className="mt-1 text-xs leading-6 text-[var(--text-muted)]">执行层：{it.exec_plan}</p>
                 ) : null}
                 {settle ? (
                   <p className="mt-1 text-xs text-[var(--text-muted)]">

@@ -28,6 +28,10 @@ export interface JudgmentCandidate {
   date: string;
   ts: number;
   status: "pending" | "settled";
+  // Schema V2（10/1 Phase1）：时间盒/环境标签/执行层——失效严格度由settle机械判定，不在此自报
+  timeBox: number; // 时间盒天数：短线信号5/估值观察60
+  envTags: string; // 环境标签逗号串（财报周等，工厂侧尽力而为）
+  execPlan: string; // 执行层：信号≠操作指令
 }
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -48,6 +52,7 @@ function livermoreRule(s: QtStock): JudgmentCandidate | null {
     confidence: "55%", master: "利弗莫尔（关键点）",
     basis: `[数据]qt实时：单日${s.changePct > 0 ? "+" : ""}${s.changePct.toFixed(1)}%（规则触发信号，非大师本人观点）`,
     date: todayStr(), ts: Date.now(), status: "pending",
+    timeBox: 5, envTags: "单日大异动", execPlan: up ? `回踩 ${s.high.toFixed(2)} 不破可分批确认` : `反抽 ${s.low.toFixed(2)} 不过可分批确认`,
   };
 }
 
@@ -62,6 +67,7 @@ function grahamRule(s: QtStock): JudgmentCandidate | null {
     confidence: "50%", master: "格雷厄姆（估值低位）",
     basis: `[数据]qt实时：PE=${s.pe.toFixed(1)}（规则触发信号，非投资建议）`,
     date: todayStr(), ts: Date.now(), status: "pending",
+    timeBox: 60, envTags: "估值低位", execPlan: "观察信号：仅记录不构成操作，建仓需独立判断仓位规则",
   };
 }
 
@@ -83,6 +89,7 @@ function marksRule(s: QtStock): JudgmentCandidate | null {
     confidence: "50%", master: "马克斯（钟摆定位）",
     basis: `[数据]qt实时：单日${greedy ? "+" : ""}${s.changePct.toFixed(1)}%（情绪极端警示，非方向判断）`,
     date: todayStr(), ts: Date.now(), status: "pending",
+    timeBox: 5, envTags: "情绪极端", execPlan: "警示信号：情绪钟摆定位，不构成方向判断与操作指令",
   };
 }
 

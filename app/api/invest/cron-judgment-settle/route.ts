@@ -121,6 +121,11 @@ export async function GET(request: NextRequest) {
 
   const prices = await fetchTencentPrices(Array.from(new Set(pending.map((r) => r.symbol))));
 
+  // Schema V2：narrative行（失效条件不可机械核验）单列透明度统计——不无限静默悬挂
+  const narrativeUnsettled = ledger.filter(
+    (r) => r.invalidation && r.symbol && r.date && !parseInvalidation(r.invalidation)
+  ).length;
+
   const now = new Date().toISOString();
   const rows: KbDynamicRow[] = [];
   const skipped: string[] = [];
@@ -136,6 +141,13 @@ export async function GET(request: NextRequest) {
     // 9/25二轮交叉验证：工厂信号类判断（[信号完成]尾标）失效条件触发=信号完成非证伪——
     // result="signal_done"避免观望警示被计入"判断错误"污染对错率计量（能力工程命门）
     if (r.invalidation!.includes("[信号完成]") && result === "invalidated") result = "signal_done";
+    // Schema V2（10/1 Phase1）：时间盒到期强制结算——失效未触发也未走出预期=expired数据点
+    // （堵"失效条件永不触发=永不判错"的悬挂漏洞；失效已被触发的不受时间盒影响）
+    if (result === "alive" && r.time_box && r.time_box > 0) {
+      const judged = Date.parse(r.date);
+      const deadline = (Number.isFinite(judged) ? judged : Date.now()) + r.time_box * 24 * 3600 * 1000;
+      if (Date.now() > deadline) result = "expired";
+    }
     rows.push({
       id: `settle-${r.symbol}-${r.date}`,
       type: "insight",
@@ -150,6 +162,11 @@ export async function GET(request: NextRequest) {
         settle_price: price,
         result,
         invalidation: r.invalidation,
+        // Schema V2：错账呈现三要素随行（数据点+失效条件复盘+环境标签，宪法2）
+        time_box: r.time_box ?? null,
+        env_tags: r.env_tags ?? null,
+        exec_plan: r.exec_plan ?? null,
+        failure_strictness: "strict",
         settled_at: now,
       }),
       source: "cron-judgment-settle",
@@ -165,6 +182,7 @@ export async function GET(request: NextRequest) {
     settled: written,
     skipped_no_price: skipped,
     pending_total: pending.length,
+    narrative_unsettled: narrativeUnsettled,
     ledger_rows: ledger.length,
     sample_prices: Object.fromEntries(Array.from(prices.entries()).slice(0, 5)),
   });

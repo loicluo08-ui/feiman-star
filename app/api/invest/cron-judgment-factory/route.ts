@@ -56,6 +56,10 @@ export async function GET(request: NextRequest) {
         confidence: c.confidence,
         date: c.date,
         ts: String(c.ts),
+        // Schema V2（10/1 Phase1）：时间盒/环境标签/执行层随行入账
+        time_box: c.timeBox,
+        env_tags: c.envTags,
+        exec_plan: c.execPlan,
       }))
     );
 

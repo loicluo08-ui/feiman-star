@@ -15,6 +15,10 @@ export type LedgerEntry = {
   confidence: string; // 信心度（AI自报）
   date: string; // YYYY-MM-DD
   ts: number; // 存档时间戳（ms）
+  // Schema V2（10/1 Phase1）：可选扩展字段——旧记账行照常parse
+  timeBoxDays?: number; // 时间盒天数：到期强制结算
+  envTags?: string; // 环境标签（财报周/高波动等）
+  execPlan?: string; // 执行层计划
 };
 
 const LEDGER_KEY = "fx_judgment_ledger_v1";
@@ -49,7 +53,7 @@ export function saveEntry(entry: LedgerEntry): void {
   }
 }
 
-/** 从AI全文提取记账行（【判断记账】标的=x | 立场=y | 关键位=z | 失效=w | 信心度=n%），失败返回null */
+/** 从AI全文提取记账行（【判断记账】标的=x | 立场=y | 关键位=z | 失效=w | 信心度=n% [| 时限=N日 | 环境=… | 执行=…]），失败返回null */
 export function parseLedgerLine(text: string): LedgerEntry | null {
   const m = text.match(LEDGER_LINE_RE);
   if (!m) return null;
@@ -63,6 +67,9 @@ export function parseLedgerLine(text: string): LedgerEntry | null {
     }
   }
   if (!kv["标的"] || !kv["立场"]) return null;
+  // Schema V2可选字段：时限=NN日（兼容"5日"/"20日"）；环境；执行
+  const tbRaw = kv["时限"] ?? kv["时间盒"];
+  const tbDays = tbRaw ? parseInt((tbRaw.match(/\d+/) ?? [])[0] ?? "", 10) : NaN;
   return {
     symbol: kv["标的"],
     stance: kv["立场"],
@@ -71,6 +78,9 @@ export function parseLedgerLine(text: string): LedgerEntry | null {
     confidence: kv["信心度"] || "",
     date: new Date().toISOString().slice(0, 10),
     ts: Date.now(),
+    ...(Number.isFinite(tbDays) && tbDays > 0 ? { timeBoxDays: tbDays } : {}),
+    ...(kv["环境"] ? { envTags: kv["环境"] } : {}),
+    ...(kv["执行"] ? { execPlan: kv["执行"] } : {}),
   };
 }
 

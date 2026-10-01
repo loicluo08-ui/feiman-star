@@ -79,6 +79,12 @@ export interface LedgerRow {
   confidence?: string;
   date: string;
   ts?: string;
+  // Schema V2（10/1 Phase1）——全列可空，004 SQL未执行时为undefined
+  time_box?: number | null; // 时间盒天数：短线5/波段20/长线60，到期强制结算
+  env_tags?: string | null; // 环境标签逗号串：财报周/高波动等
+  failure_strictness?: string | null; // strict=可机械核验 | narrative=纯叙事（不入对错率）
+  exec_plan?: string | null; // 执行层计划
+  corrects?: string | null; // 修正轨迹：前置判断键 symbol|date
 }
 
 export async function insertLedgerRows(rows: LedgerRow[]): Promise<boolean> {
@@ -99,9 +105,10 @@ export async function readLedgerBySymbol(symbol: string, limit = 5): Promise<Led
 }
 
 // 9/18能力工程：账本全量读取（公开账本页+自动结算cron共用）
+// 10/1 schema V2：select=*（列名显式清单会在004 SQL未执行时报400；*对列变化向前兼容）
 export async function readAllLedger(limit = 500): Promise<LedgerRow[] | null> {
   return sbRest<LedgerRow[]>(
-    `judgment_ledger?select=symbol,stance,key_level,invalidation,confidence,date,ts&order=ts.desc&limit=${limit}`
+    `judgment_ledger?select=*&order=ts.desc&limit=${limit}`
   );
 }
 
