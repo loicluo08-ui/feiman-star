@@ -21,6 +21,76 @@ export const maxDuration = 60;
 import { readAllLedger, readKbEntries, upsertKbEntries, type KbDynamicRow } from "@/lib/supabase";
 import { notifySettleEvents, type SettleNotifyItem } from "@/lib/notify-serverchan";
 import { getQtStocks } from "@/lib/qt";
+import { callAI } from "@/lib/ai";
+
+/**
+ * 错账归因（10/1，宪法2复盘层）：被证伪的判断机械结算只给"错了"，归因给出"错在哪"。
+ * 四分类：数据前提变化（data_shift）/关键位设计问题（level_design）/逻辑错误（logic_error）/外部冲击（external_shock）
+ */
+async function attributeInvalidation(ctx: {
+  symbol: string;
+  stance: string;
+  level: number;
+  settle_price: number;
+  invalidation: string;
+  judged_date: string;
+  direction: string;
+}): Promise<{ text: string; kind: string } | null> {
+  const prompt = [
+    `以下是一个投资判断的机械结算结果——它被证伪了（失效条件触发）。`,
+    `判断：${ctx.judged_date} 立场=${ctx.stance} 失效位=${ctx.level}（${ctx.direction === "down" ? "跌破类" : "突破类"}）`,
+    `失效条件：${ctx.invalidation}`,
+    `结算时价：${ctx.settle_price}`,
+    ``,
+    `任务：一句话归因（35字内），从以下四类选一，格式「【类名】说明」：`,
+    `【数据前提变化】判断依据的数据在判断后发生了当时不可知的变化`,
+    `【关键位设计问题】失效位设得过近/过远，正常波动即触发或该触发未设防`,
+    `【逻辑错误】判断逻辑本身站不住（因果关系有漏洞）`,
+    `【外部冲击】不可预期的外部事件（政策/突发）直接触发`,
+    `只输出归因本身。`,
+  ].join("\n");
+  try {
+    const text = await callAI([{ role: "user", content: prompt }], {
+      temperature: 0.3,
+      max_tokens: 80,
+      timeout: 20_000,
+      retry: 0,
+    });
+    if (!text || !text.trim()) return null;
+    const clean = text.trim().slice(0, 80);
+    const kind = clean.includes("数据前提变化")
+      ? "data_shift"
+      : clean.includes("关键位设计")
+        ? "level_design"
+        : clean.includes("逻辑错误")
+          ? "logic_error"
+          : clean.includes("外部冲击")
+            ? "external_shock"
+            : "other";
+    return { text: clean, kind };
+  } catch {
+    return null;
+  }
+}
+
+type SettleContentObj = {
+  kind: "judgment_settle";
+  symbol: string;
+  judged_date: string;
+  stance: string;
+  direction: string;
+  level: number;
+  settle_price: number;
+  result: string;
+  invalidation: string;
+  time_box: number | null;
+  env_tags: string | null;
+  exec_plan: string | null;
+  failure_strictness: string;
+  settled_at: string;
+  attribution: string | null;
+  attribution_kind: string | null;
+};
 
 function authOk(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET || "";
@@ -121,6 +191,8 @@ export async function GET(request: NextRequest) {
   const skipped: string[] = [];
   // server酱事件推送收集：只收invalidated/expired（低频高价值，alive不推防噪音）
   const notifyItems: SettleNotifyItem[] = [];
+  // 10/1错账归因任务收集：invalidated行结算后并行AI归因（宪法2复盘层——结果之外要有教训）
+  const attributionTasks: { contentObj: SettleContentObj; row: KbDynamicRow }[] = [];
 
   // 10/1 Phase1：工厂前置内嵌——Vercel Hobby cron必须daily，"0 21 * * 1-5"从未注册过（ledger 0行实锤）
   // 修复=本端点成为每日账本全流程：先工厂扫描入账，再结算，再推送（工厂失败不挡结算主流程）
@@ -151,30 +223,38 @@ export async function GET(request: NextRequest) {
       const deadline = (Number.isFinite(judged) ? judged : Date.now()) + r.time_box * 24 * 3600 * 1000;
       if (Date.now() > deadline) result = "expired";
     }
-    rows.push({
+    const contentObj: SettleContentObj = {
+      kind: "judgment_settle",
+      symbol: r.symbol,
+      judged_date: r.date,
+      stance: r.stance,
+      direction: parsed.direction,
+      level: parsed.level,
+      settle_price: price,
+      result,
+      invalidation: r.invalidation ?? "",
+      // Schema V2：错账呈现三要素随行（数据点+失效条件复盘+环境标签，宪法2）
+      time_box: r.time_box ?? null,
+      env_tags: r.env_tags ?? null,
+      exec_plan: r.exec_plan ?? null,
+      failure_strictness: "strict",
+      settled_at: now,
+      // 10/1错账归因（宪法2复盘层）：invalidated行结算后由callAI补归因（见循环后归因段）
+      attribution: null as string | null,
+      attribution_kind: null as string | null,
+    };
+    const row: KbDynamicRow = {
       id: `settle-${r.symbol}-${r.date}`,
       type: "insight",
       keywords: [r.symbol, "settle", r.date],
-      content: JSON.stringify({
-        kind: "judgment_settle",
-        symbol: r.symbol,
-        judged_date: r.date,
-        stance: r.stance,
-        direction: parsed.direction,
-        level: parsed.level,
-        settle_price: price,
-        result,
-        invalidation: r.invalidation,
-        // Schema V2：错账呈现三要素随行（数据点+失效条件复盘+环境标签，宪法2）
-        time_box: r.time_box ?? null,
-        env_tags: r.env_tags ?? null,
-        exec_plan: r.exec_plan ?? null,
-        failure_strictness: "strict",
-        settled_at: now,
-      }),
+      content: JSON.stringify(contentObj),
       source: "cron-judgment-settle",
       created: now,
-    });
+    };
+    rows.push(row);
+    if (result === "invalidated") {
+      attributionTasks.push({ contentObj, row });
+    }
     if (result === "invalidated" || result === "expired") {
       notifyItems.push({
         symbol: r.symbol,
@@ -191,6 +271,23 @@ export async function GET(request: NextRequest) {
   }
 
   let written = 0;
+
+  // 10/1错账归因段（宪法2复盘层）：invalidated行并行AI归因——结果之外要有教训。
+  // callAI=DeepSeek-flash，归因频率极低（每日0-5条）×80token，成本可忽略；失败静默（归因是增强不是依赖）
+  let attributed = 0;
+  if (attributionTasks.length > 0) {
+    const results = await Promise.allSettled(attributionTasks.map((t) => attributeInvalidation(t.contentObj)));
+    results.forEach((res, i) => {
+      if (res.status === "fulfilled" && res.value) {
+        const t = attributionTasks[i];
+        t.contentObj.attribution = res.value.text;
+        t.contentObj.attribution_kind = res.value.kind;
+        t.row.content = JSON.stringify(t.contentObj);
+        attributed++;
+      }
+    });
+  }
+
   if (rows.length > 0) written = (await upsertKbEntries(rows)) ? rows.length : 0;
 
   // 推送在落库成功后执行——key缺失静默跳过（推送是增强不是依赖）
@@ -200,6 +297,7 @@ export async function GET(request: NextRequest) {
     ok: true,
     factory: { produced: factorySummary.produced, inserted: factorySummary.inserted, items: factorySummary.items, error: factoryError || undefined },
     settled: written,
+    attributed,
     skipped_no_price: skipped,
     pending_total: pending.length,
     narrative_unsettled: narrativeUnsettled,

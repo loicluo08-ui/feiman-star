@@ -41,6 +41,8 @@ type SettleInfo = {
   env_tags?: string | null;
   exec_plan?: string | null;
   failure_strictness?: string | null;
+  attribution?: string | null;
+  attribution_kind?: string | null;
 };
 
 // Schema V2结算态语义（宪法2：错账=数据点+失效条件复盘+环境标签，不是红字惩罚）
@@ -245,6 +247,12 @@ async function LedgerData() {
                   <p className="mt-1 text-xs text-[var(--text-muted)]">
                     结算价 <span className="font-medium tabular-nums text-[var(--text)]">{settle.settle_price}</span> ·
                     失效位 <span className="tabular-nums">{settle.level}</span> · {settle.settled_at.slice(0, 10)}由程序机械核验
+                  </p>
+                ) : null}
+                {settle?.result === "invalidated" && settle.attribution ? (
+                  <p className="mt-2 rounded-lg bg-[var(--surface-muted)] px-3 py-2 text-xs leading-5 text-[var(--text)]">
+                    <span className="font-medium">错账归因：</span>
+                    {settle.attribution}
                   </p>
                 ) : null}
                 {it.confidence ? (

@@ -18,6 +18,9 @@ export interface SettleRecord {
   result: string; // confirmed / invalidated / signal_done / expired
   invalidation: string;
   settled_at: string;
+  // 10/1错账归因（settle cron的AI归因，宪法2复盘层）——invalidated行可能有
+  attribution?: string | null;
+  attribution_kind?: string | null;
 }
 
 export async function readSettleRecords(): Promise<Map<string, SettleRecord[]>> {
@@ -61,11 +64,12 @@ export function buildSettleRecallBlock(records: SettleRecord[], symbol: string):
   const lines = recent.map((r) =>
     `- ${r.judged_date} 立场=${r.stance} 失效位=${r.level} → 结算=${RESULT_LABEL[r.result] ?? r.result}`
     + (r.settle_price != null ? `（结算时价${r.settle_price}）` : "")
-    + (r.result === "invalidated" && r.invalidation ? ` 失效条件：${r.invalidation}` : ""),
+    + (r.result === "invalidated" && r.invalidation ? ` 失效条件：${r.invalidation}` : "")
+    + (r.attribution ? `\n  归因：${r.attribution}` : ""),
   );
   const hasInvalid = recent.some((r) => r.result === "invalidated");
   const discipline = hasInvalid
-    ? "\n使用纪律：该标的存在被证伪的历史判断——若本轮立场与被证伪判断同向，必须先说明与上次的实质差异（数据变化/逻辑修正/时间窗不同），说不出差异就降信心度并在判断中标注风险；禁止无视证伪记录重复同一逻辑。"
+    ? "\n使用纪律：该标的存在被证伪的历史判断——先读归因：若归因=关键位设计问题，本轮的失效位必须与上次错位设计不同并说明依据；若归因=逻辑错误，禁止复用同一逻辑链；若归因=数据前提变化/外部冲击，说明当前数据与当时的差异。说不出与上次的实质差异就降信心度并在判断中标注风险。"
     : "\n使用纪律：结算记录作为背景，本轮维持同向判断需引用当前数据佐证，不因历史正确而放松核验。";
   return `【历史判断结算记录】（cron每日机械结算，result为客观结果非观点）\n标的：${symbol}\n${lines.join("\n")}${discipline}`;
 }
