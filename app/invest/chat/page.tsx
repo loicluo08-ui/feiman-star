@@ -1242,6 +1242,19 @@ export default function ChatPage() {
                       ))}
                     </div>
                   ) : null}
+                  {/* 10/1虚实审计：blend会话AI回答加视觉标识（半虚项修复——用户此前无法从界面感知融合差异） */}
+                  {m.role === "assistant" && style === "blend" && i > 0 ? (
+                    <div className="mb-1.5 flex items-center gap-1.5">
+                      <span className="rounded-full bg-[var(--primary)]/8 px-2 py-0.5 text-[11px] font-medium text-[var(--text-muted)]">
+                        ⚡ 大师融合旗舰输出
+                      </span>
+                      {parallelDelib ? (
+                        <span className="rounded-full bg-[var(--warning-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--warning)]">
+                          C档并行会诊
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {m.imagePreviews?.length ? (
                     <div className="mb-2 grid grid-cols-3 gap-2">
                       {m.imagePreviews.map((preview, imageIndex) => (

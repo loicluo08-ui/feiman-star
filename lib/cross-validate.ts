@@ -228,6 +228,7 @@ export function verifyNumericAnchors(
 
   if (warnings.length === 0) return { text, flags, verified: false };
 
-  const note = `\n\n⚠️ 核对提醒：${warnings.join("；")}。`;
+  // 10/1 P3-9：blockquote+加粗——安全信息可读性提升（淡黄低对比截图实锤；blockquote有背景块天然突出）
+  const note = `\n\n> ⚠️ **核对提醒**：${warnings.join("；")}。`;
   return { text: `${text}${note}`, flags, verified: true };
 }

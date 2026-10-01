@@ -537,7 +537,15 @@ export default function PickPage() {
     }
   }
 
+  // 10/1：删除二段式确认（虚实审计——历史删除无确认与账本双标实锤）
+  const [deleteArmedId, setDeleteArmedId] = useState<string | null>(null);
   function deleteHistoryRecord(id: string) {
+    if (deleteArmedId !== id) {
+      setDeleteArmedId(id);
+      setTimeout(() => setDeleteArmedId((cur) => (cur === id ? null : cur)), 3000);
+      return;
+    }
+    setDeleteArmedId(null);
     const next = pickHistory.filter((record) => record.id !== id);
     setPickHistory(next);
     try {
@@ -688,9 +696,9 @@ export default function PickPage() {
                                 event.stopPropagation();
                                 deleteHistoryRecord(record.id);
                               }}
-                              className="text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--negative)]"
+                              className={`text-xs transition-colors ${deleteArmedId === record.id ? "font-semibold text-[var(--negative)]" : "text-[var(--text-muted)] hover:text-[var(--negative)]"}`}
                             >
-                              删除
+                              {deleteArmedId === record.id ? "确认删除？" : "删除"}
                             </button>
                           </td>
                         </tr>

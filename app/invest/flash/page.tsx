@@ -435,6 +435,10 @@ export default function FlashPage() {
                           {CHANNEL_NAMES[ch] || ch}
                         </span>
                       ))}
+                      {/* 10/1虚实审计：AI分析入口提示（功能实但藏——点击条目即出AI分析面板，角标提示可发现性） */}
+                      {selectedItem?.id !== item.id && !newIds.has(item.id) && (
+                        <span className="rounded border border-[var(--accent)] px-1 py-0.5 text-[10px] font-medium text-[var(--accent)]">AI</span>
+                      )}
                       {newIds.has(item.id) && (
                         <span className="ml-auto rounded bg-[var(--positive)] px-1.5 py-0.5 font-medium text-white">NEW</span>
                       )}

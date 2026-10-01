@@ -76,8 +76,8 @@ export function verifyNumbers(text: string, _quotes: InjectedQuote[]): VerifyRes
   }
 
   const report = issues.length === 0
-    ? `\n\n【算式核对】✅ 系统重算了本回答的${checkedCount}处涨跌幅算式，全部正确。`
-    : `\n\n【算式核对】⚠️ 系统重算发现${issues.length}处算式错误，请以下方修正为准：\n${issues
+    ? `\n\n> ✅ **算式核对**　系统重算了本回答的${checkedCount}处涨跌幅算式，全部正确。`
+    : `\n\n> ⚠️ **算式核对**　系统重算发现${issues.length}处算式错误，请以下方修正为准：\n${issues
         .slice(0, 5)
         .map((issue, i) => `${i + 1}. ${issue.detail}`)
         .join("\n")}${issues.length > 5 ? `\n（其余${issues.length - 5}处略）` : ""}`;
