@@ -130,10 +130,34 @@ const quotes = existsSync(quotesPath) ? readFileSync(quotesPath, "utf8") : "(quo
 
 console.log(`对抗验证目标：${basename(dir)}｜免费池通道：${POOL.map((c) => c.name).join(", ") || "无可用key"}\n`);
 
-console.log("── 4b 双模型语义比对（prompt构建完成，人工/后续轮执行）──");
+console.log("── 4b 双模型语义比对实跑 ──");
 const p4b = await run4b(dir, skill, quotes);
 writeFileSync(join(dir, "对抗验证_4b_prompt.txt"), p4b);
-console.log("  prompt已存 对抗验证_4b_prompt.txt\n");
+const r4b = [];
+for (const ch of pool) {
+  try {
+    const t = await callModel(ch, p4b, 2000);
+    if (!t) { r4b.push({ via: ch.name, error: "empty" }); continue; }
+    const m = t.match(/\[[\s\S]*\]/);
+    if (!m) { r4b.push({ via: ch.name, error: "no_json" }); continue; }
+    const parsed = JSON.parse(m[0]);
+    const n = parsed.findings?.length ?? 0;
+    r4b.push({ via: ch.name, clean: parsed.clean === true && n === 0, findings: parsed.findings ?? [] });
+    console.log(`  [${ch.name}] clean=${parsed.clean}，findings=${n}条`);
+  } catch (e) {
+    r4b.push({ via: ch.name, error: e.message?.slice(0, 100) });
+    console.log(`  [${ch.name}] 失败: ${e.message?.slice(0, 80)}`);
+  }
+}
+const okModels = r4b.filter((r) => r.clean !== undefined);
+if (okModels.length >= 2) {
+  const [A, B] = okModels;
+  if (A.clean && B.clean) console.log("  ✓ 双模型一致判定无语义反转（4b过）");
+  else if (A.clean !== B.clean) console.log(`  ⚠️ 分歧：${A.via}=${A.clean ? "clean" : "有发现"} vs ${B.via}=${B.clean ? "clean" : "有发现"} → [flag]人工终审${(A.findings ?? []).concat(B.findings ?? [])}`);
+  else console.log(`  两模型均报findings（${(A.findings ?? []).length}/${(B.findings ?? []).length}条）→ [flag]人工比对findings明细终审`);
+}
+writeFileSync(join(dir, "对抗验证_4b_双模型.json"), JSON.stringify(r4b, null, 1));
+console.log("  已存 对抗验证_4b_双模型.json\n");
 
 console.log("── 4c 多模型冷启动回归 ──");
 const r4c = await run4c(dir, skill);
@@ -154,5 +178,5 @@ writeFileSync(join(dir, "对抗验证_4d_陷阱.json"), JSON.stringify(r4d, null
 console.log("  已存 对抗验证_4d_陷阱.json");
 
 mkdirSync(join(dir, "对抗验证"), { recursive: true });
-console.log(`\n完成。产物在 ${dir}/对抗验证_4b_prompt.txt + 4c_回归.json + 4d_陷阱.json`);
+console.log(`\n完成。产物在 ${dir}/对抗验证_4b_双模型.json + 4c_回归.json + 4d_陷阱.json`);
 console.log("判定纪律：以上全部为[reasoned]级——人工终审后才可升级[verified]拦截成品（v4.1闸4）");
