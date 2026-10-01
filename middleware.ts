@@ -21,10 +21,12 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   if (path.startsWith("/invest/admin")) return response; // 后台自身不记录
 
-  // 采集：Supabase配置完整才发（未建表/未配key静默跳过）
+  // 采集：Supabase配置完整才发。存储=kb_dynamic表（type="access_log"，零DDL立即可用——
+  // access_logs专用表见sql/005，逸翔执行后可迁移）；写入失败静默（监控永不阻塞主功能）
   if (SUPABASE_URL && SUPABASE_KEY) {
     const ip = clientIP(request);
-    const payload = JSON.stringify({
+    const now = new Date().toISOString();
+    const logEntry = {
       ip,
       path,
       method: request.method,
@@ -32,10 +34,18 @@ export async function middleware(request: NextRequest) {
       country: request.headers.get("x-vercel-ip-country") || null,
       city: request.headers.get("x-vercel-ip-city") || null,
       referer: (request.headers.get("referer") || "").slice(0, 300),
+    };
+    const payload = JSON.stringify({
+      id: `acc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: "access_log",
+      keywords: [],
+      content: JSON.stringify(logEntry),
+      source: "middleware",
+      created: now,
     });
     try {
       // 不await完成——发出即走（Edge允许floating fetch，超时由平台托管；失败静默）
-      void fetch(`${SUPABASE_URL}/rest/v1/access_logs`, {
+      void fetch(`${SUPABASE_URL}/rest/v1/kb_dynamic`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${SUPABASE_KEY}`,

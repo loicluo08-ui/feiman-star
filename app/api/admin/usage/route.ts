@@ -20,13 +20,30 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 并行拉：访问日志最近500 + 对话日志最近50（个人工具量级足够；量大后续加分页）
-    const [access, chats] = await Promise.all([
-      sbRest<Array<Record<string, unknown>>>("access_logs?select=ts,ip,path,method,ua,country,city&order=ts.desc&limit=500"),
+    // 并行拉：访问日志（kb_dynamic type=access_log，10/1改零DDL立即可用）最近500 + 对话日志最近50
+    const [kbRaw, chats] = await Promise.all([
+      sbRest<Array<Record<string, unknown>>>("kb_dynamic?type=eq.access_log&select=id,content,created&order=created.desc&limit=500"),
       sbRest<Array<Record<string, unknown>>>("chat_logs?select=id,question,style,ip,created_at&order=created_at.desc&limit=50"),
     ]);
 
-    const accessList = access ?? [];
+    // kb_dynamic行解包：content JSON={ip,path,method,ua,country,city,referer}，created当ts
+    const accessList = (kbRaw ?? []).map((r) => {
+      let log: Record<string, unknown> = {};
+      try {
+        log = JSON.parse(r.content as string) as Record<string, unknown>;
+      } catch {
+        /* 坏行按空字段处理 */
+      }
+      return {
+        ts: (r.created as string) || "",
+        ip: (log.ip as string) || "unknown",
+        path: (log.path as string) || "",
+        method: (log.method as string) || "GET",
+        ua: (log.ua as string) || null,
+        country: (log.country as string) || null,
+        city: (log.city as string) || null,
+      };
+    });
     const chatList = chats ?? [];
 
     // 聚合：按IP
