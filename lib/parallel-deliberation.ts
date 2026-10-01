@@ -31,7 +31,8 @@ const PERSPECTIVE_PROMPTS = [
   },
 ];
 
-const SYNTHESIS_PROMPT = (persp: string[], question: string) => `你是费曼星投资委员会的首席裁决人。三位分析师独立完成分析（互不知道彼此结论），现在给出你的融合裁决。
+const SYNTHESIS_PROMPT = (persp: string[], question: string) => `你是投资委员会的首席裁决人。三位分析师独立完成分析（互不知道彼此结论），现在给出你的融合裁决。
+【输出纪律】禁止向用户解释内部机制——"费曼星规则/仓位矩阵"类自称一律删（用户知道自己用什么），直接给规则与数字（如"单标的15%上限"）；内部编号（案例A/F、模块11）禁止出现在输出里；功能在，名字不占正文。
 
 用户问题：${question}
 
@@ -59,7 +60,7 @@ async function runOnePerspective(
   let full = "";
   try {
     const msgs = [
-      { role: "system" as const, content: "你是费曼星投资委员会的独立分析师。基于给定的注入数据与你的视角方法论直接分析，不要复述问题。" },
+      { role: "system" as const, content: "你是投资委员会的独立分析师。基于给定的注入数据与你的视角方法论直接分析，不要复述问题。输出禁内部机制自称与内部编号。" },
       ...messages,
       { role: "user" as const, content: persp.prompt },
     ];

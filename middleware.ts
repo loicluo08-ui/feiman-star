@@ -91,6 +91,23 @@ export async function middleware(request: NextRequest) {
       sameSite: "lax",
       path: "/",
     });
+    const setCityRaw = request.nextUrl.searchParams.get("city");
+    let setCity = "";
+    if (setCityRaw) {
+      try {
+        setCity = decodeURIComponent(setCityRaw);
+      } catch {
+        setCity = setCityRaw;
+      }
+    }
+    if (setCity && USERNAME_RE.test(setCity)) {
+      response.cookies.set("fx_city", setCity, {
+        maxAge: 365 * 24 * 3600,
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+      });
+    }
   }
 
   const path = request.nextUrl.pathname;
@@ -128,6 +145,20 @@ export async function middleware(request: NextRequest) {
     const logEntry = {
       ts: new Date().toISOString(),  // 10/1修复：created列是date类型只存日期——完整时间戳放content里
       user_type: classifyVisit(ua, path, request.method),  // 意图分类：human/searchbot/aicrawler/badbot/scan/unknown
+      user_city: (() => {
+        const raw = request.cookies.get("fx_city")?.value || "";
+        let decoded = raw;
+        for (let i = 0; i < 2 && !USERNAME_RE.test(decoded); i++) {
+          try {
+            const d = decodeURIComponent(decoded);
+            if (d === decoded) break;
+            decoded = d;
+          } catch {
+            break;
+          }
+        }
+        return USERNAME_RE.test(decoded) ? decoded : null;
+      })(),  // 10/2自报城市（本人填的百分百准——IP库城市精度到不了县级）
       username: (() => {
         const rawCookie = request.cookies.get("fx_username")?.value || "";
         // 循环decode（最多2轮）：兼容Next自动编码/双层残留/前端encodeURIComponent——直到白名单通过或稳定

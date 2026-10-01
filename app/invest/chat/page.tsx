@@ -2,7 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/background-task";
-import { loadLedger, parseLedgerLine, parseRulingFallback, saveEntry, stripLedgerLines, clearLedger, type LedgerEntry } from "@/lib/judgment-ledger";
+import { loadLedger, parseLedgerLine, parseRulingFallback, saveEntry, stripLedgerLines, clearLedger, removeEntry, validateEntry, verifySaved, type LedgerEntry } from "@/lib/judgment-ledger";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 // 9/13流畅性P1：块级增量渲染（streaming-markdown模式）——
@@ -417,14 +417,20 @@ export default function ChatPage() {
       const previews = await Promise.all(files.map((file) => new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error("图片读取失败"));
+        // 10/2：读取失败细分原因+自动重试一次（FileReader偶发abort；headless构造File的NotReadableError重试无益但真机偶发重试有效）
+        let retried = false;
+        reader.onerror = () => {
+          const errName = reader.error?.name || "UnknownError";
+          if (!retried && errName === "AbortError") { retried = true; reader.readAsDataURL(file); return; }
+          reject(new Error(errName === "NotReadableError" ? "图片文件无法读取（可能已损坏或被占用）" : "图片读取失败"));
+        };
         reader.readAsDataURL(file);
       })));
       setImages((previous) => [...previous, ...previews].slice(0, 3));
       setError("");
       return "";
-    } catch {
-      return "图片读取失败，请重新选择";
+    } catch (err) {
+      return err instanceof Error && err.message !== "图片读取失败" ? err.message : "图片读取失败，请重新选择或换一张图";
     }
   }
 
@@ -718,8 +724,13 @@ export default function ChatPage() {
 
         // 判断记账（9/12）：先从原文提取机器记账行存档，再剥离后进对话——
         // 提取失败（无主判断/短问）静默跳过；这是跨会话判断追踪的写入端
-        const ledgerEntry = parseLedgerLine(answer) ?? parseRulingFallback(answer, injectedRef.current, text);
-        if (ledgerEntry) saveEntry(ledgerEntry);
+        const rawEntry = parseLedgerLine(answer) ?? parseRulingFallback(answer, injectedRef.current, text);
+        // 10/2 S3写入侧三层校验：字段归属语境门+异标的污染门+写入后回读自检（AI自由生成的记账行不可信）
+        if (rawEntry) {
+          const entry = validateEntry(rawEntry, answer, injectedRef.current);
+          saveEntry(entry);
+          if (!verifySaved(entry)) console.warn("[ledger] 回读自检失败——localStorage写入未生效");
+        }
     // 10/1自动写入管道v2：判断云端同步（fire-and-forget）
     // 主通道=judgment-cloud（Supabase直写→ledger页可见→结算cron可结算——10/1 P1-sync修复）；
     // GitHub通道（judgment-sync）保留并行，未来配GITHUB_TOKEN后恢复候选池供血
@@ -1109,11 +1120,20 @@ export default function ChatPage() {
                 </p>
                 <ul className="mt-2 space-y-1.5">
                 {[...ledgerEntries].reverse().map((e, i) => (
-                  <li key={`${e.ts}-${i}`} className="border-l-2 border-[var(--primary)]/40 pl-2">
-                    <span className="font-medium">{e.date} {e.symbol}</span>：立场={e.stance}
-                    {e.keyLevel ? <> | 关键位={e.keyLevel}</> : null}
-                    {e.invalidation ? <> | 失效={e.invalidation}</> : null}
-                    {e.confidence ? <> | 信心度={e.confidence}</> : null}
+                  <li key={`${e.ts}-${i}`} className="flex items-start justify-between gap-2 border-l-2 border-[var(--primary)]/40 pl-2">
+                    <span>
+                      <span className="font-medium">{e.date} {e.symbol}</span>：立场={e.stance}
+                      {e.keyLevel ? <> | 关键位={e.keyLevel}</> : null}
+                      {e.invalidation ? <> | 失效={e.invalidation}</> : null}
+                      {e.confidence ? <> | 信心度={e.confidence}</> : null}
+                    </span>
+                    <button
+                      onClick={() => { removeEntry(e.ts); setLedgerEntries(loadLedger()); }}
+                      className="shrink-0 rounded px-1 text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--negative)]"
+                      title="删除该条（误记/串数据条目可单条移除）"
+                    >
+                      ×
+                    </button>
                   </li>
                 ))}
                 </ul>
@@ -1121,15 +1141,31 @@ export default function ChatPage() {
             ) : (
               <ul className="mt-2 space-y-1.5">
                 {[...ledgerEntries].reverse().map((e, i) => (
-                  <li key={`${e.ts}-${i}`} className="border-l-2 border-[var(--primary)]/40 pl-2">
-                    <span className="font-medium">{e.date} {e.symbol}</span>：立场={e.stance}
-                    {e.keyLevel ? <> | 关键位={e.keyLevel}</> : null}
-                    {e.invalidation ? <> | 失效={e.invalidation}</> : null}
-                    {e.confidence ? <> | 信心度={e.confidence}</> : null}
+                  <li key={`${e.ts}-${i}`} className="flex items-start justify-between gap-2 border-l-2 border-[var(--primary)]/40 pl-2">
+                    <span>
+                      <span className="font-medium">{e.date} {e.symbol}</span>：立场={e.stance}
+                      {e.keyLevel ? <> | 关键位={e.keyLevel}</> : null}
+                      {e.invalidation ? <> | 失效={e.invalidation}</> : null}
+                      {e.confidence ? <> | 信心度={e.confidence}</> : null}
+                    </span>
+                    <button
+                      onClick={() => { removeEntry(e.ts); setLedgerEntries(loadLedger()); }}
+                      className="shrink-0 rounded px-1 text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--negative)]"
+                      title="删除该条（误记/串数据条目可单条移除）"
+                    >
+                      ×
+                    </button>
                   </li>
                 ))}
               </ul>
             )}
+          </div>
+        )}
+
+        {/* 10/2 S5：模式选中态确认标签——展开大师菜单但当前风格不是大师时显式提示（防"以为在用大师实际是上一模式"的静默偏差） */}
+        {showGurus && !GURU_STYLES.some((g) => g.key === style) && (
+          <div className="mx-auto mb-2 w-full max-w-3xl rounded-md border border-dashed border-[var(--warning)] bg-[var(--warning-bg)] px-3 py-2 text-xs text-[var(--warning)]">
+            大师菜单已展开，但当前模式仍是「{style === "blend" ? "大师融合" : style === "balanced" ? "均衡" : style === "value" ? "价值" : style === "growth" ? "成长" : "量化"}」——发送前请点选一位大师
           </div>
         )}
 

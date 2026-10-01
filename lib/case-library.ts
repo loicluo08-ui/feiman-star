@@ -89,6 +89,7 @@ export function buildCaseLibraryBlock(queryText: string): string {
   const lines = [
     "",
     "【经典判断案例库】（外部经典案例，非罗竹先框架原生——引用时标注「外部案例」与置信级，用于类比论证而非替代框架判断）",
+    "⚠️ 编号纪律：案例ID（B-001/S-001等）与库结构是内部检索标记，输出中禁止出现——引用案例直接说「如利弗莫尔1907年……」式自然语言溯源，禁「（案例F）」式编号引用。",
     ...picked.map(x => fmtCase(x.c)),
     ...LEGACY_CASES,
     recLine,

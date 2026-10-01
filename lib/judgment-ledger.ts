@@ -53,6 +53,17 @@ export function saveEntry(entry: LedgerEntry): void {
   }
 }
 
+/** 10/2账本条目管理：单条删除（按时间戳）——误记/串数据条目不再只能整库清空 */
+export function removeEntry(ts: number): void {
+  if (!isBrowser()) return;
+  try {
+    const next = loadLedger().filter((e) => e.ts !== ts);
+    window.localStorage.setItem(LEDGER_KEY, JSON.stringify(next));
+  } catch {
+    // 静默
+  }
+}
+
 /** 从AI全文提取记账行（【判断记账】标的=x | 立场=y | 关键位=z | 失效=w | 信心度=n% [| 时限=N日 | 环境=… | 执行=…]），失败返回null */
 export function parseLedgerLine(text: string): LedgerEntry | null {
   const m = text.match(LEDGER_LINE_RE);
@@ -87,6 +98,70 @@ export function parseLedgerLine(text: string): LedgerEntry | null {
 /** 渲染/存档前剥离机器记账行（用户不看原始字段行） */
 export function stripLedgerLines(text: string): string {
   return text.replace(new RegExp(MARKER + "[^\\n]*(\\n|$)", "g"), "").replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * 写入侧字段污染校验（10/2 S3：VIX条目混入TSLA关键位/PE数字——AI自由生成记账行不可信，两次复现=系统性缺陷）。
+ * 三层闸：
+ *  A 字段归属：keyLevel纯数字若在本回答中处于PE/市盈率/百分比等非价格语境→不是价格→降级引用式（宁缺勿错）
+ *  B 异标的污染：keyLevel/invalidation里出现【其他标的代码】（注入徽标含但entry.symbol不是）→字段被串→降级引用式
+ *  C 回读自检：saveEntry后loadLedger()最后一条字段必须与刚写入一致（localStorage序列化事故拦截）
+ * 校验只降级可疑字段为引用式，不丢整条（立场/标的归属可信）。
+ */
+export function validateEntry(
+  entry: LedgerEntry,
+  answer: string,
+  injectedPhrases: string[],
+): LedgerEntry {
+  let e = { ...entry };
+  const sym = e.symbol.replace(/\(.*\)/, "").trim().toUpperCase();
+  const baseSym = sym.split(/[^A-Z]/)[0] || sym;
+
+  // 收集"其他标的代码"：注入徽标（如"NVDA行情"）里出现但不是本条标的
+  const otherCodes = new Set<string>();
+  for (const p of injectedPhrases || []) {
+    const m = p.toUpperCase().match(/[A-Z]{2,6}/);
+    if (m && !m[0].startsWith(baseSym) && !baseSym.startsWith(m[0])) otherCodes.add(m[0]);
+  }
+
+  // A 关键位=纯数字时的语境校验：数字在回答中若紧跟非价格语境词→污染
+  const klNum = e.keyLevel.match(/^(\d{2,6}(?:\.\d{1,2})?)$/);
+  if (klNum) {
+    const num = klNum[1];
+    const re = new RegExp(`[^\\n]{0,30}${num.replace(".", "\\.")}[^\\n]{0,30}`);
+    const ctx = answer.match(re);
+    if (ctx && /PE\b|市盈率|PB\b|市净率|EPS|增速|毛利率|净利率|收益率|回报率|倍\b|概率|信心度/.test(ctx[0]) && !/现价|支撑|压力|阻力|止损|止盈|目标价|入场|关键位|加仓点|买点|突破/.test(ctx[0])) {
+      e.keyLevel = "见裁决行动分支"; // 非价格数字冒充价格
+    }
+  }
+
+  // B 异标的代码出现在字段文本里→串数据
+  if (otherCodes.size > 0) {
+    for (const field of ["keyLevel", "invalidation"] as const) {
+      const v = e[field];
+      if (!v || v.startsWith("见")) continue;
+      for (const code of Array.from(otherCodes)) {
+        if (new RegExp(`\\b${code}\\b`).test(v)) {
+          e[field] = field === "keyLevel" ? "见裁决行动分支" : "见裁决行失效条件";
+          break;
+        }
+      }
+    }
+  }
+
+  // 失效字段混入markdown星号/正文污染清洗（S3现象：失效字段带"**"与整句正文）
+  e.invalidation = e.invalidation.replace(/\*\*/g, "").trim();
+  if (e.invalidation.length > 150) e.invalidation = e.invalidation.slice(0, 150);
+  if (e.keyLevel.length > 60) e.keyLevel = "见裁决行动分支";
+
+  return e;
+}
+
+/** C 回读自检：写入后立即读回核对（localStorage序列化/覆写事故拦截），返回false=写入未生效 */
+export function verifySaved(entry: LedgerEntry): boolean {
+  const all = loadLedger();
+  const last = all[all.length - 1];
+  return !!last && last.ts === entry.ts && last.symbol === entry.symbol;
 }
 
 /** 90天过期+容量上限 */

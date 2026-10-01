@@ -24,6 +24,22 @@ const CHANNEL_NAMES: Record<number, string> = {
   9: "深度",
 };
 
+
+// 10/2 S2：标题重复渲染修复v2——来源站标题常带【】/书名号/截断差异，严格startsWith匹配漏网
+// 规范化（去括号引号空格+全半角统一）后前缀比较；命中则跳过正文首行
+function stripDupTitle(title: string, content: string): string {
+  if (!title) return content;
+  const norm = (s: string) => s.replace(/[\s【】\[\]《》""''""'·:：，,。.\-—|]/g, "").toLowerCase();
+  const nt = norm(title);
+  if (!nt) return content;
+  const firstLine = content.split("\n")[0];
+  const flNorm = norm(firstLine);
+  if (flNorm.startsWith(nt.slice(0, Math.max(12, nt.length - 4))) || flNorm.includes(nt)) {
+    return content.slice(firstLine.length).replace(/^\s*[\n:：\-—|·]\s*/, "");
+  }
+  return content;
+}
+
 export default function FlashPage() {
   const [items, setItems] = useState<FlashItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -448,7 +464,7 @@ export default function FlashPage() {
                     </div>
                     {item.title && <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{item.title}</h3>}
                     {/* 10/1 P2-6：content_text="标题\n正文"格式且首行=标题时跳过首行（标题重复渲染实锤——一屏3-4处逐条自重复） */}
-                    <p className="text-sm leading-6 text-[var(--text-secondary)] whitespace-pre-line">{(() => { const ct = item.content_text; if (!item.title) return ct; const fl = ct.split("\n")[0]; return (ct.startsWith(item.title + "\n") || (fl.startsWith(item.title.slice(0, 20)) && ct.includes("\n"))) ? ct.slice(fl.length + 1) : ct; })()}</p>
+                    <p className="text-sm leading-6 text-[var(--text-secondary)] whitespace-pre-line">{stripDupTitle(item.title, item.content_text)}</p>
                   </article>
                 ))
               )}
@@ -493,7 +509,7 @@ export default function FlashPage() {
                     <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{selectedItem.title}</h3>
                   )}
                   <p className="text-xs leading-5 text-[var(--text-secondary)] whitespace-pre-line">
-                    {(() => { const ct = selectedItem.content_text; if (!selectedItem.title) return ct; const fl = ct.split("\n")[0]; return (ct.startsWith(selectedItem.title + "\n") || (fl.startsWith(selectedItem.title.slice(0, 20)) && ct.includes("\n"))) ? ct.slice(fl.length + 1) : ct; })()}
+                    {stripDupTitle(selectedItem.title, selectedItem.content_text)}
                   </p>
                 </div>
               </details>
