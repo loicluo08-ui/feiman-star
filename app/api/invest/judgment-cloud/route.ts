@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
-import { supabaseConfigured, insertLedgerRows } from "@/lib/supabase";
+import { supabaseConfigured, insertLedgerRows, readAllLedger } from "@/lib/supabase";
 import { parseInvalidation } from "@/lib/settle-recall";
 
 /**
@@ -105,7 +105,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, written: 0, reason: "no_valid_entries" });
   }
 
-  const ok = await insertLedgerRows(rows as never[]);
+  // 10/2漏洞审计P1修复①：单请求同symbol限3条（防单请求刷同标的垃圾判断）
+  const perSymbol = new Map<string, number>();
+  for (const r of rows) perSymbol.set(r.symbol, (perSymbol.get(r.symbol) ?? 0) + 1);
+  const flooded = Array.from(perSymbol.entries()).find(([, n]) => n > 3);
+  if (flooded) {
+    return NextResponse.json(
+      { ok: false, error: `symbol_flood:${flooded[0]}` },
+      { status: 429 },
+    );
+  }
+
+  // 10/2漏洞审计P1修复②：重复判断跳过（symbol+date+invalidation三键相同=已有记录，伪造重放无收益）
+  let deduped = rows;
+  try {
+    const existing = await readAllLedger(500);
+    if (existing && existing.length > 0) {
+      const seen = new Set(existing.map((e) => `${e.symbol}|${e.date}|${e.invalidation ?? ""}`));
+      deduped = rows.filter((r) => !seen.has(`${r.symbol}|${r.date}|${r.invalidation ?? ""}`));
+    }
+  } catch {
+    // 查重失败不挡写入（可用性优先，去重是增强）
+  }
+  if (deduped.length === 0) {
+    return NextResponse.json({ ok: true, written: 0, reason: "all_duplicates" });
+  }
+
+  const ok = await insertLedgerRows(deduped as never[]);
   if (!ok) {
     return NextResponse.json({ ok: false, error: "supabase_write_failed" }, { status: 502 });
   }

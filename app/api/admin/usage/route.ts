@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const ADMIN = process.env.ADMIN_TOKEN;
   if (!ADMIN) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
-  const token = new URL(request.url).searchParams.get("token");
+  // 10/2漏洞审计P2修复：header优先（token不进URL=不进CDN日志/浏览器历史/Referer）；query保留兼容旧链接
+  const token = request.headers.get("x-admin-token") || new URL(request.url).searchParams.get("token");
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
 
@@ -56,7 +57,8 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const ADMIN = process.env.ADMIN_TOKEN;
   if (!ADMIN) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
-  const token = new URL(request.url).searchParams.get("token");
+  // 10/2漏洞审计P2修复：header优先（token不进URL=不进CDN日志/浏览器历史/Referer）；query保留兼容旧链接
+  const token = request.headers.get("x-admin-token") || new URL(request.url).searchParams.get("token");
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   if (!supabaseConfigured()) {

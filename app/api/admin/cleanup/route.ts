@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const ADMIN = process.env.ADMIN_TOKEN;
   if (!ADMIN) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
-  const token = new URL(request.url).searchParams.get("token");
+  const token = request.headers.get("x-admin-token") || new URL(request.url).searchParams.get("token");
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const ADMIN = process.env.ADMIN_TOKEN;
   if (!ADMIN) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
-  const token = new URL(request.url).searchParams.get("token");
+  const token = request.headers.get("x-admin-token") || new URL(request.url).searchParams.get("token");
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
 

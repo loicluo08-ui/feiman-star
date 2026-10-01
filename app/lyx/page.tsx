@@ -88,7 +88,7 @@ export default function AdminPage() {
     if (!silent) setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/admin/usage?token=${encodeURIComponent(t)}`, { cache: "no-store" });
+      const res = await fetch("/api/admin/usage", { headers: { "x-admin-token": t }, cache: "no-store" });
       if (res.status === 401 || res.status === 503) {
         setError(res.status === 503 ? "后台未启用（服务器未配置ADMIN_TOKEN）" : "token错误");
         setData(null);
@@ -122,9 +122,9 @@ export default function AdminPage() {
     const blockedNow = blockedSet.has(ip);
     setBlockMsg(`${ip} 处理中…`);
     try {
-      const res = await fetch("/api/admin/usage?token=" + encodeURIComponent(t), {
+      const res = await fetch("/api/admin/usage", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-admin-token": t },
         body: JSON.stringify({ action: blockedNow ? "unblock" : "block", ip }),
       });
       const json = await res.json();
