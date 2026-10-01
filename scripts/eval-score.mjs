@@ -46,40 +46,73 @@ if (!live) {
 }
 
 // —— live跑分：调chat API → LLM裁判按五维打分 ——
-const apiKey = process.env.DEEPSEEK_API_KEY;
-if (!apiKey) {
-  console.error("DEEPSEEK_API_KEY 未配置");
-  process.exit(1);
-}
+// 10/1裁判免费化：裁判走免费池（GLM→火山→硅基→DeepSeek兜底），DEEPSEEK_API_KEY非必需
 
 async function askChat(question) {
   const res = await fetch(`${base}/api/invest/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: "https://sufve.com", Referer: "https://sufve.com/invest/chat", "User-Agent": "Mozilla/5.0" },
     body: JSON.stringify({
       messages: [{ role: "user", content: { type: "text", text: question } }],
       style: "balanced",
     }),
+    signal: AbortSignal.timeout(115_000),
   });
   if (!res.ok) throw new Error(`chat ${res.status}: ${(await res.text()).slice(0, 120)}`);
-  const data = await res.json();
-  return typeof data?.reply === "string" ? data.reply : typeof data?.text === "string" ? data.text : JSON.stringify(data).slice(0, 500);
+  // 10/1修复：chat已改SSE流式（JSON Lines逐行事件）——逐行拼chunk，兼容patch全量替换
+  const raw = await res.text();
+  let text = "";
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t) continue;
+    try {
+      const ev = JSON.parse(t);
+      if (ev.type === "chunk") text += ev.text ?? "";
+      else if (ev.type === "patch") text = ev.text ?? "";
+    } catch { /* 非JSON行跳过 */ }
+  }
+  return text;
 }
+
+// 10/1裁判免费化：免费池优先（GLM-4.7-Flash→火山→硅基→OR→Groq），全挂回DeepSeek
+// 运行：npx tsx --env-file=<env路径> scripts/eval-score.mjs --live（env需含各通道KEY）
+const FREE_JUDGE_POOL = [
+  { name: "glm", base: process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4", key: process.env.ZHIPU_API_KEY, model: process.env.ZHIPU_TEXT_MODEL || "glm-4.7-flash", extra: { thinking: { type: "disabled" } } },
+  { name: "volc", base: process.env.VOLC_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3", key: process.env.VOLC_API_KEY, model: process.env.VOLC_MODEL || "doubao-seed-1-6-flash-250715", extra: {} },
+  { name: "siliconflow", base: process.env.SILICONFLOW_BASE_URL || "https://api.siliconflow.cn/v1", key: process.env.SILICONFLOW_API_KEY, model: process.env.SILICONFLOW_MODEL || "Qwen/Qwen2.5-7B-Instruct", extra: {} },
+  { name: "deepseek", base: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com", key: process.env.DEEPSEEK_API_KEY, model: process.env.DEEPSEEK_MODEL || "deepseek-flash", extra: {} },
+];
 
 async function judge(question, answer) {
   const rubric = DIMENSIONS.map((d) => `- ${d}（0-2分）：${gold.meta.dimensions[d]}`).join("\n");
   const prompt = `你是严格的结构判据裁判。按以下五个维度对AI投资回答逐维打分（0缺/1弱/2合格），只输出JSON：{"scores":{"fail_condition":n,"data_citation":n,"two_sides":n,"position_math":n,"conclusive":n},"notes":"一句话"}\n${rubric}\n\n【用户问题】${question}\n【AI回答】${answer.slice(0, 4000)}`;
-  const res = await fetch(process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: process.env.DEEPSEEK_MODEL || "deepseek-flash", messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 300, response_format: { type: "json_object" } }),
-  });
-  const data = await res.json();
-  return JSON.parse(data.choices[0].message.content);
+  for (const ch of FREE_JUDGE_POOL) {
+    if (!ch.key) continue;
+    try {
+      const res = await fetch(`${ch.base}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${ch.key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: ch.model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 300, response_format: { type: "json_object" }, ...ch.extra }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!res.ok) { console.error(`[judge] ${ch.name}_${res.status}`); continue; }
+      const data = await res.json();
+      const content = (data.choices?.[0]?.message?.content ?? "").trim()
+        || (data.choices?.[0]?.message?.reasoning_content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+      const m = content.match(/\{[\s\S]*\}/);
+      if (!m) { console.error(`[judge] ${ch.name}_no_json`); continue; }
+      return JSON.parse(m[0]);
+    } catch (e) {
+      console.error(`[judge] ${ch.name}_${e.message?.slice(0, 60)}`);
+    }
+  }
+  throw new Error("judge_all_channels_failed");
 }
 
 const results = [];
-for (const c of gold.cases) {
+const startIdx = Number(args.find((a) => a.startsWith("--start="))?.split("=")[1] || 0);
+for (const [ci, c] of gold.cases.entries()) {
+  if (ci < startIdx) continue;
   process.stdout.write(`${c.id} 跑分中…`);
   try {
     const answer = await askChat(c.question);
