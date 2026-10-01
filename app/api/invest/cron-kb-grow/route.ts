@@ -62,7 +62,9 @@ export async function GET(request: NextRequest) {
     if (allFresh.length === 0) {
       return NextResponse.json({ ok: true, changed: false, reason: "all_sources_failed", insights_error: insightResult.error });
     }
-    const { merged, added } = mergeEntries(entries, allFresh);
+    const { merged: mergedRaw, added } = mergeEntries(entries, allFresh);
+    // 10/1实测：insight重跑时同id新旧两份共存→PostgREST "affect row a second time" 500——按id保留最新
+    const merged = Array.from(new Map(mergedRaw.map((e) => [e.id, e])).values());
     if (JSON.stringify(merged) === JSON.stringify(entries)) {
       // 无新数据也要补向量化（存量条目embedding为空的补齐——语义检索底座完整化）
       let backfilled = 0;
