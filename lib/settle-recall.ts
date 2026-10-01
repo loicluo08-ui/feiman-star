@@ -9,6 +9,26 @@ import { readKbEntries } from "@/lib/supabase";
  * 失败静默：Supabase挂→返回空map，不影响主链路（结算召回是增强不是依赖）。
  */
 
+/** 方向词分类（与chat路由记账核验同源口径）——10/1入账质量闸从settle cron提为共享 */
+export const TRIG_DOWN_RE = /跌破|失守|下破|低于|收于.*之下/;
+export const TRIG_UP_RE = /突破|站上|上破|高于|收于.*之上/;
+/** 非价格维度词：失效条件里的数字是估值/比率/事件而非股价，机械按价格判定=口径错位错杀（10/1六轮检测P2-12，KO"PE破28"被当股价28实锤） */
+export const NON_PRICE_RE = /\b(PE|PB|PS|ROE|ROA|EPS)\b|市盈率|市净率|股息|增速|增长率|涨跌幅|回报率|利润率|毛利率|净利率|增长率|仓位|比例|概率|信心度|倍\b/;
+
+/** 从失效条件文本提取 (方向, 关键数字)；提取失败返回null（narrative——不可机械核验，结算跳过留人工） */
+export function parseInvalidation(text: string): { direction: "down" | "up"; level: number } | null {
+  if (!text) return null;
+  // 非价格维度（估值/比率/概率/仓位类）：机械解析必然口径错位——宁缺勿错，跳过结算留人工核验
+  if (NON_PRICE_RE.test(text)) return null;
+  const nums = text.match(/\d+(?:\.\d+)?/g);
+  if (!nums || nums.length === 0) return null;
+  const level = Number(nums[0]);
+  if (!Number.isFinite(level) || level <= 0) return null;
+  if (TRIG_DOWN_RE.test(text)) return { direction: "down", level };
+  if (TRIG_UP_RE.test(text)) return { direction: "up", level };
+  return null;
+}
+
 export interface SettleRecord {
   symbol: string;
   judged_date: string;
@@ -47,7 +67,7 @@ export async function readSettleRecords(): Promise<Map<string, SettleRecord[]>> 
 }
 
 const RESULT_LABEL: Record<string, string> = {
-  confirmed: "存活（失效未触发）",
+  alive: "存活（失效未触发）",
   invalidated: "已证伪",
   signal_done: "信号完成（非证伪）",
   expired: "时间盒到期未触发（数据点）",

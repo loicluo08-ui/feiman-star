@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { supabaseConfigured, insertLedgerRows } from "@/lib/supabase";
+import { parseInvalidation } from "@/lib/settle-recall";
 
 /**
  * 判断记账云端直写（10/1六轮检测P1-sync修复——判断云端同步全链路死亡）
@@ -95,6 +96,9 @@ export async function POST(request: NextRequest) {
       confidence: r.confidence || null,
       date: r.date,
       ts: r.ts,
+      // 10/1入账质量闸：失效条件可机械核验=strict（cron按价位结算进对错率）；叙事型=narrative（跳过结算只计数）——
+      // 此前该字段从未落地，narrative/strict区分空转
+      failure_strictness: r.invalidation && parseInvalidation(r.invalidation) ? "strict" : "narrative",
     }));
 
   if (rows.length === 0) {

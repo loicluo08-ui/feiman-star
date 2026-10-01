@@ -22,6 +22,7 @@ import { readAllLedger, readKbEntries, upsertKbEntries, type KbDynamicRow } from
 import { notifySettleEvents, type SettleNotifyItem } from "@/lib/notify-serverchan";
 import { getQtStocks } from "@/lib/qt";
 import { callAI } from "@/lib/ai";
+import { parseInvalidation } from "@/lib/settle-recall";
 
 /**
  * 错账归因（10/1，宪法2复盘层）：被证伪的判断机械结算只给"错了"，归因给出"错在哪"。
@@ -99,27 +100,6 @@ function authOk(request: NextRequest): boolean {
   if (auth === `Bearer ${secret}`) return true;
   const url = new URL(request.url);
   return url.searchParams.get("token") === secret;
-}
-
-// 方向词分类（与chat路由记账核验同源口径）
-const TRIG_DOWN_RE = /跌破|失守|下破|低于|收于.*之下/;
-const TRIG_UP_RE = /突破|站上|上破|高于|收于.*之上/;
-
-/** 非价格维度词：失效条件里的数字是估值/比率/事件而非股价，机械按价格判定=口径错位错杀（10/1六轮检测P2-12，KO"PE破28"被当股价28实锤） */
-const NON_PRICE_RE = /\b(PE|PB|PS|ROE|ROA|EPS)\b|市盈率|市净率|股息|增速|增长率|涨跌幅|回报率|利润率|毛利率|净利率|增长率|仓位|比例|概率|信心度|倍\b/;
-
-/** 从失效条件文本提取 (方向, 关键数字)；提取失败返回null留待下轮 */
-function parseInvalidation(text: string): { direction: "down" | "up"; level: number } | null {
-  if (!text) return null;
-  // 非价格维度（估值/比率/概率/仓位类）：机械解析必然口径错位——宁缺勿错，跳过结算留人工核验
-  if (NON_PRICE_RE.test(text)) return null;
-  const nums = text.match(/\d+(?:\.\d+)?/g);
-  if (!nums || nums.length === 0) return null;
-  const level = Number(nums[0]);
-  if (!Number.isFinite(level) || level <= 0) return null;
-  if (TRIG_DOWN_RE.test(text)) return { direction: "down", level };
-  if (TRIG_UP_RE.test(text)) return { direction: "up", level };
-  return null;
 }
 
 /** 现价相对失效位的判定 */

@@ -151,6 +151,9 @@ async function LedgerData() {
   const settledCount = invalidated + alive + signalDone + expired;
   const surviveRate = invalidated + alive > 0 ? Math.round((alive / (invalidated + alive)) * 100) : null;
   const watching = items.length - settledCount;
+  // 10/1入账质量闸：可核验率=失效条件可机械结算的占比（垃圾入=垃圾出——narrative判断悬空不入对错率）
+  const strictCount = items.filter((it) => (it.failure_strictness ?? "narrative") === "strict").length;
+  const strictRate = items.length > 0 ? Math.round((strictCount / items.length) * 100) : null;
 
   return (
     <>
@@ -162,6 +165,7 @@ async function LedgerData() {
           { label: "信号完成", value: signalDone },
           { label: "时间盒到期", value: expired },
           { label: "观察中", value: Math.max(watching, 0) },
+          { label: "可核验率（失效条件）", value: strictRate == null ? "—" : `${strictRate}%` },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
             <div className="text-2xl font-semibold tabular-nums text-[var(--text)]">{s.value}</div>
