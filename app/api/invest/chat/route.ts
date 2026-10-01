@@ -118,7 +118,7 @@ const requestSchema = z.object({
         date: z.string().max(12),
       }),
     )
-    .max(8)
+    .max(500)  // 10/1修复：与前端loadLedger()全量传配套（深度改C）——原.max(8)在账本第9条起会422拒绝整个chat请求=P0回归
     .optional(),
 });
 
