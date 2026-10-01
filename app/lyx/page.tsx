@@ -9,11 +9,11 @@ import { useEffect, useState } from "react";
 
 type UsageData = {
   overview: { uniqueIPs: number; totalRequests: number; requests24h: number; requests7d: number; aiCalls: number; chatCount: number };
-  ipRows: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; country: string | null; city: string | null; geo?: string }>;
+  ipRows: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; country: string | null; city: string | null; geo?: string; username?: string | null; user_city?: string | null }>;
   intentStats: { human: number; searchbot: number; aicrawler: number; badbot: number; scan: number; unknown: number };
-  humanIPs: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; geo?: string; username?: string | null }>;
-  recent: Array<{ ts: string; ip: string; path: string; method: string; ua: string | null; country: string | null; city: string | null; username?: string | null }>;
-  chats: Array<{ id: number; question: string; style: string; ip: string | null; created_at: string }>;
+  humanIPs: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; geo?: string; username?: string | null; user_city?: string | null }>;
+  recent: Array<{ ts: string; ip: string; path: string; method: string; ua: string | null; country: string | null; city: string | null; username?: string | null; user_city?: string | null }>;
+  chats: Array<{ id: number; question: string; style: string; ip: string | null; created_at: string; username?: string | null; user_city?: string | null }>;
 };
 
 // 10/1逸翔令：监控内容用中文自然语言——路径与动作全部翻译成人话
@@ -66,6 +66,11 @@ function cnAction(method: string | null | undefined, path: string | null | undef
 function fmtTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function displayName(username: string | null | undefined, userCity: string | null | undefined, ip: string): string {
+  if (username) return userCity ? `${username}·${userCity}` : username;
+  return ip;
 }
 
 function safeDecode(v: string | null): string {
@@ -300,7 +305,7 @@ export default function AdminPage() {
                   <tr key={r.ip} className={`border-b border-[var(--border)] last:border-0 ${r.username ? "bg-[var(--accent-surface)]" : ""}`}>
                     <td className="px-3 py-2 font-mono">
                       {r.username ? (
-                        <span className="font-sans font-semibold text-[var(--accent)]">{r.username}</span>
+                        <span className="font-sans font-semibold text-[var(--accent)]">{r.username}{r.user_city ? `·${r.user_city}` : ""}</span>
                       ) : (
                         r.ip
                       )}
@@ -352,7 +357,10 @@ export default function AdminPage() {
             <tbody>
               {sortedIpRows.map((r) => (
                 <tr key={r.ip} className="border-b border-[var(--border)] last:border-0">
-                  <td className="px-3 py-2 font-mono">{r.ip}</td>
+                  <td className="px-3 py-2 font-mono">
+                    {r.username ? <span className="mr-1 rounded bg-[var(--accent-surface)] px-1.5 py-0.5 text-xs font-sans font-semibold text-[var(--accent)]">{r.username}{r.user_city ? `·${r.user_city}` : ""}</span> : null}
+                    {r.ip}
+                  </td>
                   <td className="px-3 py-2 tabular-nums">{r.count}</td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">{r.geo || [r.country, safeDecode(r.city)].filter(Boolean).join(" ") || "—"}</td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.first)}</td>
@@ -383,7 +391,7 @@ export default function AdminPage() {
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)] text-left text-[var(--text-muted)]">
                 <th className="px-3 py-2">时间</th>
-                <th className="px-3 py-2">IP</th>
+                <th className="px-3 py-2">用户</th>
                 <th className="px-3 py-2">风格</th>
                 <th className="px-3 py-2">提问</th>
               </tr>
@@ -392,7 +400,7 @@ export default function AdminPage() {
               {sortedChats.map((c) => (
                 <tr key={c.id} className="border-b border-[var(--border)] last:border-0">
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(c.created_at)}</td>
-                  <td className="px-3 py-2 font-mono">{c.ip || "—"}</td>
+                  <td className="px-3 py-2 font-mono">{displayName(c.username, c.user_city, c.ip || "—")}</td>
                   <td className="px-3 py-2">{c.style}</td>
                   <td className="max-w-[420px] truncate px-3 py-2">{c.question}</td>
                 </tr>
@@ -411,7 +419,7 @@ export default function AdminPage() {
           {sortedRecent.map((r, i) => (
             <div key={i} className="border-b border-[var(--border)] py-1 last:border-0">
               {fmtTime(r.ts)} · {r.ip} · {cnAction(r.method, r.path)}{cnPath(r.path)}
-              {r.city ? ` · ${r.country || ""} ${safeDecode(r.city)}` : ""}
+              {r.username ? ` · ${r.username}${r.user_city ? `·${r.user_city}` : ""}` : r.city ? ` · ${r.country || ""} ${safeDecode(r.city)}` : ""}
             </div>
           ))}
         </div>
