@@ -13,6 +13,9 @@ const SUPABASE_KEY = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_S
   .trim();
 
 function clientIP(req: NextRequest): string {
+  // 10/1修复：域名套了Cloudflare代理——真实访客IP在CF-Connecting-IP头（实测x-forwarded-for拿到的是CF节点IP非访客IP）
+  const cf = req.headers.get("cf-connecting-ip");
+  if (cf) return cf.trim();
   const xff = req.headers.get("x-forwarded-for");
   if (xff) return xff.split(",")[0].trim();
   return req.headers.get("x-real-ip") || "unknown";
