@@ -6,32 +6,32 @@
 User-agent: Googlebot
 Allow: /
 Allow: /invest/
-Disallow: /admin
+Disallow: /lyx
 Disallow: /api/
 
 User-agent: Bingbot
 Allow: /
 Allow: /invest/
-Disallow: /admin
+Disallow: /lyx
 Disallow: /api/
 
 User-agent: Baiduspider
 Allow: /
 Allow: /invest/
-Disallow: /admin
+Disallow: /lyx
 Disallow: /api/
 
 User-agent: Sogou web spider
 Allow: /
 Allow: /invest/
-Disallow: /admin
+Disallow: /lyx
 Disallow: /api/
 
 # ── 所有其他自动访问者（含未声明身份的爬虫）：禁止抓取 API 与后台 ──
 User-agent: *
 Allow: /
 Allow: /invest/
-Disallow: /admin
+Disallow: /lyx
 Disallow: /api/
 Crawl-delay: 5
 

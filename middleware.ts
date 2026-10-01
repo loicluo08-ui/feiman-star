@@ -55,7 +55,7 @@ export async function middleware(request: NextRequest) {
   response.headers.set("Cache-Control", "private, no-store");
 
   const path = request.nextUrl.pathname;
-  if (path.startsWith("/invest/admin")) return response; // 后台自身不记录
+  if (path.startsWith("/lyx") || path.startsWith("/invest/admin")) return response; // 后台自身不记录（/lyx本不在matcher内，防御性保留）
 
   const ua = request.headers.get("user-agent") || "";
   const ip = clientIP(request);
