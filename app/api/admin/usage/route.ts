@@ -195,6 +195,8 @@ export async function GET(request: NextRequest) {
           const ip = r.ip as string;
           const e = m.get(ip) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), geo: (r.geo as string) || "", username: (r.username as string) || null };
           e.count += 1;
+          // 10/2修复：username取首个非空（历史无名字行先出现会把null锁死——新标记后仍显示—）
+          if (!e.username && r.username) e.username = (r.username as string);
           if ((r.ts as string) < e.first) e.first = r.ts as string;
           if ((r.ts as string) > e.last) e.last = r.ts as string;
           e.paths.add(r.path as string);
