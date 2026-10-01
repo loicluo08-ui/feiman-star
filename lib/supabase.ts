@@ -215,6 +215,16 @@ export async function insertChatLog(row: {
     });
     return true;
   } catch {
+    // 降级：ip列未建（005未执行）时带ip写入42703失败——去ip重试保对话日志不丢
+    if (row.ip !== undefined) {
+      try {
+        const { ip: _drop, ...rest } = row;
+        await sbRest("chat_logs", { method: "POST", prefer: "return=minimal", body: rest });
+        return true;
+      } catch {
+        return false;
+      }
+    }
     return false;
   }
 }
