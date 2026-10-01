@@ -51,6 +51,11 @@ export const CHANNELS: Record<string, GatewayChannel> = {
     free: true, priority: 40,
     extraHeaders: { "X-Title": "FeimanStar" },
   },
+  dashscope: {
+    name: "dashscope", baseEnv: "DASHSCOPE_BASE_URL", baseDefault: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    keyEnv: "DASHSCOPE_API_KEY", modelEnv: "DASHSCOPE_MODEL", modelDefault: "qwen-turbo",
+    free: true, priority: 55, // 新用户额度7000万token（70+模型各100万）——qwen-turbo实测2026/10/1 200
+  },
   groq: {
     name: "groq", baseEnv: "GROQ_BASE_URL", baseDefault: "https://api.groq.com/openai/v1",
     keyEnv: "GROQ_API_KEY", modelEnv: "GROQ_MODEL", modelDefault: "llama-3.3-70b-versatile",
