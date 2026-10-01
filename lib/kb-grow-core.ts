@@ -191,16 +191,11 @@ export async function growInsights(): Promise<GrowInsightResult> {
 
 快讯：${JSON.stringify(compact)}`;
 
-    // 统一网关（10/1免费通道全量接入）：extract任务走免费池降级链（GLM→火山→硅基→OR→Groq→DeepSeek）
+    const { callAI } = await import("./ai");
+    // 统一网关（10/1架构收敛）：callAI+task=extract走免费池降级链（GLM→火山→硅基→OR→dashscope→Groq→DeepSeek兜底）
     // 敏感边界：快讯为公开信息，走免费通道合规
-    const { gatewayChat } = await import("./model-gateway");
-    const gw = await gatewayChat([{ role: "user", content: prompt }], { task: "extract", maxTokens: 1_200, timeout: 45_000 });
-    if (!gw.text) {
-      const detail = gw.tried.map((t) => `${t.channel}:${t.detail}`).join(" | ");
-      console.error(`[kb-grow] gateway_all_failed ${detail.slice(0, 300)}`);
-      return { insights: [], flashCount: items.length, aiOk: false, error: `gateway_all_failed:${detail.slice(0, 280)}` };
-    }
-    const resp = gw.text;
+    const resp = await callAI([{ role: "user", content: prompt }], { task: "extract", max_tokens: 1_200, timeout: 45_000 });
+    if (!resp) return { insights: [], flashCount: items.length, aiOk: false, error: "ai_null" };
     return parseInsights(resp, items.length, feed.source);
   } catch (e) {
     return { insights: [], flashCount: 0, aiOk: false, error: e instanceof Error ? e.message.slice(0, 100) : "unknown" };

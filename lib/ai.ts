@@ -18,6 +18,11 @@ export type VisionContent =
     >;
 
 export type CallAIOptions = {
+  /**
+   * 任务分池（10/1架构优化）：非敏感内部任务传"extract"走免费池降级链（省DeepSeek），
+   * 用户可见输出缺省走DeepSeek主脑（质量与责任归属清晰）。敏感边界见model-gateway.ts。
+   */
+  task?: "extract" | "eval" | "heavy" | "chat";
   temperature?: number;
   max_tokens?: number;
   retry?: number;
@@ -129,6 +134,17 @@ export async function callAI(
   messages: ChatMessage[],
   options: CallAIOptions = {},
 ): Promise<string | null> {
+  // 10/1架构收敛：显式task=extract/eval的内部任务走网关免费池（省DeepSeek），失败DeepSeek兜底；
+  // 未传task（chat主脑/用户可见输出）保持原DeepSeek路径——默认零行为变化
+  if (options.task === "extract" || options.task === "eval") {
+    const { gatewayChat } = await import("./model-gateway");
+    const gw = await gatewayChat(messages, {
+      task: options.task, maxTokens: options.max_tokens ?? 2_500, timeout: options.timeout ?? 90_000,
+      json: options.responseFormat === "json",
+    });
+    if (gw.text) return gw.text;
+    // 免费池全挂→继续走下方DeepSeek主路径兜底
+  }
   const apiKey = process.env.DEEPSEEK_API_KEY || "";
   if (!apiKey) return null;
   if (!(await consumeAIBudget("callAI"))) return null;

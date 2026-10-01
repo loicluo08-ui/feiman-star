@@ -84,7 +84,7 @@ export interface GatewayResult {
 /** 统一对话入口：按任务类型走降级链，返回首个成功通道的文本+通道名 */
 export async function gatewayChat(
   messages: Array<{ role: string; content: string }>,
-  opts: { task?: TaskKind; maxTokens?: number; timeout?: number; temperature?: number } = {},
+  opts: { task?: TaskKind; maxTokens?: number; timeout?: number; temperature?: number; json?: boolean } = {},
 ): Promise<GatewayResult> {
   const task = opts.task ?? "extract";
   const tried: GatewayResult["tried"] = [];
@@ -107,6 +107,7 @@ export async function gatewayChat(
           ...(ch.extraHeaders ?? {}),
         },
         body: JSON.stringify({
+          ...(opts.json ? { response_format: { type: "json_object" } } : {}),
           model: (process.env[ch.modelEnv] || ch.modelDefault).trim(),
           messages,
           temperature: opts.temperature ?? 0.3,
