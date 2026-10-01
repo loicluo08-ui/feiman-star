@@ -20,6 +20,7 @@ export const maxDuration = 60;
 
 import { readAllLedger, readKbEntries, upsertKbEntries, type KbDynamicRow } from "@/lib/supabase";
 import { notifySettleEvents, type SettleNotifyItem } from "@/lib/notify-serverchan";
+import { getQtStocks } from "@/lib/qt";
 
 function authOk(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET || "";
@@ -59,29 +60,12 @@ function judge(price: number, direction: "down" | "up", level: number): "invalid
 
 /** 腾讯行情批量现价：q=usNVDA,usAAPL → {NVDA: 219.34}（美股前缀us；单请求≤20码） */
 async function fetchTencentPrices(symbols: string[]): Promise<Map<string, number>> {
+  // 10/1统一走lib/qt.ts（前缀感知：美股us/港股r_hk），与工厂行情同源同解析
+  const stocks = await getQtStocks(symbols);
   const out = new Map<string, number>();
-  for (let i = 0; i < symbols.length; i += 20) {
-    const batch = symbols.slice(i, i + 20);
-    const q = batch.map((s) => `us${s}`).join(",");
-    try {
-      const res = await fetch(`https://qt.gtimg.cn/q=${q}`, {
-        headers: { Referer: "https://gu.qq.com/", "User-Agent": "Mozilla/5.0" },
-        cache: "no-store",
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) continue;
-      const text = await res.text();
-      for (const line of text.split(";")) {
-        const m = line.match(/v_us([A-Za-z0-9.]+)="([^"]*)"/);
-        if (!m) continue;
-        const fields = m[2].split("~");
-        const price = Number(fields[3]);
-        if (Number.isFinite(price) && price > 0) out.set(m[1].toUpperCase(), price);
-      }
-    } catch {
-      // 单批失败跳过，留待下轮
-    }
-  }
+  stocks.forEach((v, k) => {
+    if (v.price != null && v.price > 0) out.set(k.toUpperCase(), v.price);
+  });
   return out;
 }
 

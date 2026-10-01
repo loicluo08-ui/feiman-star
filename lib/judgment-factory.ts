@@ -14,7 +14,7 @@
 
 import { getQtStocks, type QtStock } from "./qt";
 
-export const FACTORY_SYMBOLS = ["AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "GOOGL", "META", "KO", "MCD", "BRK.A"];
+export const FACTORY_SYMBOLS = ["AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "GOOGL", "META", "KO", "MCD", "BRK.A", "00700", "00857"]; // 10/1港股池扩容（评测缺口清单①）：00700腾讯/00857中石油——G-001/G-012题眼
 
 export interface JudgmentCandidate {
   id: string;

@@ -50,7 +50,8 @@ function decodeGbk(buf: ArrayBuffer): string {
 function parseQtLine(line: string): QtStock | null {
   const m = line.match(/v_([\w.]+)="([^"]*)"/);
   if (!m) return null;
-  const code = m[1];
+  // code归一：usAAPL→AAPL、r_hk00857→00857（10/1双市场改造——候选/账本/结算全链用统一symbol）
+  const code = m[1].replace(/^us/, "").replace(/^r_hk/, "");
   const f = m[2].split("~");
   if (f.length < 40) return null;
   return {
@@ -77,7 +78,8 @@ export async function getQtStocks(symbols: string[]): Promise<Map<string, QtStoc
   const out = new Map<string, QtStock>();
   if (symbols.length === 0) return out;
   try {
-    const codes = symbols.slice(0, 30).map((s) => `us${s}`).join(",");
+    // 前缀感知（10/1港股源接入，评测缺口清单①）：纯数字=港股(r_hk)，字母=美股(us)——港股行与美股行字段布局同构
+    const codes = symbols.slice(0, 30).map((s) => /^\d{4,5}$/.test(s) ? `r_hk${s}` : `us${s}`).join(",");
     const res = await fetch(`https://qt.gtimg.cn/q=${codes}`, {
       headers: { "User-Agent": QT_UA, Referer: "https://gu.qq.com/" },
       signal: AbortSignal.timeout(8000),
@@ -85,7 +87,7 @@ export async function getQtStocks(symbols: string[]): Promise<Map<string, QtStoc
     const text = decodeGbk(await res.arrayBuffer());
     for (const line of text.split(";")) {
       const q = parseQtLine(line.trim());
-      if (q && q.price != null) out.set(q.code.replace(/^us/, ""), q);
+      if (q && q.price != null) out.set(q.code.replace(/^us/, "").replace(/^r_hk/, ""), q);
     }
   } catch {
     // 静默失败，调用方走兜底
