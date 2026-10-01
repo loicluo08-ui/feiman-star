@@ -84,7 +84,8 @@ export async function middleware(request: NextRequest) {
     }
   }
   if (setUser && USERNAME_RE.test(setUser)) {
-    response.cookies.set("fx_username", encodeURIComponent(setUser), {
+    // 注意：Next的cookies.set自动encodeURIComponent一层——这里传原始值，勿手动编码（双层编码实测白名单拒绝）
+    response.cookies.set("fx_username", setUser, {
       maxAge: 365 * 24 * 3600,
       httpOnly: true,
       sameSite: "lax",
@@ -129,12 +130,16 @@ export async function middleware(request: NextRequest) {
       user_type: classifyVisit(ua, path, request.method),  // 意图分类：human/searchbot/aicrawler/badbot/scan/unknown
       username: (() => {
         const rawCookie = request.cookies.get("fx_username")?.value || "";
-        // 双保险：cookie可被手动伪造——decode后过白名单（前端写入为encodeURIComponent中文）
+        // 循环decode（最多2轮）：兼容Next自动编码/双层残留/前端encodeURIComponent——直到白名单通过或稳定
         let raw = rawCookie;
-        try {
-          raw = decodeURIComponent(rawCookie);
-        } catch {
-          /* 保留原值参与校验 */
+        for (let i = 0; i < 2 && !USERNAME_RE.test(raw); i++) {
+          try {
+            const d = decodeURIComponent(raw);
+            if (d === raw) break;
+            raw = d;
+          } catch {
+            break;
+          }
         }
         return USERNAME_RE.test(raw) ? raw : null;
       })(),  // 10/2自称式用户名，无则null
