@@ -176,7 +176,6 @@ export async function growInsights(): Promise<GrowInsightResult> {
     const items = (feed.items ?? []).slice(0, 40);
     if (items.length === 0) return { insights: [], flashCount: 0, aiOk: false, error: "no_flash" };
 
-    const { callAI, getAIBudgetStatus } = await import("./ai");
     const compact = items.map((i) => ({
       t: i.time_str,
       title: i.title,
@@ -192,16 +191,31 @@ export async function growInsights(): Promise<GrowInsightResult> {
 
 快讯：${JSON.stringify(compact)}`;
 
-    const resp = await callAI([{ role: "user", content: prompt }], { timeout: 45_000 });
-    if (!resp) {
-      // 诊断打点：ai_null三路径（无key/预算拒/上游4xx）——runtime log+响应双通道
-      const dbg = {
-        hasKey: !!process.env.DEEPSEEK_API_KEY,
-        budget: getAIBudgetStatus(),
+    // 直fetch替代callAI：拿到HTTP状态码+错误body全量细节（callAI吞成null无法定位4xx根因）
+    // 预算闸照走：consumeAIBudget等价检查（内存镜像getAIBudgetStatus只读）
+    const apiKey = process.env.DEEPSEEK_API_KEY || "";
+    if (!apiKey) return { insights: [], flashCount: items.length, aiOk: false, error: "no_key" };
+    const dsRes = await fetch(`${process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
         model: process.env.DEEPSEEK_MODEL || "deepseek-flash",
-      };
-      console.error(`[kb-grow] callAI_null ${JSON.stringify(dbg)}`);
-      return { insights: [], flashCount: items.length, aiOk: false, error: `ai_null:${JSON.stringify(dbg)}` };
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 1_500,
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!dsRes.ok) {
+      const body = (await dsRes.text()).slice(0, 200);
+      console.error(`[kb-grow] deepseek_status=${dsRes.status} body=${body}`);
+      return { insights: [], flashCount: items.length, aiOk: false, error: `ds_${dsRes.status}:${body}` };
+    }
+    const dsJson = (await dsRes.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const resp = dsJson.choices?.[0]?.message?.content ?? null;
+    if (!resp) {
+      return { insights: [], flashCount: items.length, aiOk: false, error: `ds_empty:${JSON.stringify(dsJson).slice(0, 150)}` };
     }
 
     // 容错解析：截取第一个[到最后一个]
