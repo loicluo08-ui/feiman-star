@@ -65,5 +65,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/invest/:path*"],
+  // 10/1补盲区：加"/"（主页第一入口此前未记录）
+  matcher: ["/", "/invest/:path*"],
 };
