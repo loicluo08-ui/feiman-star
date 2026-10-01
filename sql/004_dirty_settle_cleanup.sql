@@ -41,3 +41,7 @@ SELECT count(*) FROM kb_dynamic
 WHERE type = 'insight'
   AND source = 'cron-judgment-settle'
   AND (content::jsonb->>'settle_price')::numeric <= 0;
+
+
+-- 4) 清理10/1部署验证的测试行（TEST标记，人工执行）
+DELETE FROM judgment_ledger WHERE symbol LIKE 'TEST%';

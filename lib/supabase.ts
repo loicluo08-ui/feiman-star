@@ -89,12 +89,19 @@ export interface LedgerRow {
 
 export async function insertLedgerRows(rows: LedgerRow[]): Promise<boolean> {
   if (rows.length === 0) return true;
-  const out = await sbRest("judgment_ledger", {
-    method: "POST",
-    prefer: "resolution=ignore-duplicates,return=minimal",
-    body: rows,
-  });
-  return out !== null;
+  // 10/1修复：return=minimal时Supabase返回201+空body，sbRest解析为null——null≠失败（写入实际成功）。
+  // 原实现`out !== null`把成功写入误报为false（judgment-cloud线上502但数据落库实锤）。
+  // 语义修正：异常=失败（false），正常返回（含null）=成功。
+  try {
+    await sbRest("judgment_ledger", {
+      method: "POST",
+      prefer: "resolution=ignore-duplicates,return=minimal",
+      body: rows,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function readLedgerBySymbol(symbol: string, limit = 5): Promise<LedgerRow[] | null> {
