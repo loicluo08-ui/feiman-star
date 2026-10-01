@@ -403,16 +403,12 @@ export default function PickPage() {
     setGeneratedAt(null);
 
     const task: BackgroundTask<PickAnalysisResult> = startTask(PICK_TASK_KEY, async () => {
-      updateTaskProgress(PICK_TASK_KEY, "正在拉取新闻和市场快报…");
+      updateTaskProgress(PICK_TASK_KEY, "正在拉取个股新闻…");
       const marketDataStr = JSON.stringify(currentStockData, null, 2);
 
-      // 并行拉取新闻+市场快报
-      const [newsRes, pulseRes] = await Promise.all([
-        fetch(`/api/invest/news?code=${encodeURIComponent(currentStockData.code)}`).catch(() => null),
-        fetch("/api/invest/market-pulse").catch(() => null),
-      ]);
+      // 拉取新闻（10/1：marketPulse注入已砍——三行摘要只产模板腔章节，效用为负）
+      const newsRes = await fetch(`/api/invest/news?code=${encodeURIComponent(currentStockData.code)}`).catch(() => null);
       const newsData = newsRes?.ok ? await newsRes.json() : null;
-      const pulseData = pulseRes?.ok ? await pulseRes.json() : null;
 
       const generatingMessage = "AI正在生成深度分析报告，约15-90秒…";
       updateTaskProgress(PICK_TASK_KEY, generatingMessage);
@@ -433,7 +429,6 @@ export default function PickPage() {
             marketData: marketDataStr,
             news: newsData?.data?.news ?? [],
             nextEarnings: newsData?.data?.nextEarnings ?? null,
-            marketPulse: pulseData?.data ?? null,
             userNotes: currentUserNotes,
           }),
         });

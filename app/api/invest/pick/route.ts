@@ -33,25 +33,6 @@ const requestSchema = z.object({
     epsEstimate: z.number().nullable(),
     hour: z.string(),
   }).nullable().optional().default(null),
-  marketPulse: z.object({
-    sentiment: z.string(),
-    strongestSector: z.string().nullable(),
-    weakestSector: z.string().nullable(),
-    indices: z.array(z.object({
-      name: z.string(),
-      symbol: z.string(),
-      price: z.number().nullable(),
-      change: z.number().nullable(),
-      changePct: z.number().nullable(),
-    })).optional(),
-    sectors: z.array(z.object({
-      name: z.string(),
-      symbol: z.string(),
-      price: z.number().nullable(),
-      change: z.number().nullable(),
-      changePct: z.number().nullable(),
-    })).optional(),
-  }).nullable().optional().default(null),
   userNotes: z.string().trim().max(2000).optional().default(""),
 });
 
@@ -230,6 +211,8 @@ export async function POST(request: NextRequest) {
     "- 热门抽血板块：[有/无，如有写板块名]",
     "- 板块估值位置：[高于/低于/接近中位数]",
     "",
+    "数据诚实约束（10/1砍注入后生效）：本次未注入宏观利率与板块资金流数据——水池效应/板块轮动两章中，凡市场数据JSON里没有的字段（利率环境/资金流向/抽血板块），直接写「本轮未注入该数据，不评估」，禁止凭常识编造宏观与资金面判断；Beta值等市场数据JSON里有的字段照常引用。",
+    "",
     "#### 4. 产业周期",
     "- 周期阶段：[技术验证/订单落地/业绩兑现/产能过剩/赢家通吃]",
     "- 护城河：[品牌/网络效应/转换成本/规模效应/专利，满足哪几项]",
@@ -347,16 +330,6 @@ export async function POST(request: NextRequest) {
     ? `下次财报：${input.data.nextEarnings.date}${input.data.nextEarnings.epsEstimate != null ? `，EPS预期：$${input.data.nextEarnings.epsEstimate.toFixed(2)}` : ""}${input.data.nextEarnings.hour ? `，${input.data.nextEarnings.hour === "bmo" ? "盘前" : "盘后"}` : ""}\n`
     : "";
 
-  const pulseBlock = input.data.marketPulse
-    ? [
-        "当前市场环境：",
-        `- 市场情绪：${input.data.marketPulse.sentiment}`,
-        input.data.marketPulse.strongestSector ? `- 最强板块：${input.data.marketPulse.strongestSector}` : "",
-        input.data.marketPulse.weakestSector ? `- 最弱板块：${input.data.marketPulse.weakestSector}` : "",
-        "",
-      ].filter(Boolean).join("\n")
-    : "";
-
   const userContent = [
     `股票：${stockName}（${stockCode}）`,
     "",
@@ -367,7 +340,6 @@ export async function POST(request: NextRequest) {
     "",
     newsBlock,
     earningsBlock,
-    pulseBlock,
     userNotes ? `用户补充：${userNotes}` : "",
     knowledge ? `\n\n---\n\n费曼星投资知识库参考（请基于此框架分析）：\n${knowledge.slice(0, 3000)}` : "",
     `\n\n<knowledge_base>\n${FEIMANSTAR_KB}\n</knowledge_base>`,
