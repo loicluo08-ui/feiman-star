@@ -155,7 +155,7 @@ export function parseRulingFallback(text: string, injected: string[], userText: 
   const conf = text.match(/信心度[=：:]?\s*(\d{1,3}%)/);
 
   return {
-    symbol: `${symbol}（兜底提取）`,
+    symbol, // 10/1交叉验证X6修复：纯代码（"KO（兜底提取）"后缀会破坏规则28按symbol对账+结算代码提取——对账双链一致性优先）
     stance,
     keyLevel: keyLevel || "见裁决行动分支",
     invalidation: invalidation || "见裁决行失效条件",
