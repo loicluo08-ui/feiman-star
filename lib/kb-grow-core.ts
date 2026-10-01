@@ -191,8 +191,13 @@ export async function growInsights(): Promise<GrowInsightResult> {
 
 快讯：${JSON.stringify(compact)}`;
 
-    // 直fetch替代callAI：拿到HTTP状态码+错误body全量细节（callAI吞成null无法定位4xx根因）
-    // 预算闸照走：consumeAIBudget等价检查（内存镜像getAIBudgetStatus只读）
+    // 双模型策略（10/1知识库整改）：GLM-4-Flash免费优先（0元政策），失败DeepSeek直fetch兜底
+    // GLM免费max_tokens≤1024，提炼输出900token内安全
+    const { callGLMFlash } = await import("./ai");
+    const glmResp = await callGLMFlash([{ role: "user", content: prompt }], { timeout: 45_000, max_tokens: 900 });
+    if (glmResp) return parseInsights(glmResp, items.length, feed.source);
+
+    // DeepSeek兜底：直fetch拿HTTP状态码+错误body全量细节（callAI吞成null无法定位4xx根因）
     const apiKey = process.env.DEEPSEEK_API_KEY || "";
     if (!apiKey) return { insights: [], flashCount: items.length, aiOk: false, error: "no_key" };
     const dsRes = await fetch(`${process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"}/chat/completions`, {
@@ -217,29 +222,31 @@ export async function growInsights(): Promise<GrowInsightResult> {
     if (!resp) {
       return { insights: [], flashCount: items.length, aiOk: false, error: `ds_empty:${JSON.stringify(dsJson).slice(0, 150)}` };
     }
-
-    // 容错解析：截取第一个[到最后一个]
-    const m = resp.match(/\[[\s\S]*\]/);
-    if (!m) return { insights: [], flashCount: items.length, aiOk: false, error: "no_json" };
-    const parsed = JSON.parse(m[0]) as Array<{ keywords?: string[]; content?: string; direction?: string }>;
-
-    const today = new Date().toISOString().slice(0, 10);
-    const expire = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-    const insights: DynamicEntry[] = [];
-    parsed.forEach((p, i) => {
-      if (!p.content || !p.keywords || p.keywords.length === 0) return; // 缺字段=条目丢弃（宁缺毋编）
-      insights.push({
-        id: `insight_${today}_${i}`,
-        type: "insight",
-        keywords: [...p.keywords.slice(0, 5), today, "洞察"],
-        content: `${p.content}（方向：${p.direction ?? "未标注"}；来源：${feed.source}${today}快讯提炼）`,
-        source: "kb-grow-insights",
-        created: today,
-        expires: expire,
-      });
-    });
-    return { insights, flashCount: items.length, aiOk: true };
+    return parseInsights(resp, items.length, feed.source);
   } catch (e) {
     return { insights: [], flashCount: 0, aiOk: false, error: e instanceof Error ? e.message.slice(0, 100) : "unknown" };
   }
+}
+
+/** 洞察解析+入库映射（GLM/DeepSeek共用）——容错JSON截取，缺字段条目丢弃（宁缺毋编） */
+function parseInsights(resp: string, flashCount: number, feedSource: string): GrowInsightResult {
+  const m = resp.match(/\[[\s\S]*\]/);
+  if (!m) return { insights: [], flashCount, aiOk: true, error: "no_json" };
+  const parsed = JSON.parse(m[0]) as Array<{ keywords?: string[]; content?: string; direction?: string }>;
+  const today = new Date().toISOString().slice(0, 10);
+  const expire = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const insights: DynamicEntry[] = [];
+  parsed.forEach((p, i) => {
+    if (!p.content || !p.keywords || p.keywords.length === 0) return;
+    insights.push({
+      id: `insight_${today}_${i}`,
+      type: "insight",
+      keywords: [...p.keywords.slice(0, 5), today, "洞察"],
+      content: `${p.content}（方向：${p.direction ?? "未标注"}；来源：${feedSource}${today}快讯提炼）`,
+      source: "kb-grow-insights",
+      created: today,
+      expires: expire,
+    });
+  });
+  return { insights, flashCount, aiOk: true };
 }

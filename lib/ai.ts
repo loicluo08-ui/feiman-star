@@ -491,3 +491,50 @@ export async function* callAIStream(
     externalSignal?.removeEventListener("abort", onExternalAbort);
   }
 }
+
+/**
+ * GLM-4-Flash 文本调用（10/1知识库整改：免费模型通道——智谱文本flash 0元政策）
+ * 用途：低价值密度高频任务（KB提炼/摘要/分类），替DeepSeek省钱；失败返回null由调用方兜底
+ * 注意：免费版max_tokens硬上限1024（超限400码1210），调用方自行控制输出长度
+ */
+export async function callGLMFlash(
+  messages: ChatMessage[],
+  options: CallAIOptions = {},
+): Promise<string | null> {
+  const apiKey = process.env.ZHIPU_API_KEY || "";
+  if (!apiKey) return null;
+  if (!(await consumeAIBudget("callGLMFlash"))) return null;
+  const baseUrl = process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";
+  const maxRetries = options.retry ?? 1;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? 45_000);
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: process.env.ZHIPU_TEXT_MODEL || "glm-4-flash",
+          messages,
+          temperature: options.temperature ?? 0.3,
+          max_tokens: Math.min(options.max_tokens ?? 900, 1024),
+        }),
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (response.ok) {
+        const content = extractMessageContent(await response.json());
+        if (content) return content;
+      } else {
+        const errBody = await response.text().catch(() => "");
+        console.error(`[ai] glmflash_status=${response.status} attempt=${attempt} body=${errBody.slice(0, 200)}`);
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) return null;
+      }
+    } catch {
+      // 超时/网络异常→重试
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+  return null;
+}
