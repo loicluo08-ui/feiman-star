@@ -132,8 +132,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // 10/1补盲区：加"/"（主页第一入口此前未记录）
+  // 10/1补盲区：加"/"（主页第一入口此前未记录）+"/api/invest/*"（AI接口此前从未经过检查层——反爬/黑名单/采集三功能对API全部失效的根因）
   // runtime切Node：Edge下Supabase写入静默全丢（waitUntil也0条实测）——Node runtime与API route同环境，env/fetch行为一致
   runtime: "nodejs",
-  matcher: ["/", "/invest/:path*"],
+  matcher: ["/", "/invest/:path*", "/api/invest/:path*"],
 };
