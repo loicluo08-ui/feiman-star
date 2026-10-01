@@ -94,7 +94,11 @@ export async function GET(request: NextRequest) {
 
   const cached = calendarCache.get(weekOffset);
   if (cached && cached.expiresAt > Date.now()) {
-    return NextResponse.json({ data: cached.data, cached: true });
+    // 10/1外部评审v1.2采纳：边缘缓存（数据一天只变几次，5分钟边缘新鲜度+30分钟SWR）
+    return NextResponse.json(
+      { data: cached.data, cached: true },
+      { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800" } },
+    );
   }
 
   const weekdays = getWeekdays(weekOffset);
@@ -129,7 +133,10 @@ export async function GET(request: NextRequest) {
 
     calendarCache.set(weekOffset, { data, expiresAt: Date.now() + CALENDAR_TTL });
 
-    return NextResponse.json({ data });
+    return NextResponse.json(
+      { data },
+      { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=1800" } },
+    );
   } catch (error) {
     console.error("[invest/calendar]", error);
     return NextResponse.json({ error: "财报日历暂时不可用" }, { status: 503 });

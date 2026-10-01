@@ -34,9 +34,13 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json({
-    data: items,
-    timestamp: new Date().toISOString(),
-    source: feed.source || "金十数据",
-  });
+  // 10/1外部评审v1.2采纳：边缘缓存——快讯源内部已有5分钟缓存+10s节流，45s边缘新鲜度不影响时效
+  return NextResponse.json(
+    {
+      data: items,
+      timestamp: new Date().toISOString(),
+      source: feed.source || "金十数据",
+    },
+    { headers: { "Cache-Control": "public, s-maxage=45, stale-while-revalidate=120" } },
+  );
 }
