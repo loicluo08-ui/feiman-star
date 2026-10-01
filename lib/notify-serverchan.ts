@@ -8,7 +8,7 @@
  * key缺失/网络失败：静默返回false——推送是增强不是依赖，结算主流程绝不因此中断。
  */
 
-const SERVERCHAN_ENDPOINT = "https://sct.ftqq.com";
+const SERVERCHAN_ENDPOINT = "https://sctapi.ftqq.com";
 
 export interface SettleNotifyItem {
   symbol: string;
