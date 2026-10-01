@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
  * KB动态层自动生长（Vercel Cron端点，9/13底层建设P0）
  * 每日自动：拉标的池行情快照→合并（30天过期+同标的替换）→GitHub commit→触发重部署
  * 摆脱AgentMore外部执行器——服务端自跑，cron配置见vercel.json
- * 鉴权：Vercel Cron自带 Authorization: Bearer ${CRON_SECRET}；手动触发 ?token=
+ * 鉴权：Vercel Cron自带 Authorization: Bearer ${CRON_SECRET}；手动触发 ?token= 或 ?kbToken=${KB_MANUAL_TOKEN}（10/1新增运维通道——值与CRON_SECRET独立，供部署后即时手动验证）
  * 时序快照同步沉淀 data/snapshots/——历史底座
  */
 export const maxDuration = 60;
@@ -17,7 +17,10 @@ function authOk(request: NextRequest): boolean {
   const auth = request.headers.get("authorization") ?? "";
   if (auth === `Bearer ${secret}`) return true;
   const url = new URL(request.url);
-  return url.searchParams.get("token") === secret;
+  if (url.searchParams.get("token") === secret) return true;
+  // 10/1运维通道：KB_MANUAL_TOKEN独立手动验证用（与CRON_SECRET独立，可单独轮换）
+  const manual = (process.env.KB_MANUAL_TOKEN || "").trim();
+  return !!manual && url.searchParams.get("kbToken") === manual;
 }
 
 export async function GET(request: NextRequest) {
@@ -46,10 +49,20 @@ export async function GET(request: NextRequest) {
       }
     }
     const fresh = await collectSnapshots();
-    if (fresh.length === 0) {
-      return NextResponse.json({ ok: true, changed: false, reason: "all_sources_failed" });
+    // 路2：动态层真生长（10/1知识库整改第一步）——当日快讯AI提炼为投资洞察入动态库
+    // 洞察管道独立于快照：失败不阻塞行情快照主流程；两管道产物合并写入（mergeEntries统一去重）
+    let insightResult: import("@/lib/kb-grow-core").GrowInsightResult = { insights: [], flashCount: 0, aiOk: false };
+    try {
+      const { growInsights } = await import("@/lib/kb-grow-core");
+      insightResult = await growInsights();
+    } catch {
+      // 洞察失败静默——快照照常
     }
-    const { merged, added } = mergeEntries(entries, fresh);
+    const allFresh = [...fresh, ...insightResult.insights];
+    if (allFresh.length === 0) {
+      return NextResponse.json({ ok: true, changed: false, reason: "all_sources_failed", insights_error: insightResult.error });
+    }
+    const { merged, added } = mergeEntries(entries, allFresh);
     if (JSON.stringify(merged) === JSON.stringify(entries)) {
       // 无新数据也要补向量化（存量条目embedding为空的补齐——语义检索底座完整化）
       let backfilled = 0;
@@ -84,12 +97,12 @@ export async function GET(request: NextRequest) {
     }
     try {
       void 0;
-      // P2③向量化：fresh条目生成embedding入库（语义检索底座），失败静默（关键词路由兜底）
+      // P2③向量化：allFresh条目（快照+洞察）生成embedding入库（语义检索底座），失败静默（关键词路由兜底）
       const { embedTexts } = await import("@/lib/kb-embedding");
-      const vectors = await embedTexts(fresh.map((f) => f.content));
+      const vectors = await embedTexts(allFresh.map((f) => f.content));
       if (vectors) {
-        for (let i = 0; i < fresh.length; i++) {
-          await updateKbEmbedding(fresh[i].id, vectors[i]);
+        for (let i = 0; i < allFresh.length; i++) {
+          await updateKbEmbedding(allFresh[i].id, vectors[i]);
         }
       }
     } catch {
@@ -104,6 +117,7 @@ export async function GET(request: NextRequest) {
       ok: true, changed: true, added, total: merged.length,
       commit: commitSha,
       symbols: fresh.map((f) => f.keywords[0]),
+      insights: { generated: insightResult.insights.length, flashCount: insightResult.flashCount, aiOk: insightResult.aiOk, error: insightResult.error },
     });
   } catch (e) {
     return NextResponse.json(

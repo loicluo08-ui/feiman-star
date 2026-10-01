@@ -152,3 +152,71 @@ export async function writeDailySnapshot(token: string, entries: DynamicEntry[])
     method: "PUT", headers: ghHeaders(token), body: JSON.stringify(body),
   });
 }
+
+// ——— 路2：动态层真生长（10/1知识库大整改第一步）———
+// 病灶：此前kb-grow只采行情快照，"知识沉淀"没有知识。此函数把当日快讯提炼成投资洞察条目入动态库，
+// 让chat的selectDynamicKB语义检索能召回"最近发生的事实+影响方向+失效条件"——知识库真的自己长。
+
+export interface GrowInsightResult {
+  insights: DynamicEntry[];
+  flashCount: number;
+  aiOk: boolean;
+  error?: string;
+}
+
+/**
+ * 当日快讯 → AI提炼投资洞察 → DynamicEntry[]
+ * 质量闸：每条必须带具体数字/时间+影响方向+3-5个检索关键词；7天时效过期自动失效（KB失效总则对齐）；
+ * AI失败/解析失败返回空数组不阻塞行情快照主流程（快照与洞察是两个独立管道）。
+ */
+export async function growInsights(): Promise<GrowInsightResult> {
+  try {
+    const { getFlashFeed } = await import("./flash-source");
+    const feed = await getFlashFeed();
+    const items = (feed.items ?? []).slice(0, 40);
+    if (items.length === 0) return { insights: [], flashCount: 0, aiOk: false, error: "no_flash" };
+
+    const { callAI } = await import("./ai");
+    const compact = items.map((i) => ({
+      t: i.time_str,
+      title: i.title,
+      text: (i.content_text || i.title).slice(0, 160),
+      imp: i.is_important,
+    }));
+    const prompt = `以下是今日市场快讯（JSON数组）。提炼3-5条对投资判断有实际价值的洞察。
+要求：
+1. 每条=事实性洞察：具体事件（带数字与时间）+对哪类资产的影响方向，禁止空话套话
+2. 只提与资产价格判断相关的（宏观/利率/行业/个股事件），跳过纯宣传性内容
+3. content必须80字内且含至少一个具体数字或日期——没有可核验锚的条目不要
+4. 输出纯JSON数组（不要markdown围栏）：[{"keywords":["关键词3-5个"],"content":"洞察正文","direction":"利多/利空/中性 + 影响对象"}]
+
+快讯：${JSON.stringify(compact)}`;
+
+    const resp = await callAI([{ role: "user", content: prompt }], { timeout: 60_000 });
+    if (!resp) return { insights: [], flashCount: items.length, aiOk: false, error: "ai_null" };
+
+    // 容错解析：截取第一个[到最后一个]
+    const m = resp.match(/\[[\s\S]*\]/);
+    if (!m) return { insights: [], flashCount: items.length, aiOk: false, error: "no_json" };
+    const parsed = JSON.parse(m[0]) as Array<{ keywords?: string[]; content?: string; direction?: string }>;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const expire = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+    const insights: DynamicEntry[] = [];
+    parsed.forEach((p, i) => {
+      if (!p.content || !p.keywords || p.keywords.length === 0) return; // 缺字段=条目丢弃（宁缺毋编）
+      insights.push({
+        id: `insight_${today}_${i}`,
+        type: "insight",
+        keywords: [...p.keywords.slice(0, 5), today, "洞察"],
+        content: `${p.content}（方向：${p.direction ?? "未标注"}；来源：${feed.source}${today}快讯提炼）`,
+        source: "kb-grow-insights",
+        created: today,
+        expires: expire,
+      });
+    });
+    return { insights, flashCount: items.length, aiOk: true };
+  } catch (e) {
+    return { insights: [], flashCount: 0, aiOk: false, error: e instanceof Error ? e.message.slice(0, 100) : "unknown" };
+  }
+}
