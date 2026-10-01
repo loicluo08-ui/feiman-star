@@ -558,6 +558,10 @@ export async function POST(request: NextRequest) {
         if (moodContext) injectedParts.push("VIX情绪");
         if (optionContextText) injectedParts.push("期权链（IV/Greeks/OI）");
         if (earningsContext) injectedParts.push("财报日历");
+        // Q7源清单维度补全（10/1）：动态KB+历史记账此前只在status外不可见
+        if (dynKB.count > 0) injectedParts.push(`动态知识库${dynKB.count}条`);
+        if (historyLedger.length > 0) injectedParts.push(`历史记账${historyLedger.length}条`);
+        // peerComparison/macroContext在stream段消费（wantsLong内），此处不重复计入status
         // 深度推理提示判据（与stream段的wantsLong同判据提前版）：详细类问题开思维链，
         // 用户等待期status行明示"深度推理中"，防止20-40s静默被当成卡死
         const wantsLongHint =
@@ -1106,6 +1110,16 @@ export async function POST(request: NextRequest) {
           } catch {
             // 补录失败不阻塞done
           }
+        }
+
+        // Q7源清单注入（10/1信息质量收尾——9/25标签静默化的遗留债）：
+        // [数据]/[推导]标签废除后，回答里"哪些来自注入数据、哪些是模型记忆"不可分辨。
+        // 修复=正文尾部注入本轮实际使用的数据源清单，让用户可对照核验（能力工程命门：判据可核验）。
+        // 短答（<400字，短打形态）不加——喧宾夺主；有真实注入才加（全空=纯知识问答，加清单反而误导）。
+        if (fullText.length > 400 && injectedParts.length > 0) {
+          const srcLine = `\n\n【数据源】本轮注入：${injectedParts.join("、")}。未在此列的数字与事件来自模型记忆，使用前请自行核验。`;
+          send({ type: "chunk", text: srcLine });
+          fullText += srcLine;
         }
 
         // P2①对话日志入库（评测/反思原料）——done前同步写，失败静默不阻塞
