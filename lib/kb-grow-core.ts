@@ -176,7 +176,7 @@ export async function growInsights(): Promise<GrowInsightResult> {
     const items = (feed.items ?? []).slice(0, 40);
     if (items.length === 0) return { insights: [], flashCount: 0, aiOk: false, error: "no_flash" };
 
-    const { callAI } = await import("./ai");
+    const { callAI, getAIBudgetStatus } = await import("./ai");
     const compact = items.map((i) => ({
       t: i.time_str,
       title: i.title,
@@ -192,8 +192,17 @@ export async function growInsights(): Promise<GrowInsightResult> {
 
 快讯：${JSON.stringify(compact)}`;
 
-    const resp = await callAI([{ role: "user", content: prompt }], { timeout: 60_000 });
-    if (!resp) return { insights: [], flashCount: items.length, aiOk: false, error: "ai_null" };
+    const resp = await callAI([{ role: "user", content: prompt }], { timeout: 45_000 });
+    if (!resp) {
+      // 诊断打点：ai_null三路径（无key/预算拒/上游4xx）——runtime log+响应双通道
+      const dbg = {
+        hasKey: !!process.env.DEEPSEEK_API_KEY,
+        budget: getAIBudgetStatus(),
+        model: process.env.DEEPSEEK_MODEL || "deepseek-flash",
+      };
+      console.error(`[kb-grow] callAI_null ${JSON.stringify(dbg)}`);
+      return { insights: [], flashCount: items.length, aiOk: false, error: `ai_null:${JSON.stringify(dbg)}` };
+    }
 
     // 容错解析：截取第一个[到最后一个]
     const m = resp.match(/\[[\s\S]*\]/);
