@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * 使用监控后台（10/1逸翔令）——sufve.com/admin
@@ -82,8 +82,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState("");
 
-  async function load(t: string) {
-    setLoading(true);
+  async function load(t: string, silent = false) {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const res = await fetch(`/api/admin/usage?token=${encodeURIComponent(t)}`, { cache: "no-store" });
@@ -143,6 +143,19 @@ export default function AdminPage() {
   }
   const [blockedSet, setBlockedSet] = useState<Set<string>>(new Set());
 
+  // 10/1：自动刷新（快讯同款30秒轮询）——静默模式不闪加载态，保证刷新有效
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  // 10/1逸翔令：顺序可筛选选择——最新在前/最早在前
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  useEffect(() => {
+    if (!autoRefresh || !data) return;
+    const timer = setInterval(() => {
+      const t = token || sessionStorage.getItem("fx_admin_token") || "";
+      if (t) void load(t, true);
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [autoRefresh, data, token]);
+
   const saved = typeof window !== "undefined" ? sessionStorage.getItem("fx_admin_token") : null;
 
   if (!data) {
@@ -175,6 +188,20 @@ export default function AdminPage() {
   }
 
   const o = data.overview;
+  const sortedRecent = [...data.recent].sort((a, b) => {
+    const ta = String(a.ts || "");
+    const tb = String(b.ts || "");
+    return sortOrder === "newest" ? tb.localeCompare(ta) : ta.localeCompare(tb);
+  });
+  const sortedChats = [...data.chats].sort((a, b) => {
+    const ia = Number(a.id) || 0;
+    const ib = Number(b.id) || 0;
+    return sortOrder === "newest" ? ib - ia : ia - ib;
+  });
+  const sortedIpRows = [...data.ipRows].sort((a, b) => {
+    if (sortOrder === "newest") return String(b.last || "").localeCompare(String(a.last || ""));
+    return String(a.first || "").localeCompare(String(b.first || ""));
+  });
   const cards = [
     { label: "独立IP", value: o.uniqueIPs },
     { label: "24h请求", value: o.requests24h },
@@ -199,6 +226,26 @@ export default function AdminPage() {
         >
           {loading ? "刷新中…" : "↻ 刷新"}
         </button>
+        <button
+          onClick={() => setAutoRefresh((v) => !v)}
+          className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium ${autoRefresh ? "bg-[var(--positive)] text-white" : "bg-[var(--surface-muted)] text-[var(--text-muted)]"}`}
+        >
+          {autoRefresh ? "● 自动刷新" : "○ 已暂停"}
+        </button>
+        <div className="flex overflow-hidden rounded-lg border border-[var(--border)] text-xs">
+          <button
+            onClick={() => setSortOrder("newest")}
+            className={`px-2.5 py-1.5 font-medium ${sortOrder === "newest" ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--text-muted)]"}`}
+          >
+            最新在前
+          </button>
+          <button
+            onClick={() => setSortOrder("oldest")}
+            className={`px-2.5 py-1.5 font-medium ${sortOrder === "oldest" ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--text-muted)]"}`}
+          >
+            最早在前
+          </button>
+        </div>
       </div>
 
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -212,7 +259,7 @@ export default function AdminPage() {
         {lastRefresh ? <p className="mb-4 text-xs text-[var(--text-muted)]">数据更新于 {lastRefresh}</p> : null}
 
       <section className="mb-8">
-        <h2 className="mb-3 text-sm font-semibold">IP明细（按请求数排序）</h2>
+        <h2 className="mb-3 text-sm font-semibold">访客明细（按访问次数排）</h2>
         <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
           <table className="w-full text-xs">
             <thead>
@@ -226,7 +273,7 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {data.ipRows.map((r) => (
+              {sortedIpRows.map((r) => (
                 <tr key={r.ip} className="border-b border-[var(--border)] last:border-0">
                   <td className="px-3 py-2 font-mono">{r.ip}</td>
                   <td className="px-3 py-2 tabular-nums">{r.count}</td>
@@ -244,7 +291,7 @@ export default function AdminPage() {
                   </td>
                 </tr>
               ))}
-              {data.ipRows.length === 0 ? (
+              {sortedIpRows.length === 0 ? (
                 <tr><td colSpan={7} className="px-3 py-8 text-center text-[var(--text-muted)]">暂无数据——确认已在Supabase执行sql/005_access_logs.sql建表</td></tr>
               ) : null}
             </tbody>
@@ -265,7 +312,7 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {data.chats.map((c) => (
+              {sortedChats.map((c) => (
                 <tr key={c.id} className="border-b border-[var(--border)] last:border-0">
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(c.created_at)}</td>
                   <td className="px-3 py-2 font-mono">{c.ip || "—"}</td>
@@ -282,9 +329,9 @@ export default function AdminPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold">最近活动流（{data.recent.length}）</h2>
+        <h2 className="mb-3 text-sm font-semibold">活动流（按先后顺序：{sortOrder === 'newest' ? '最新在前' : '最早在前'}）</h2>
         <div className="max-h-96 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 font-mono text-[11px] leading-5 text-[var(--text-muted)]">
-          {data.recent.map((r, i) => (
+          {sortedRecent.map((r, i) => (
             <div key={i} className="border-b border-[var(--border)] py-1 last:border-0">
               {fmtTime(r.ts)} · {r.ip} · {cnAction(r.method, r.path)}{cnPath(r.path)}
               {r.city ? ` · ${r.country || ""} ${safeDecode(r.city)}` : ""}
