@@ -48,7 +48,8 @@ export async function GET(request: NextRequest) {
   if (cache && cache.expiresAt > Date.now()) {
     return NextResponse.json(
       { data: cache.data },
-      { headers: { "Cache-Control": "private, no-store" } },
+      // 10/1外部评审v1.2采纳：边缘缓存——行情数据30s内新鲜，放CDN缓存省回源（原private,no-store=明令CDN不缓存）
+      { headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" } },
     );
   }
 
@@ -197,9 +198,10 @@ export async function GET(request: NextRequest) {
     // 写入缓存
     cache = { data: responseData, expiresAt: Date.now() + CACHE_TTL };
 
-    return NextResponse.json({
-      data: responseData,
-    });
+    return NextResponse.json(
+      { data: responseData },
+      { headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" } },
+    );
   } catch (error) {
     console.error("[market-pulse]", error);
     return NextResponse.json({ data: null });

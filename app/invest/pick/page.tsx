@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { useRouter } from "next/navigation";
 import { getTask, startTask, updateTaskProgress, type BackgroundTask } from "@/lib/background-task";
+import { loadLedger, parseLedgerLine, saveEntry, stripLedgerLines } from "@/lib/judgment-ledger";
 
 type SearchResult = {
   code: string;
@@ -215,6 +216,7 @@ export default function PickPage() {
   const [stockData, setStockData] = useState<StockData | null>(null);
   const [userNotes, setUserNotes] = useState("");
   const [analysis, setAnalysis] = useState("");
+  const [ledgerSaved, setLedgerSaved] = useState(false);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
@@ -397,6 +399,7 @@ export default function PickPage() {
     setLoadingStep("正在拉取新闻和市场快报…");
     setError("");
     setAnalysis("");
+    setLedgerSaved(false);
     setGeneratedAt(null);
 
     const task: BackgroundTask<PickAnalysisResult> = startTask(PICK_TASK_KEY, async () => {
@@ -485,7 +488,40 @@ export default function PickPage() {
 
     void task.promise.then((result) => {
       if (!mountedRef.current) return;
-      setAnalysis(result.analysis);
+      // 10/1外部评审v1.2采纳（选股→账本闭环）：报告尾部机器记账行→解析入账→双通道云端同步
+      const ledgerEntry = parseLedgerLine(result.analysis);
+      if (ledgerEntry) {
+        saveEntry(ledgerEntry);
+        try {
+          const syncedRaw = localStorage.getItem("fx_judgment_synced_v1");
+          const synced = new Set<number>(syncedRaw ? JSON.parse(syncedRaw) : []);
+          const fresh = loadLedger().filter((e) => !synced.has(e.ts));
+          if (fresh.length > 0) {
+            const payload = JSON.stringify({ entries: fresh });
+            const cloudPost = fetch("/api/invest/judgment-cloud", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: payload,
+            }).then((r) => r.json()).catch(() => null);
+            const ghPost = fetch("/api/invest/judgment-sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: payload,
+            }).then((r) => r.json()).catch(() => null);
+            void Promise.all([cloudPost, ghPost]).then(([cloud, gh]) => {
+              if ((cloud && cloud.ok) || (gh && gh.ok)) {
+                fresh.forEach((e) => synced.add(e.ts));
+                localStorage.setItem("fx_judgment_synced_v1", JSON.stringify(Array.from(synced).slice(-500)));
+              }
+            }).catch(() => {});
+          }
+        } catch {}
+        setLedgerSaved(true);
+      } else {
+        setLedgerSaved(false);
+      }
+      // 展示剥离机器记账行（用户不看原始字段行；历史存档保留原样）
+      setAnalysis(stripLedgerLines(result.analysis));
       setGeneratedAt(result.generatedAt);
       setPickHistory(result.history);
       setLoadingAI(false);
@@ -564,7 +600,7 @@ export default function PickPage() {
     storeStockData(record.stockData);
     setStockData(record.stockData);
     setQuery(record.stockData.code);
-    setAnalysis(record.analysis);
+    setAnalysis(stripLedgerLines(record.analysis));
     setUserNotes(record.userNotes || "");
     setGeneratedAt(restoredGeneratedAt);
     setShowHistory(false);
@@ -1015,6 +1051,7 @@ export default function PickPage() {
                   <div className="whitespace-pre-wrap text-sm leading-7 text-[var(--text)]">{analysis}</div>
                   <p className="mt-5 border-t border-[var(--border)] pt-3 text-[11px] text-[var(--text-muted)]">
                     由费曼星生成，仅供研究参考，不构成投资建议。
+                    {ledgerSaved ? " 本报告分析倾向已存入判断账本（账本页可回访结算）。" : ""}
                   </p>
                 </div>
               </div>
