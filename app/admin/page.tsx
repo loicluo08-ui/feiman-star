@@ -9,7 +9,7 @@ import { useState } from "react";
 
 type UsageData = {
   overview: { uniqueIPs: number; totalRequests: number; requests24h: number; requests7d: number; aiCalls: number; chatCount: number };
-  ipRows: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; country: string | null; city: string | null }>;
+  ipRows: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; country: string | null; city: string | null; geo?: string }>;
   recent: Array<{ ts: string; ip: string; path: string; method: string; ua: string | null; country: string | null; city: string | null }>;
   chats: Array<{ id: number; question: string; style: string; ip: string | null; created_at: string }>;
 };
@@ -219,7 +219,7 @@ export default function AdminPage() {
                 <tr key={r.ip} className="border-b border-[var(--border)] last:border-0">
                   <td className="px-3 py-2 font-mono">{r.ip}</td>
                   <td className="px-3 py-2 tabular-nums">{r.count}</td>
-                  <td className="px-3 py-2 text-[var(--text-muted)]">{[r.country, safeDecode(r.city)].filter(Boolean).join(" ") || "—"}</td>
+                  <td className="px-3 py-2 text-[var(--text-muted)]">{r.geo || [r.country, safeDecode(r.city)].filter(Boolean).join(" ") || "—"}</td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.first)}</td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.last)}</td>
                   <td className="px-3 py-2 text-[10px] text-[var(--text-muted)]">{r.paths.map(cnPath).join("、")}</td>

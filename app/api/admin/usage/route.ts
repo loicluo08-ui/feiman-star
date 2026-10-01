@@ -113,6 +113,42 @@ export async function GET(request: NextRequest) {
     const dayAgo = new Date(now - 24 * 3600 * 1000).toISOString();
     const weekAgo = new Date(now - 7 * 24 * 3600 * 1000).toISOString();
 
+    // 10/1中文归属地（逸翔令：监控内容用中文）——ip-api批量中文查询+24h缓存
+    const geoCache = (globalThis as { __geoCache?: Map<string, string> }).__geoCache || new Map<string, string>();
+    (globalThis as { __geoCache?: Map<string, string> }).__geoCache = geoCache;
+    const unknownIPs = ipRows.map((r) => r.ip).filter((ip) => ip && ip !== "unknown" && !geoCache.has(ip));
+    if (unknownIPs.length > 0 && unknownIPs.length <= 100) {
+      try {
+        const geoRes = await fetch(
+          `http://ip-api.com/batch?fields=status,country,regionName,city,query&lang=zh-CN`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(unknownIPs),
+            signal: AbortSignal.timeout(6000),
+          },
+        );
+        if (geoRes.ok) {
+          const list = (await geoRes.json()) as Array<{ status: string; country?: string; regionName?: string; city?: string; query?: string }>;
+          for (const g of list) {
+            if (g.status === "success" && g.query) {
+              const parts = [g.country, g.regionName, g.city].filter(Boolean);
+              geoCache.set(g.query, parts.join(" ") || "未知");
+            }
+          }
+        }
+      } catch {
+        // 归属地查询失败不影响主数据（显示回退为IP原文）
+      }
+    }
+    // 合并中文归属地到ipRows与recent
+    for (const r of ipRows) {
+      (r as { geo?: string }).geo = geoCache.get(r.ip) || "";
+    }
+    for (const r of accessList) {
+      (r as { geo?: string }).geo = geoCache.get(r.ip) || "";
+    }
+
     return NextResponse.json({
       ok: true,
       overview: {
