@@ -93,15 +93,34 @@ function marksRule(s: QtStock): JudgmentCandidate | null {
   };
 }
 
-/** 全池扫描→产出候选 */
+/** 全池扫描→产出候选（财报触发器：本周有财报的标的候选带环境标签，结算错账复盘可用环境维度——宪法2） */
 export async function runFactory(): Promise<JudgmentCandidate[]> {
   const quotes = await getQtStocks(FACTORY_SYMBOLS);
+  // 财报触发器（10/1 Phase1第2项）：纳斯达克本周日历，命中工厂池标的→env_tags追加"财报周(MM-DD发布)"
+  // 容错：财报源失败不挡工厂主流程（信号照常产出，只是无环境标签）
+  const earningsMap = new Map<string, string>();
+  try {
+    const { getThisWeekEarnings } = await import("./chat-earnings-context");
+    const entries = await getThisWeekEarnings();
+    const pool = new Set(FACTORY_SYMBOLS);
+    for (const e of entries) {
+      if (pool.has(e.symbol) && !earningsMap.has(e.symbol)) {
+        earningsMap.set(e.symbol, `财报周(${e.date.slice(5)}${e.hour === "bto" ? "盘前" : e.hour === "amc" ? "盘后" : ""}发布)`);
+      }
+    }
+  } catch {
+    // 财报日历不可用：静默降级
+  }
   const out: JudgmentCandidate[] = [];
   quotes.forEach((s) => {
     if (!s.price) return;
     for (const rule of [livermoreRule, grahamRule, marksRule]) {
       const c = rule(s);
-      if (c) out.push(c);
+      if (c) {
+        const ear = earningsMap.get(s.code);
+        if (ear) c.envTags = c.envTags ? `${c.envTags},${ear}` : ear;
+        out.push(c);
+      }
     }
   });
   return out;

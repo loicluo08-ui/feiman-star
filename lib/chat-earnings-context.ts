@@ -85,7 +85,7 @@ async function fetchNasdaqDay(date: string): Promise<EarningsEntry[]> {
 // 本周日历模块级缓存（30min TTL，与calendar route口径一致）——Nasdaq单次全链路约3s
 let weekCache: { entries: EarningsEntry[]; expiresAt: number } | null = null;
 
-async function getThisWeekEarnings(): Promise<EarningsEntry[]> {
+export async function getThisWeekEarnings(): Promise<EarningsEntry[]> {
   if (weekCache && weekCache.expiresAt > Date.now()) return weekCache.entries;
   const weekdays = getUpcomingWeekdays();
   const dayResults = await Promise.all(weekdays.map((d) => fetchNasdaqDay(d)));
