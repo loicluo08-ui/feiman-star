@@ -19,6 +19,15 @@ function fmtTime(iso: string | null | undefined): string {
   return new Date(iso).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function safeDecode(v: string | null): string {
+  if (!v) return "";
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v;
+  }
+}
+
 export default function AdminPage() {
   const [token, setToken] = useState("");
   const [data, setData] = useState<UsageData | null>(null);
@@ -133,7 +142,7 @@ export default function AdminPage() {
                 <tr key={r.ip} className="border-b border-[var(--border)] last:border-0">
                   <td className="px-3 py-2 font-mono">{r.ip}</td>
                   <td className="px-3 py-2 tabular-nums">{r.count}</td>
-                  <td className="px-3 py-2 text-[var(--text-muted)]">{[r.country, r.city].filter(Boolean).join(" ") || "—"}</td>
+                  <td className="px-3 py-2 text-[var(--text-muted)]">{[r.country, safeDecode(r.city)].filter(Boolean).join(" ") || "—"}</td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.first)}</td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.last)}</td>
                   <td className="px-3 py-2 font-mono text-[10px] text-[var(--text-muted)]">{r.paths.join(" ")}</td>
@@ -182,7 +191,7 @@ export default function AdminPage() {
           {data.recent.map((r, i) => (
             <div key={i} className="border-b border-[var(--border)] py-1 last:border-0">
               {fmtTime(r.ts)} · {r.ip} · {r.method} {r.path}
-              {r.city ? ` · ${r.country || ""} ${r.city}` : ""}
+              {r.city ? ` · ${r.country || ""} ${safeDecode(r.city)}` : ""}
             </div>
           ))}
         </div>

@@ -38,8 +38,14 @@ export async function middleware(request: NextRequest) {
       path,
       method: request.method,
       ua: (request.headers.get("user-agent") || "").slice(0, 300),
-      country: request.headers.get("x-vercel-ip-country") || null,
-      city: request.headers.get("x-vercel-ip-city") || null,
+      // 10/1 geo修正：CF代理下x-vercel-ip-*读到的是CF边缘节点位置（实测SG/Seattle/Vancouver全是节点非访客）——
+      // 真实国家在CF-IPCountry头；城市CF免费版不提供，CF代理下置null（宁空勿错，节点城市显示出来是假情报）
+      country: request.headers.get("cf-ipcountry")
+        || request.headers.get("x-vercel-ip-country")
+        || null,
+      city: request.headers.get("cf-connecting-ip")
+        ? null
+        : request.headers.get("x-vercel-ip-city") || null,
       referer: (request.headers.get("referer") || "").slice(0, 300),
     };
     const payload = JSON.stringify({
