@@ -26,9 +26,12 @@ function latestWith5d(chart: YahooChartResult | null): { last: number | null; d5
 
 export async function fetchMacroContext(): Promise<string> {
   try {
-    const [tnx, dxy] = await Promise.all([
+    // 10/1 FRED官方源接入（选型报告第②步）：Yahoo为非官方源做主锚，FRED补充CPI同比+联邦基金利率
+    // （Yahoo无这两项）并作10Y交叉验证——两源数字打架时以FRED为准（官方序列）
+    const [tnx, dxy, fredBlock] = await Promise.all([
       getYahooChart("^TNX", "3mo"),
       getYahooChart("DX=F", "3mo"),
+      import("./fred").then((m) => m.buildFredBlock()).catch(() => ""),
     ]);
     const t = latestWith5d(tnx);
     const d = latestWith5d(dxy);
@@ -41,8 +44,9 @@ export async function fetchMacroContext(): Promise<string> {
       const chg = d.last - d.d5;
       rows.push(`美元指数期货 ${d.last.toFixed(2)}（5日${chg >= 0 ? "+" : ""}${chg.toFixed(2)}）`);
     }
-    if (rows.length === 0) return "";
-    return `【宏观锚】${rows.join(" | ")}[利率敏感度与风险偏好判断直接引用此锚，禁止凭记忆报收益率/美元水平]`;
+    if (rows.length === 0 && fredBlock === "") return "";
+    const fredPart = fredBlock ? ` | 官方数据：${fredBlock}` : "";
+    return `【宏观锚】${rows.join(" | ")}${fredPart}[利率敏感度与风险偏好判断直接引用此锚，禁止凭记忆报收益率/美元水平；官方FRED数字与行情源冲突时以FRED为准]`;
   } catch {
     return "";
   }

@@ -537,7 +537,20 @@ export async function POST(request: NextRequest) {
             return "";
           }
         })();
-        const [stockContext, newsContext, marketMood, optionCtx, earningsContext, peerComparisonText, macroContextText] = await Promise.all([
+        // SEC原文锚（10/1选型报告第③步）：个股问题注入最新10-K/10-Q/8-K官方申报链接——财务数字可回溯原文
+        const edgarTask = (async () => {
+          try {
+            if (effectiveStockCodes.length === 0) return "";
+            const { buildEdgarBlock } = await import("@/lib/edgar");
+            return await Promise.race([
+              buildEdgarBlock(effectiveStockCodes[0]),
+              new Promise<string>((resolve) => setTimeout(() => resolve(""), 8_000)),
+            ]);
+          } catch {
+            return "";
+          }
+        })();
+        const [stockContext, newsContext, marketMood, optionCtx, earningsContext, peerComparisonText, macroContextText, edgarBlock] = await Promise.all([
           stockTask,
           fetchNewsWithDeadline(newsQueryText),
           vixTask,
@@ -545,6 +558,7 @@ export async function POST(request: NextRequest) {
           earningsTask,
           peerTask,
           macroTask,
+          edgarTask,
         ]);
         const moodContext = buildMarketMoodBlock(marketMood);
         const optionContextText = optionCtx ? buildOptionBlock(optionCtx) : "";
@@ -559,6 +573,7 @@ export async function POST(request: NextRequest) {
         if (moodContext) injectedParts.push("VIX情绪");
         if (optionContextText) injectedParts.push("期权链（IV/Greeks/OI）");
         if (earningsContext) injectedParts.push("财报日历");
+        if (edgarBlock) injectedParts.push("SEC申报原文");
         // Q7源清单维度补全（10/1）：动态KB+历史记账此前只在status外不可见
         if (dynKB.count > 0) injectedParts.push(`动态知识库${dynKB.count}条`);
         if (historyLedger.length > 0) injectedParts.push(`历史记账${historyLedger.length}条`);
@@ -648,6 +663,7 @@ export async function POST(request: NextRequest) {
           optionContextText ? `${optionContextText}${SLOT_NOTE.option}` : "",
           peerComparisonText ? `${peerComparisonText}${SLOT_NOTE.peers}` : "",
           macroContextText ? `${macroContextText}${SLOT_NOTE.macro}` : "",
+          edgarBlock ? `${edgarBlock}\n⚠️ 以上SEC申报信息已由系统自动注入，财务数字引用以原文为准。` : "",
         ].filter(Boolean).join("\n");
 
         const turnMessage = currentTurnText
