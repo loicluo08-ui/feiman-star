@@ -14,7 +14,7 @@ export function supabaseConfigured(): boolean {
   return !!(SUPABASE_URL && SUPABASE_KEY);
 }
 
-async function sbRest<T>(
+export async function sbRest<T>(
   path: string,
   options: { method?: string; body?: unknown; prefer?: string } = {}
 ): Promise<T | null> {
@@ -205,13 +205,18 @@ export async function insertChatLog(row: {
   answer?: string;
   tools_used?: string[];
   style?: string;
+  ip?: string | null;
 }): Promise<boolean> {
-  const out = await sbRest("chat_logs", {
-    method: "POST",
-    prefer: "return=minimal",
-    body: row,
-  });
-  return out !== null;
+  try {
+    await sbRest("chat_logs", {
+      method: "POST",
+      prefer: "return=minimal",
+      body: row,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ——— 用户画像KV———

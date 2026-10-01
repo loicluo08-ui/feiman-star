@@ -1142,7 +1142,8 @@ export async function POST(request: NextRequest) {
         // P2①对话日志入库（评测/反思原料）——done前同步写，失败静默不阻塞
         try {
           const { insertChatLog } = await import("@/lib/supabase");
-          await insertChatLog({
+          const chatIP = (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || request.headers.get("x-real-ip") || null;
+          await insertChatLog({ ip: chatIP,
             question: (lastUserText || trimmedQuestion || "").slice(0, 4000),
             answer: fullText.slice(0, 20000),
             tools_used: agentToolsUsed,
