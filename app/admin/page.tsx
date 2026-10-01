@@ -35,7 +35,18 @@ export default function AdminPage() {
         setData(null);
         return;
       }
-      const json = (await res.json()) as UsageData;
+      const json = (await res.json()) as UsageData & { ok?: boolean; error?: string };
+      // 10/1修复：500等错误响应（如access_logs表未建supabase_404）直接渲染会崩（data.overview undefined→逸翔真机实锤）——转为友好提示
+      if (json.ok === false || !json.overview) {
+        const e = json.error || "";
+        setError(
+          e.includes("404") || e.includes("PGRST205")
+            ? "数据库表未创建：请先在Supabase SQL Editor执行 sql/005_access_logs.sql，然后刷新重进"
+            : `加载失败：${e || "未知错误"}`,
+        );
+        setData(null);
+        return;
+      }
       setData(json);
       sessionStorage.setItem("fx_admin_token", t);
     } catch {
