@@ -11,8 +11,8 @@ type UsageData = {
   overview: { uniqueIPs: number; totalRequests: number; requests24h: number; requests7d: number; aiCalls: number; chatCount: number };
   ipRows: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; country: string | null; city: string | null; geo?: string }>;
   intentStats: { human: number; searchbot: number; aicrawler: number; badbot: number; scan: number; unknown: number };
-  humanIPs: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; geo?: string }>;
-  recent: Array<{ ts: string; ip: string; path: string; method: string; ua: string | null; country: string | null; city: string | null }>;
+  humanIPs: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; geo?: string; username?: string | null }>;
+  recent: Array<{ ts: string; ip: string; path: string; method: string; ua: string | null; country: string | null; city: string | null; username?: string | null }>;
   chats: Array<{ id: number; question: string; style: string; ip: string | null; created_at: string }>;
 };
 
@@ -297,8 +297,14 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {data.humanIPs.map((r) => (
-                  <tr key={r.ip} className="border-b border-[var(--border)] last:border-0">
-                    <td className="px-3 py-2 font-mono">{r.ip}</td>
+                  <tr key={r.ip} className={`border-b border-[var(--border)] last:border-0 ${r.username ? "bg-[var(--accent-surface)]" : ""}`}>
+                    <td className="px-3 py-2 font-mono">
+                      {r.username ? (
+                        <span className="font-sans font-semibold text-[var(--accent)]">{r.username}</span>
+                      ) : (
+                        r.ip
+                      )}
+                    </td>
                     <td className="px-3 py-2 tabular-nums">{r.count}</td>
                     <td className="px-3 py-2 text-[var(--text-muted)]">{r.geo || "—"}</td>
                     <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.first)}</td>

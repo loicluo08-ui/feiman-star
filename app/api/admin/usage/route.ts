@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
         country: (log.country as string) || null,
         city: (log.city as string) || null,
         user_type: userType,
+        username: (log.username as string) || null,  // 10/2自称式用户名（middleware cookie写入）
         geo: (globalThis as { __geoCache?: Map<string, string> }).__geoCache?.get((log.ip as string) || "") || "",
       };
     });
@@ -192,7 +193,7 @@ export async function GET(request: NextRequest) {
       humanIPs: Array.from(
         accessList.filter((r) => r.user_type === "human").reduce((m, r) => {
           const ip = r.ip as string;
-          const e = m.get(ip) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), geo: (r.geo as string) || "" };
+          const e = m.get(ip) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), geo: (r.geo as string) || "", username: (r.username as string) || null };
           e.count += 1;
           if ((r.ts as string) < e.first) e.first = r.ts as string;
           if ((r.ts as string) > e.last) e.last = r.ts as string;

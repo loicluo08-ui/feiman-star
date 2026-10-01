@@ -64,9 +64,25 @@ function classifyVisit(ua: string, path: string, method: string): string {
   return "human"; // 正常浏览器=真实访客
 }
 
+// ── 用户名标记（10/2逸翔令：直接做用户名——自称式无密码，监控列表显示名字）──
+// 用法：浏览器访问一次 https://sufve.com/?setuser=逸翔 → 种1年cookie → 之后所有访问自动带用户名
+// 边界：自称式无密码（冒充=统计噪音无数据权限）；将来真账号体系在此字段上升级
+const USERNAME_RE = /^[\u4e00-\u9fa5a-zA-Z0-9_-]{2,12}$/;
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
   response.headers.set("Cache-Control", "private, no-store");
+
+  // 用户名标记：URL带?setuser=名字（2-12字符中文/字母/数字）→种1年cookie
+  const setUser = request.nextUrl.searchParams.get("setuser");
+  if (setUser && USERNAME_RE.test(setUser)) {
+    response.cookies.set("fx_username", setUser, {
+      maxAge: 365 * 24 * 3600,
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+    });
+  }
 
   const path = request.nextUrl.pathname;
   if (path.startsWith("/lyx") || path.startsWith("/invest/admin")) return response; // 后台自身不记录（/lyx本不在matcher内，防御性保留）
@@ -103,6 +119,11 @@ export async function middleware(request: NextRequest) {
     const logEntry = {
       ts: new Date().toISOString(),  // 10/1修复：created列是date类型只存日期——完整时间戳放content里
       user_type: classifyVisit(ua, path, request.method),  // 意图分类：human/searchbot/aicrawler/badbot/scan/unknown
+      username: (() => {
+        const raw = request.cookies.get("fx_username")?.value || "";
+        // 双保险：cookie可被手动伪造——写日志前再过一遍白名单+截断
+        return USERNAME_RE.test(raw) ? raw : null;
+      })(),  // 10/2自称式用户名，无则null
       ip,
       path,
       method: request.method,
