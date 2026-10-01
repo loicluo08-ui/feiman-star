@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 60;
 
 import { readAllLedger, readKbEntries, upsertKbEntries, type KbDynamicRow } from "@/lib/supabase";
+import { notifySettleEvents, type SettleNotifyItem } from "@/lib/notify-serverchan";
 
 function authOk(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET || "";
@@ -129,6 +130,8 @@ export async function GET(request: NextRequest) {
   const now = new Date().toISOString();
   const rows: KbDynamicRow[] = [];
   const skipped: string[] = [];
+  // server酱事件推送收集：只收invalidated/expired（低频高价值，alive不推防噪音）
+  const notifyItems: SettleNotifyItem[] = [];
   for (const r of pending) {
     const price = prices.get(r.symbol);
     if (!price) {
@@ -172,10 +175,26 @@ export async function GET(request: NextRequest) {
       source: "cron-judgment-settle",
       created: now,
     });
+    if (result === "invalidated" || result === "expired") {
+      notifyItems.push({
+        symbol: r.symbol,
+        judged_date: r.date,
+        stance: r.stance,
+        result: result,
+        settle_price: price,
+        level: parsed.level,
+        invalidation: r.invalidation!,
+        env_tags: r.env_tags ?? null,
+        time_box: r.time_box ?? null,
+      });
+    }
   }
 
   let written = 0;
   if (rows.length > 0) written = (await upsertKbEntries(rows)) ? rows.length : 0;
+
+  // 推送在落库成功后执行——key缺失静默跳过（推送是增强不是依赖）
+  const pushed = written > 0 ? await notifySettleEvents(notifyItems) : false;
 
   return NextResponse.json({
     ok: true,
@@ -183,6 +202,8 @@ export async function GET(request: NextRequest) {
     skipped_no_price: skipped,
     pending_total: pending.length,
     narrative_unsettled: narrativeUnsettled,
+    notified: pushed,
+    notify_events: notifyItems.length,
     ledger_rows: ledger.length,
     sample_prices: Object.fromEntries(Array.from(prices.entries()).slice(0, 5)),
   });
