@@ -74,9 +74,17 @@ export async function middleware(request: NextRequest) {
   response.headers.set("Cache-Control", "private, no-store");
 
   // 用户名标记：URL带?setuser=名字（2-12字符中文/字母/数字）→种1年cookie
-  const setUser = request.nextUrl.searchParams.get("setuser");
+  const setUserRaw = request.nextUrl.searchParams.get("setuser");
+  let setUser = "";
+  if (setUserRaw) {
+    try {
+      setUser = decodeURIComponent(setUserRaw);
+    } catch {
+      setUser = setUserRaw;
+    }
+  }
   if (setUser && USERNAME_RE.test(setUser)) {
-    response.cookies.set("fx_username", setUser, {
+    response.cookies.set("fx_username", encodeURIComponent(setUser), {
       maxAge: 365 * 24 * 3600,
       httpOnly: true,
       sameSite: "lax",
@@ -120,8 +128,14 @@ export async function middleware(request: NextRequest) {
       ts: new Date().toISOString(),  // 10/1修复：created列是date类型只存日期——完整时间戳放content里
       user_type: classifyVisit(ua, path, request.method),  // 意图分类：human/searchbot/aicrawler/badbot/scan/unknown
       username: (() => {
-        const raw = request.cookies.get("fx_username")?.value || "";
-        // 双保险：cookie可被手动伪造——写日志前再过一遍白名单+截断
+        const rawCookie = request.cookies.get("fx_username")?.value || "";
+        // 双保险：cookie可被手动伪造——decode后过白名单（前端写入为encodeURIComponent中文）
+        let raw = rawCookie;
+        try {
+          raw = decodeURIComponent(rawCookie);
+        } catch {
+          /* 保留原值参与校验 */
+        }
         return USERNAME_RE.test(raw) ? raw : null;
       })(),  // 10/2自称式用户名，无则null
       ip,
