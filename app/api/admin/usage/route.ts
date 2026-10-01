@@ -68,7 +68,9 @@ export async function GET(request: NextRequest) {
   try {
     // 并行拉：访问日志（kb_dynamic type=access_log，10/1改零DDL立即可用）最近500 + 对话日志最近50
     const [kbRaw, chats] = await Promise.all([
-      sbRest<Array<Record<string, unknown>>>("kb_dynamic?type=eq.access_log&select=id,content,created&order=created.desc&limit=500"),
+      // 10/2修复：access_log已超500条，limit窗口把最新行（含username）截掉——created是date类型，
+      // order=created.desc同天并列排序不稳定。改7天滚动窗口+limit=1000（与"保留7天"清理语义对齐，旧数据查不到）
+      sbRest<Array<Record<string, unknown>>>(`kb_dynamic?type=eq.access_log&created=gte.${new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)}&select=id,content,created&order=created.desc&limit=1000`),
       sbRest<Array<Record<string, unknown>>>("chat_logs?select=id,question,style&order=id.desc&limit=50"),
     ]);
 
