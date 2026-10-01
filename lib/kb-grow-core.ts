@@ -191,40 +191,16 @@ export async function growInsights(): Promise<GrowInsightResult> {
 
 快讯：${JSON.stringify(compact)}`;
 
-    // 双模型策略（10/1知识库整改）：GLM-4-Flash免费优先（0元政策），失败DeepSeek直fetch兜底
-    // GLM免费max_tokens≤1024，提炼输出900token内安全
-    const { callGLMFlash } = await import("./ai");
-    const glmResp = await callGLMFlash([{ role: "user", content: prompt }], { timeout: 45_000, max_tokens: 900 });
-    if (glmResp) return parseInsights(glmResp, items.length, feed.source);
-
-    // DeepSeek兜底：直fetch拿HTTP状态码+错误body全量细节（callAI吞成null无法定位4xx根因）
-    const apiKey = process.env.DEEPSEEK_API_KEY || "";
-    if (!apiKey) return { insights: [], flashCount: items.length, aiOk: false, error: "no_key" };
-    const dsRes = await fetch(`${process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: process.env.DEEPSEEK_MODEL || "deepseek-flash",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
-        max_tokens: 1_500,
-      }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (!dsRes.ok) {
-      const body = (await dsRes.text()).slice(0, 200);
-      console.error(`[kb-grow] deepseek_status=${dsRes.status} body=${body}`);
-      return { insights: [], flashCount: items.length, aiOk: false, error: `ds_${dsRes.status}:${body}` };
+    // 统一网关（10/1免费通道全量接入）：extract任务走免费池降级链（GLM→火山→硅基→OR→Groq→DeepSeek）
+    // 敏感边界：快讯为公开信息，走免费通道合规
+    const { gatewayChat } = await import("./model-gateway");
+    const gw = await gatewayChat([{ role: "user", content: prompt }], { task: "extract", maxTokens: 1_200, timeout: 45_000 });
+    if (!gw.text) {
+      const detail = gw.tried.map((t) => `${t.channel}:${t.detail}`).join(" | ");
+      console.error(`[kb-grow] gateway_all_failed ${detail.slice(0, 300)}`);
+      return { insights: [], flashCount: items.length, aiOk: false, error: `gateway_all_failed:${detail.slice(0, 280)}` };
     }
-    const dsJson = (await dsRes.json()) as { choices?: Array<{ message?: { content?: string; reasoning_content?: string } }> };
-    // 思考模型兼容：content空时取reasoning_content（DeepSeek V4.1-Flash默认思考，10/1实测content空实锤）
-    const rawMsg = dsJson.choices?.[0]?.message;
-    const rawContent = rawMsg?.content?.trim() ? rawMsg.content : (rawMsg?.reasoning_content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    const resp = rawContent || null;
-    if (!resp) {
-      return { insights: [], flashCount: items.length, aiOk: false, error: `ds_empty:${JSON.stringify(dsJson).slice(0, 150)}` };
-    }
+    const resp = gw.text;
     return parseInsights(resp, items.length, feed.source);
   } catch (e) {
     return { insights: [], flashCount: 0, aiOk: false, error: e instanceof Error ? e.message.slice(0, 100) : "unknown" };
