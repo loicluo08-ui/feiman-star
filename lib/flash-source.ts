@@ -95,7 +95,9 @@ async function fetchJin10(): Promise<FlashItem[]> {
           id: `jin10_${item.id}`,
           title: cleanTitle,
           content: cleanContent,
-          content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
+          content_text: cleanTitle
+            ? (cleanContent.startsWith(cleanTitle) ? cleanContent : `${cleanTitle}\n${cleanContent}`)
+            : cleanContent,
           time_str: formatRelativeTime(ts),
           timestamp: ts,
           is_important: item.important === 1 || hasBoldTag(rawContent),
@@ -202,7 +204,9 @@ async function fetchEastmoney(): Promise<FlashItem[]> {
         id: `em_${item.code}`,
         title,
         content: content || title,
-        content_text: title ? `${title}\n${content}` : content,
+        content_text: title
+          ? (content.startsWith(title) ? content : `${title}\n${content}`)
+          : content,
         time_str: formatRelativeTime(ts),
         timestamp: ts,
         is_important: (item.titleColor ?? 0) !== 0,

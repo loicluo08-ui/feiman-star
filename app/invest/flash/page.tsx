@@ -147,7 +147,10 @@ export default function FlashPage() {
           id: `jin10_${item.id}`,
           title: cleanTitle,
           content: cleanContent,
-          content_text: cleanTitle ? `${cleanTitle}\n${cleanContent}` : cleanContent,
+          // 10/1 P2-6强化：来源站title常为正文首行的截断版——正文以title开头时不再拼title（截断前缀严格匹配失效根因）
+          content_text: cleanTitle
+            ? (cleanContent.startsWith(cleanTitle) ? cleanContent : `${cleanTitle}\n${cleanContent}`)
+            : cleanContent,
           time_str: timeStr,
           timestamp: ts,
           is_important: item.important === 1 || /<b[\s>]|<strong[\s>]/.test(content),
@@ -441,7 +444,7 @@ export default function FlashPage() {
                     </div>
                     {item.title && <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{item.title}</h3>}
                     {/* 10/1 P2-6：content_text="标题\n正文"格式且首行=标题时跳过首行（标题重复渲染实锤——一屏3-4处逐条自重复） */}
-                    <p className="text-sm leading-6 text-[var(--text-secondary)] whitespace-pre-line">{item.title && item.content_text.startsWith(item.title + "\n") ? item.content_text.slice(item.title.length + 1) : item.content_text}</p>
+                    <p className="text-sm leading-6 text-[var(--text-secondary)] whitespace-pre-line">{(() => { const ct = item.content_text; if (!item.title) return ct; const fl = ct.split("\n")[0]; return (ct.startsWith(item.title + "\n") || (fl.startsWith(item.title.slice(0, 20)) && ct.includes("\n"))) ? ct.slice(fl.length + 1) : ct; })()}</p>
                   </article>
                 ))
               )}
@@ -486,7 +489,7 @@ export default function FlashPage() {
                     <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{selectedItem.title}</h3>
                   )}
                   <p className="text-xs leading-5 text-[var(--text-secondary)] whitespace-pre-line">
-                    {selectedItem.title && selectedItem.content_text.startsWith(selectedItem.title + "\n") ? selectedItem.content_text.slice(selectedItem.title.length + 1) : selectedItem.content_text}
+                    {(() => { const ct = selectedItem.content_text; if (!selectedItem.title) return ct; const fl = ct.split("\n")[0]; return (ct.startsWith(selectedItem.title + "\n") || (fl.startsWith(selectedItem.title.slice(0, 20)) && ct.includes("\n"))) ? ct.slice(fl.length + 1) : ct; })()}
                   </p>
                 </div>
               </details>
