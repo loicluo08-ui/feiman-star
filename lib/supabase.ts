@@ -64,8 +64,10 @@ export async function upsertKbEntries(rows: KbDynamicRow[]): Promise<boolean> {
 }
 
 export async function readKbEntries(limit = 200): Promise<KbDynamicRow[] | null> {
+  // 10/1 P0修复：排除access_log（对方session把访问日志零DDL写进本表）——
+  // 日志含用户IP/geo，混进语义检索=隐私注入AI回答+挤占知识配额。读路径统一排除，写路径互不影响。
   const out = await sbRest<KbDynamicRow[]>(
-    `kb_dynamic?select=id,type,keywords,content,source,created,expires&order=created.desc&limit=${limit}`
+    `kb_dynamic?select=id,type,keywords,content,source,created,expires&type=neq.access_log&order=created.desc&limit=${limit}`
   );
   return out;
 }
