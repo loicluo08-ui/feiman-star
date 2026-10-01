@@ -6,6 +6,7 @@ import { getRelevantKnowledge } from "@/lib/knowledge";
 import { FEIMANSTAR_KB } from "@/lib/feimanstar-kb";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { aiBudgetGuard } from "@/lib/ai-budget";
+import { buildSettleRecallBlock, normalizeSymbol, readSettleRecords } from "@/lib/settle-recall";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +62,20 @@ export async function POST(request: NextRequest) {
   }
 
   const { stockName, stockCode, marketData, userNotes } = input.data;
+
+  // 10/1结算结果回灌：该标的历史判断的cron结算记录注入——AI重评同一标的时"记得"上次判断的结果，
+  // 同向重判必须说明与被证伪判断的实质差异（效用复利：判断追踪闭环的召回端）
+  let settleRecallBlock = "";
+  try {
+    const settleMap = await readSettleRecords();
+    const recs = settleMap.get(normalizeSymbol(stockCode));
+    if (recs && recs.length > 0) {
+      const b = buildSettleRecallBlock(recs, normalizeSymbol(stockCode));
+      if (b) settleRecallBlock = b;
+    }
+  } catch {
+    // 结算召回失败静默——增强不依赖
+  }
 
   const systemPrompt = [
     "你是费曼星投资分析助手，基于费曼星投资框架（罗竹先创立）生成深度选股分析报告。",
@@ -340,6 +355,7 @@ export async function POST(request: NextRequest) {
     "",
     newsBlock,
     earningsBlock,
+    settleRecallBlock ? `${settleRecallBlock}\n` : "",
     userNotes ? `用户补充：${userNotes}` : "",
     knowledge ? `\n\n---\n\n费曼星投资知识库参考（请基于此框架分析）：\n${knowledge.slice(0, 3000)}` : "",
     `\n\n<knowledge_base>\n${FEIMANSTAR_KB}\n</knowledge_base>`,
