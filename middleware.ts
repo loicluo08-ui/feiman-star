@@ -7,7 +7,10 @@ import { waitUntil } from "@vercel/functions";
 // 排除：/admin自身（防自记录死循环）、无IP的本地健康检查。
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+// 与lib/supabase.ts同款cleanKey（env值混入中文标点致fetch header ByteString错的先例防御）
+const SUPABASE_KEY = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "")
+  .replace(/[^\x20-\x7E]/g, "")
+  .trim();
 
 function clientIP(req: NextRequest): string {
   const xff = req.headers.get("x-forwarded-for");
@@ -68,5 +71,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // 10/1补盲区：加"/"（主页第一入口此前未记录）
+  // runtime切Node：Edge下Supabase写入静默全丢（waitUntil也0条实测）——Node runtime与API route同环境，env/fetch行为一致
+  runtime: "nodejs",
   matcher: ["/", "/invest/:path*"],
 };
