@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { waitUntil } from "@vercel/functions";
 
 // 使用监控采集（10/1逸翔令：后台看每个用户使用情况+IP）
 // 设计：/invest/*页面与API全量采集，fire-and-forget写Supabase access_logs（表见sql/005_access_logs.sql），
@@ -44,8 +45,9 @@ export async function middleware(request: NextRequest) {
       created: now,
     });
     try {
-      // 不await完成——发出即走（Edge允许floating fetch，超时由平台托管；失败静默）
-      void fetch(`${SUPABASE_URL}/rest/v1/kb_dynamic`, {
+      // waitUntil挂住fetch生命周期（10/1实测：Edge响应完成后floating fetch被平台砍=写入全丢——
+      // 活动流0条实锤），waitUntil让平台等写入完成再回收
+      waitUntil(fetch(`${SUPABASE_URL}/rest/v1/kb_dynamic`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -55,7 +57,7 @@ export async function middleware(request: NextRequest) {
         },
         body: payload,
         cache: "no-store",
-      }).catch(() => {});
+      }));
     } catch {
       // 监控永不阻塞主功能
     }
