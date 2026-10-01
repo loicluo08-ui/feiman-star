@@ -132,6 +132,17 @@ export async function GET(request: NextRequest) {
   const skipped: string[] = [];
   // server酱事件推送收集：只收invalidated/expired（低频高价值，alive不推防噪音）
   const notifyItems: SettleNotifyItem[] = [];
+
+  // 10/1 Phase1：工厂前置内嵌——Vercel Hobby cron必须daily，"0 21 * * 1-5"从未注册过（ledger 0行实锤）
+  // 修复=本端点成为每日账本全流程：先工厂扫描入账，再结算，再推送（工厂失败不挡结算主流程）
+  let factorySummary = { produced: 0, inserted: 0, items: [] as { symbol: string; master: string }[] };
+  let factoryError = "";
+  try {
+    const { runFactoryAndInsert } = await import("@/lib/judgment-factory");
+    factorySummary = await runFactoryAndInsert();
+  } catch (e) {
+    factoryError = e instanceof Error ? e.message.slice(0, 120) : "unknown";
+  }
   for (const r of pending) {
     const price = prices.get(r.symbol);
     if (!price) {
@@ -198,6 +209,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    factory: { produced: factorySummary.produced, inserted: factorySummary.inserted, items: factorySummary.items, error: factoryError || undefined },
     settled: written,
     skipped_no_price: skipped,
     pending_total: pending.length,

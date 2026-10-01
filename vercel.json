@@ -5,10 +5,6 @@
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/invest/cron-judgment-factory",
-      "schedule": "0 21 * * 1-5"
-    },
-    {
       "path": "/api/invest/cron-judgment-settle",
       "schedule": "0 22 * * *"
     }

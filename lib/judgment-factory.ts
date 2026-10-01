@@ -125,3 +125,46 @@ export async function runFactory(): Promise<JudgmentCandidate[]> {
   });
   return out;
 }
+
+/**
+ * 工厂扫描→去重→入账（10/1 Phase1：Vercel Hobby计划cron必须daily，"0 21 * * 1-5"从未注册过
+ * →工厂从未自动跑过（ledger 0行实锤）。修复=settle内嵌工厂前置：每日一条龙"扫描→结算→推送"，
+ * 本函数供cron-judgment-settle与cron-judgment-factory共用，替代各自维护去重逻辑）
+ */
+export async function runFactoryAndInsert(): Promise<{ produced: number; inserted: number; items: { symbol: string; master: string }[] }> {
+  const { insertLedgerRows, readAllLedger } = await import("./supabase");
+  const produced = await runFactory();
+  if (!produced.length) return { produced: 0, inserted: 0, items: [] };
+
+  // 去重：同symbol+同date+同invalidation已有账本行则跳过
+  const existing = (await readAllLedger(500)) ?? [];
+  const seen = new Set(existing.map((r) => `${r.symbol}|${r.date}|${r.invalidation ?? ""}`));
+  const fresh = produced.filter((c) => {
+    const key = `${c.symbol}|${c.date}|${c.invalidation}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (!fresh.length) return { produced: produced.length, inserted: 0, items: [] };
+
+  const ok = await insertLedgerRows(
+    fresh.map((c) => ({
+      symbol: `${c.symbol}(${c.master.split("（")[0]}信号)`,
+      stance: c.stance,
+      key_level: c.keyLevel,
+      invalidation: c.invalidation,
+      confidence: c.confidence,
+      date: c.date,
+      ts: String(c.ts),
+      // Schema V2（10/1 Phase1）：时间盒/环境标签/执行层随行入账
+      time_box: c.timeBox,
+      env_tags: c.envTags,
+      exec_plan: c.execPlan,
+    }))
+  );
+  return {
+    produced: produced.length,
+    inserted: ok ? fresh.length : 0,
+    items: fresh.map((c) => ({ symbol: c.symbol, master: c.master })),
+  };
+}
