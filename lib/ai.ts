@@ -514,7 +514,7 @@ export async function callGLMFlash(
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: process.env.ZHIPU_TEXT_MODEL || "glm-4-flash",
+          model: process.env.ZHIPU_TEXT_MODEL || "glm-4.7-flash", // 10/1升级：30B混合思考免费模型（2026/1发布），能力一代提升
           messages,
           temperature: options.temperature ?? 0.3,
           max_tokens: Math.min(options.max_tokens ?? 900, 1024),
