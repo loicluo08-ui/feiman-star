@@ -1,5 +1,54 @@
-User-agent: *
+# 费曼星 · 使用与爬虫合规声明（2026-10-01）
+# 本站为个人投资研究工具，公开页面欢迎搜索引擎收录；
+# AI 分析接口为付费资源（每次调用消耗模型算力），禁止任何形式的自动化抓取。
+
+# ── 搜索引擎：欢迎收录公开页面 ──
+User-agent: Googlebot
 Allow: /
+Allow: /invest/
+Disallow: /admin
 Disallow: /api/
 
-Sitemap: https://feimanstar-invest-r1jl.vercel.app/sitemap.xml
+User-agent: Bingbot
+Allow: /
+Allow: /invest/
+Disallow: /admin
+Disallow: /api/
+
+User-agent: Baiduspider
+Allow: /
+Allow: /invest/
+Disallow: /admin
+Disallow: /api/
+
+User-agent: Sogou web spider
+Allow: /
+Allow: /invest/
+Disallow: /admin
+Disallow: /api/
+
+# ── 所有其他自动访问者（含未声明身份的爬虫）：禁止抓取 API 与后台 ──
+User-agent: *
+Allow: /
+Allow: /invest/
+Disallow: /admin
+Disallow: /api/
+Crawl-delay: 5
+
+# ── 明确禁止（恶意抓取常客）──
+User-agent: python-requests
+Disallow: /
+User-agent: Scrapy
+Disallow: /
+User-agent: wget
+Disallow: /
+User-agent: curl
+Disallow: /
+User-agent:HttpClient
+Disallow: /
+
+# ── 使用条款 ──
+# 1. 本站数据来自公开来源整理，AI 分析内容仅供研究参考，不构成投资建议
+# 2. AI 分析接口为计算资源敏感接口，禁止批量/自动化调用（每 IP 有频次限制，超限自动拒绝）
+# 3. 监控记录所有访问来源（IP/时间/页面），恶意访问将被拉黑
+# 联系方式：见站点页脚

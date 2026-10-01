@@ -21,12 +21,65 @@ function clientIP(req: NextRequest): string {
   return req.headers.get("x-real-ip") || "unknown";
 }
 
+// 恶意爬虫UA特征（合规界限内：robots.txt已声明禁止，此处是技术执行）
+const BAD_BOT_RE = /python-requests|python-urllib|scrapy|aiohttp|httpx|go-http-client|java\/|okhttp|libwww|curl\/|wget\//i;
+// IP黑名单内存缓存（来源kb_dynamic type=ip_block，后台cleanup/usage可管理；2分钟刷新）
+const BLOCKED_IPS = new Set<string>();
+let blLastRefresh = 0;
+function refreshBlocklistOnce() {
+  const now = Date.now();
+  if (now - blLastRefresh < 120_000) return;
+  blLastRefresh = now;
+  if (!(SUPABASE_URL && SUPABASE_KEY)) return;
+  fetch(`${SUPABASE_URL}/rest/v1/kb_dynamic?type=eq.ip_block&select=content&order=created.desc&limit=200`, {
+    headers: { Authorization: `Bearer ${SUPABASE_KEY}`, apikey: SUPABASE_KEY },
+    cache: "no-store",
+  }).then((r) => (r.ok ? r.json() : [])).then((rows: Array<{ content: string }>) => {
+    BLOCKED_IPS.clear();
+    for (const row of rows || []) {
+      try {
+        const ip = JSON.parse(row.content).ip;
+        if (ip) BLOCKED_IPS.add(ip);
+      } catch { /* 坏行跳过 */ }
+    }
+  }).catch(() => {});
+}
+
+// 已知搜索引擎爬虫（合规放行公开页，禁API——robots.txt同口径）
+const SEARCH_BOT_RE = /googlebot|bingbot|baiduspider|sogou|duckduckbot|yandexbot/i;
+// AI成本敏感接口（POST=真实调用AI消耗算力）
+const AI_PATHS = ["/api/invest/chat", "/api/invest/pick", "/api/invest/review-summary", "/api/invest/flash-analyze"];
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
   response.headers.set("Cache-Control", "private, no-store");
 
   const path = request.nextUrl.pathname;
   if (path.startsWith("/invest/admin")) return response; // 后台自身不记录
+
+  const ua = request.headers.get("user-agent") || "";
+  const ip = clientIP(request);
+  const isAPI = path.startsWith("/api/invest/");
+
+  // 合规反爬第一层：黑名单IP→全站403（黑名单存kb_dynamic type=ip_block，后台可管理）
+  // 检查以异步缓存方式进行：每2分钟刷新一次黑名单（Edge/Node内存缓存，避免每请求查库）
+  if (BLOCKED_IPS.size > 0 && BLOCKED_IPS.has(ip)) {
+    return new NextResponse("访问已被限制", { status: 403 });
+  }
+  refreshBlocklistOnce();
+
+  // 合规反爬第二层：恶意爬虫UA调AI接口→403（robots.txt已声明禁止=合规依据）
+  if (isAPI && request.method === "POST" && BAD_BOT_RE.test(ua)) {
+    return new NextResponse("自动化访问已被限制（见robots.txt）", { status: 403 });
+  }
+  // 搜索引擎爬虫禁止调AI接口（公开页面随便爬）
+  if (isAPI && request.method === "POST" && SEARCH_BOT_RE.test(ua)) {
+    return new NextResponse("搜索引擎不应调用分析接口", { status: 403 });
+  }
+  // 空UA POST调AI接口→403（正常浏览器必有UA）
+  if (isAPI && request.method === "POST" && !ua) {
+    return new NextResponse("自动化访问已被限制", { status: 403 });
+  }
 
   // 采集：Supabase配置完整才发。存储=kb_dynamic表（type="access_log"，零DDL立即可用——
   // access_logs专用表见sql/005，逸翔执行后可迁移）；写入失败静默（监控永不阻塞主功能）

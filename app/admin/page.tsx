@@ -112,6 +112,36 @@ export default function AdminPage() {
     }
   }
 
+  // 10/1：拉黑/解封（合规反爬——监控联动处置）
+  const [blockMsg, setBlockMsg] = useState("");
+  async function toggleBlock(ip: string) {
+    const t = token || sessionStorage.getItem("fx_admin_token") || "";
+    const blockedNow = blockedSet.has(ip);
+    setBlockMsg(`${ip} 处理中…`);
+    try {
+      const res = await fetch("/api/admin/usage?token=" + encodeURIComponent(t), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: blockedNow ? "unblock" : "block", ip }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setBlockMsg(`${ip} 已${blockedNow ? "解封" : "拉黑"}（约2分钟内全站生效）`);
+        setBlockedSet((prev) => {
+          const next = new Set(prev);
+          if (blockedNow) next.delete(ip);
+          else next.add(ip);
+          return next;
+        });
+      } else {
+        setBlockMsg(`${ip} 操作失败`);
+      }
+    } catch {
+      setBlockMsg(`${ip} 网络错误`);
+    }
+  }
+  const [blockedSet, setBlockedSet] = useState<Set<string>>(new Set());
+
   const saved = typeof window !== "undefined" ? sessionStorage.getItem("fx_admin_token") : null;
 
   if (!data) {
@@ -193,10 +223,18 @@ export default function AdminPage() {
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.first)}</td>
                   <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.last)}</td>
                   <td className="px-3 py-2 text-[10px] text-[var(--text-muted)]">{r.paths.map(cnPath).join("、")}</td>
+                  <td className="px-3 py-2">
+                    <button
+                      onClick={() => void toggleBlock(r.ip)}
+                      className={`rounded px-2 py-1 text-[10px] font-medium ${blockedSet.has(r.ip) ? "bg-[var(--positive-bg)] text-[var(--positive)]" : "bg-[var(--negative-bg)] text-[var(--negative)]"}`}
+                    >
+                      {blockedSet.has(r.ip) ? "已拉黑·解封" : "拉黑"}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {data.ipRows.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-8 text-center text-[var(--text-muted)]">暂无数据——确认已在Supabase执行sql/005_access_logs.sql建表</td></tr>
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-[var(--text-muted)]">暂无数据——确认已在Supabase执行sql/005_access_logs.sql建表</td></tr>
               ) : null}
             </tbody>
           </table>

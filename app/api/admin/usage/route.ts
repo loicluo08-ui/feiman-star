@@ -9,6 +9,50 @@ import { supabaseConfigured, sbRest } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+export async function POST(request: NextRequest) {
+  const ADMIN = process.env.ADMIN_TOKEN;
+  if (!ADMIN) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
+  const token = new URL(request.url).searchParams.get("token");
+  if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
+
+  let body: { action?: string; ip?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  const ip = (body.ip || "").trim();
+  const action = body.action;
+  if (!ip || !["block", "unblock"].includes(action || "")) {
+    return NextResponse.json({ error: "need_ip_and_action" }, { status: 400 });
+  }
+
+  try {
+    if (action === "block") {
+      const row = {
+        id: `ipblock-${ip.replace(/[^A-Za-z0-9]/g, "-")}`,
+        type: "ip_block",
+        keywords: [],
+        content: JSON.stringify({ ip, blocked_at: new Date().toISOString() }),
+        source: "admin",
+        created: new Date().toISOString(),
+      };
+      await sbRest("kb_dynamic?on_conflict=id", {
+        method: "POST",
+        prefer: "resolution=merge-duplicates,return=minimal",
+        body: row,
+      });
+      return NextResponse.json({ ok: true, action: "blocked", ip });
+    }
+    // unblock
+    await sbRest(`kb_dynamic?id=eq.${encodeURIComponent(`ipblock-${ip.replace(/[^A-Za-z0-9]/g, "-")}`)}`, { method: "DELETE" });
+    return NextResponse.json({ ok: true, action: "unblocked", ip });
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : "block_failed" }, { status: 500 });
+  }
+}
+
 export async function GET(request: NextRequest) {
   const ADMIN = process.env.ADMIN_TOKEN;
   if (!ADMIN) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
