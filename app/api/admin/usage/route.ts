@@ -149,6 +149,10 @@ export async function GET(request: NextRequest) {
       (r as { geo?: string }).geo = geoCache.get(r.ip) || "";
     }
 
+    // 10/1逸翔令：按先后顺序排列——正序显示（早的在上，最新的在下）
+    accessList.reverse();
+    chatList.reverse();
+
     return NextResponse.json({
       ok: true,
       overview: {
