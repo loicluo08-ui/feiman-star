@@ -4,10 +4,9 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 /**
- * 用户名门禁（10/2逸翔令：未填写名字不能访问）
- * 全屏盖层：首次访问（无fx_username）必须输入名字才能看到内容。
- * 保存→种1年cookie+localStorage镜像→放行。/lyx后台（token保护）不放门禁。
- * 边界：自称式无密码（冒充=统计噪音无数据权限）；API直访由意图分类兜底。
+ * 用户名门禁（10/2逸翔令：未填写名字不能访问 + 注册成功反馈）
+ * 全屏盖层：首次访问（无fx_username）必须输入名字，保存显示成功态1.4秒再进入。
+ * /lyx后台（token保护）不放门禁。自称式无密码（冒充=统计噪音，无数据权限）。
  */
 const COOKIE_NAME = "fx_username";
 
@@ -17,7 +16,8 @@ function isValidName(v: string): boolean {
 
 export function UsernamePrompt() {
   const pathname = usePathname();
-  const [gate, setGate] = useState<"checking" | "locked" | "open">("checking");
+  const [gate, setGate] = useState<"checking" | "locked" | "success" | "open">("checking");
+  const [savedName, setSavedName] = useState("");
   const [value, setValue] = useState("");
   const [shake, setShake] = useState(false);
 
@@ -32,8 +32,6 @@ export function UsernamePrompt() {
     }
   }, [pathname]);
 
-  if (gate !== "locked") return null;
-
   function save() {
     const v = value.trim();
     if (!isValidName(v)) {
@@ -45,21 +43,32 @@ export function UsernamePrompt() {
     document.cookie = `${COOKIE_NAME}=${encodeURIComponent(v)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
     localStorage.setItem("fx_username_set", "1");
     localStorage.setItem("fx_username", v);
-    setGate("open");
+    setSavedName(v);
+    setGate("success"); // 注册成功反馈（10/2逸翔令）：确认态1.4秒再进入
+    window.setTimeout(() => setGate("open"), 1400);
+  }
+
+  if (gate === "open" || gate === "checking") return null;
+
+  if (gate === "success") {
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[var(--background)]">
+        <div className="flex flex-col items-center gap-3 px-6">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--positive-bg)] text-2xl text-[var(--positive)]">✓</div>
+          <p className="text-lg font-semibold text-[var(--text)]">已注册：{savedName}</p>
+          <p className="text-sm text-[var(--text-muted)]">访问记录将以这个名字保存，正在进入…</p>
+        </div>
+      </div>
+    );
   }
 
   const valid = isValidName(value.trim());
-
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[var(--bg)] px-6">
-      <div className={`w-full max-w-sm ${shake ? "animate-pulse" : ""}`}>
-        <h1 className="text-center text-2xl font-semibold tracking-tight text-[var(--text)]">费曼星</h1>
-        <p className="mt-3 text-center text-sm leading-6 text-[var(--text-muted)]">
-          输入你的名字，进入投资工作台。
-          <br />
-          名字用于访问统计识别，保存后1年内不再询问。
-        </p>
-        <div className="mt-6 flex flex-col gap-3">
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[var(--background)] px-6">
+      <div className={`w-full max-w-sm ${shake ? "animate-[shake_0.4s_ease-in-out]" : ""}`}>
+        <p className="mb-1 text-center text-2xl font-semibold tracking-tight text-[var(--text)]">费曼星</p>
+        <p className="mb-8 text-center text-sm text-[var(--text-muted)]">请输入你的名字开始使用——访问记录将以它保存</p>
+        <div className="flex flex-col gap-3">
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
