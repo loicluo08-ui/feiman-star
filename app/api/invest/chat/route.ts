@@ -18,7 +18,7 @@ import { isMacroQuery, fetchMacroContext } from "@/lib/macro-context";
 import { isOptionQuery, fetchOptionContext, buildOptionBlock } from "@/lib/option-context";
 import { buildNewsContext } from "@/lib/news-context";
 import { buildEarningsContext } from "@/lib/chat-earnings-context";
-import { DELIBERATION_BLOCK } from "@/lib/chat-deliberation";
+import { buildDeliberationBlock } from "@/lib/chat-deliberation";
 import { buildCaseLibraryBlock } from "@/lib/case-library";
 import { buildQuoteGuardBlock, buildDivergenceBlock } from "@/lib/master-intel";
 import { buildQuoteLibraryBlock } from "@/lib/quote-library";
