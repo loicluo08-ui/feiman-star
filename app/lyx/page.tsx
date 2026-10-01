@@ -147,6 +147,8 @@ export default function AdminPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   // 10/1逸翔令：顺序可筛选选择——最新在前/最早在前
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  // IP明细排序方式：按访问次数 / 按最近时间
+  const [ipSort, setIpSort] = useState<"count" | "time">("count");
   useEffect(() => {
     if (!autoRefresh || !data) return;
     const timer = setInterval(() => {
@@ -199,8 +201,8 @@ export default function AdminPage() {
     return sortOrder === "newest" ? ib - ia : ia - ib;
   });
   const sortedIpRows = [...data.ipRows].sort((a, b) => {
-    if (sortOrder === "newest") return String(b.last || "").localeCompare(String(a.last || ""));
-    return String(a.first || "").localeCompare(String(b.first || ""));
+    if (ipSort === "time") return String(b.last || "").localeCompare(String(a.last || ""));
+    return b.count - a.count;
   });
   const cards = [
     { label: "独立IP", value: o.uniqueIPs },
@@ -259,7 +261,23 @@ export default function AdminPage() {
         {lastRefresh ? <p className="mb-4 text-xs text-[var(--text-muted)]">数据更新于 {lastRefresh}</p> : null}
 
       <section className="mb-8">
-        <h2 className="mb-3 text-sm font-semibold">访客明细（按访问次数排）</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">访客明细</h2>
+          <div className="flex overflow-hidden rounded-lg border border-[var(--border)] text-xs">
+            <button
+              onClick={() => setIpSort("count")}
+              className={`px-2.5 py-1.5 font-medium ${ipSort === "count" ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--text-muted)]"}`}
+            >
+              按次数
+            </button>
+            <button
+              onClick={() => setIpSort("time")}
+              className={`px-2.5 py-1.5 font-medium ${ipSort === "time" ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--text-muted)]"}`}
+            >
+              按最近时间
+            </button>
+          </div>
+        </div>
         <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
           <table className="w-full text-xs">
             <thead>
