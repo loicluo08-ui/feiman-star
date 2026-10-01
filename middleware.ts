@@ -50,6 +50,20 @@ const SEARCH_BOT_RE = /googlebot|bingbot|baiduspider|sogou|duckduckbot|yandexbot
 // AI成本敏感接口（POST=真实调用AI消耗算力）
 const AI_PATHS = ["/api/invest/chat", "/api/invest/pick", "/api/invest/review-summary", "/api/invest/flash-analyze"];
 
+// ── 访问意图分类（10/1逸翔令：真实访问用户模块+分辨意图）──
+const SEARCH_ENGINE_RE = /googlebot|bingbot|baiduspider|sogou|duckduckbot|yandexbot|applebot/i;
+const AI_CRAWLER_RE = /gptbot|claudebot|claude-web|ccbot|perplexitybot|google-extended|bytespider|anthropic-ai|amazonbot|diffbot/i;
+const SCAN_PATH_RE = /wp-admin|wp-login|\.env|phpmyadmin|\.git\/|config\.php|admin\.php|xmlrpc|\/shell|\.asp$|\.jsp$|\/eval-|phpinfo/i;
+
+function classifyVisit(ua: string, path: string, method: string): string {
+  if (SCAN_PATH_RE.test(path)) return "scan"; // 漏洞扫描（恶意）
+  if (SEARCH_ENGINE_RE.test(ua)) return "searchbot"; // 搜索引擎（无害，SEO）
+  if (AI_CRAWLER_RE.test(ua)) return "aicrawler"; // AI公司训练爬虫（数据抓取）
+  if (BAD_BOT_RE.test(ua)) return "badbot"; // 已声明禁止的恶意爬虫
+  if (!ua) return method === "POST" ? "badbot" : "unknown"; // 空UA的POST=脚本
+  return "human"; // 正常浏览器=真实访客
+}
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
   response.headers.set("Cache-Control", "private, no-store");
@@ -88,6 +102,7 @@ export async function middleware(request: NextRequest) {
     const now = new Date().toISOString();
     const logEntry = {
       ts: new Date().toISOString(),  // 10/1修复：created列是date类型只存日期——完整时间戳放content里
+      user_type: classifyVisit(ua, path, request.method),  // 意图分类：human/searchbot/aicrawler/badbot/scan/unknown
       ip,
       path,
       method: request.method,

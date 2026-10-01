@@ -10,6 +10,8 @@ import { useEffect, useState } from "react";
 type UsageData = {
   overview: { uniqueIPs: number; totalRequests: number; requests24h: number; requests7d: number; aiCalls: number; chatCount: number };
   ipRows: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; country: string | null; city: string | null; geo?: string }>;
+  intentStats: { human: number; searchbot: number; aicrawler: number; badbot: number; scan: number; unknown: number };
+  humanIPs: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; geo?: string }>;
   recent: Array<{ ts: string; ip: string; path: string; method: string; ua: string | null; country: string | null; city: string | null }>;
   chats: Array<{ id: number; question: string; style: string; ip: string | null; created_at: string }>;
 };
@@ -261,8 +263,59 @@ export default function AdminPage() {
         {lastRefresh ? <p className="mb-4 text-xs text-[var(--text-muted)]">数据更新于 {lastRefresh}</p> : null}
 
       <section className="mb-8">
+        {/* 10/1真实访问用户模块（逸翔令）：意图分类统计+真实访客专区 */}
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold">访问意图分析</h2>
+          <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {[
+              { label: "真实访客", v: data.intentStats.human, cls: "text-[var(--positive)] bg-[var(--positive-bg)]" },
+              { label: "搜索引擎", v: data.intentStats.searchbot, cls: "text-[var(--accent)] bg-[var(--accent-surface)]" },
+              { label: "AI爬虫", v: data.intentStats.aicrawler, cls: "text-[var(--text-muted)] bg-[var(--surface-muted)]" },
+              { label: "恶意爬虫", v: data.intentStats.badbot, cls: "text-[var(--warning)] bg-[var(--warning-bg)]" },
+              { label: "漏洞扫描", v: data.intentStats.scan, cls: "text-[var(--negative)] bg-[var(--negative-bg)]" },
+              { label: "无法识别", v: data.intentStats.unknown, cls: "text-[var(--text-muted)] bg-[var(--surface-muted)]" },
+            ].map((s) => (
+              <div key={s.label} className={`rounded-xl px-3 py-2.5 ${s.cls}`}>
+                <div className="text-xl font-semibold tabular-nums">{s.v}</div>
+                <div className="mt-0.5 text-[11px]">{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3 className="mb-2 text-sm font-semibold">真实访客（人类浏览）{data.humanIPs.length > 0 ? `——${data.humanIPs.length} 个来源` : ""}</h3>
+          <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)] text-left text-[var(--text-muted)]">
+                  <th className="px-3 py-2">来源地址</th>
+                  <th className="px-3 py-2">次数</th>
+                  <th className="px-3 py-2">归属地</th>
+                  <th className="px-3 py-2">首次</th>
+                  <th className="px-3 py-2">最近</th>
+                  <th className="px-3 py-2">浏览过</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.humanIPs.map((r) => (
+                  <tr key={r.ip} className="border-b border-[var(--border)] last:border-0">
+                    <td className="px-3 py-2 font-mono">{r.ip}</td>
+                    <td className="px-3 py-2 tabular-nums">{r.count}</td>
+                    <td className="px-3 py-2 text-[var(--text-muted)]">{r.geo || "—"}</td>
+                    <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.first)}</td>
+                    <td className="px-3 py-2 text-[var(--text-muted)]">{fmtTime(r.last)}</td>
+                    <td className="px-3 py-2 text-[10px] text-[var(--text-muted)]">{r.paths.map(cnPath).join("、")}</td>
+                  </tr>
+                ))}
+                {data.humanIPs.length === 0 ? (
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-[var(--text-muted)]">暂无真实访客记录</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">访客明细</h2>
+          <h2 className="text-sm font-semibold">访客明细（含爬虫与机器流量）</h2>
           <div className="flex overflow-hidden rounded-lg border border-[var(--border)] text-xs">
             <button
               onClick={() => setIpSort("count")}

@@ -78,14 +78,29 @@ export async function GET(request: NextRequest) {
       } catch {
         /* 坏行按空字段处理 */
       }
+      const ua = (log.ua as string) || "";
+      const pth = (log.path as string) || "";
+      const mth = (log.method as string) || "GET";
+      // 旧记录无user_type字段→运行时按UA+路径补分类（与middleware同口径）
+      let userType = (log.user_type as string) || "";
+      if (!userType) {
+        if (/wp-admin|\.env|phpmyadmin|\.git|xmlrpc/i.test(pth)) userType = "scan";
+        else if (/googlebot|bingbot|baiduspider|sogou|duckduckbot|applebot/i.test(ua)) userType = "searchbot";
+        else if (/gptbot|claudebot|ccbot|perplexitybot|bytespider/i.test(ua)) userType = "aicrawler";
+        else if (/python|scrapy|curl\/|wget|okhttp|aiohttp|httpx|go-http/i.test(ua) || (!ua && mth === "POST")) userType = "badbot";
+        else if (/mozilla|chrome|safari|firefox|edge/i.test(ua)) userType = "human";
+        else userType = "unknown";
+      }
       return {
         ts: (log.ts as string) || (r.created as string) || "",
         ip: (log.ip as string) || "unknown",
-        path: (log.path as string) || "",
-        method: (log.method as string) || "GET",
-        ua: (log.ua as string) || null,
+        path: pth,
+        method: mth,
+        ua,
         country: (log.country as string) || null,
         city: (log.city as string) || null,
+        user_type: userType,
+        geo: (globalThis as { __geoCache?: Map<string, string> }).__geoCache?.get((log.ip as string) || "") || "",
       };
     });
     const chatList = chats ?? [];
@@ -163,6 +178,27 @@ export async function GET(request: NextRequest) {
         aiCalls: aiCount,
         chatCount: chatList.length,
       },
+      // 10/1意图分类统计+真实访客模块数据（逸翔令）
+      intentStats: {
+        human: accessList.filter((r) => r.user_type === "human").length,
+        searchbot: accessList.filter((r) => r.user_type === "searchbot").length,
+        aicrawler: accessList.filter((r) => r.user_type === "aicrawler").length,
+        badbot: accessList.filter((r) => r.user_type === "badbot").length,
+        scan: accessList.filter((r) => r.user_type === "scan").length,
+        unknown: accessList.filter((r) => r.user_type === "unknown").length,
+      },
+      humanIPs: Array.from(
+        accessList.filter((r) => r.user_type === "human").reduce((m, r) => {
+          const ip = r.ip as string;
+          const e = m.get(ip) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), geo: (r.geo as string) || "" };
+          e.count += 1;
+          if ((r.ts as string) < e.first) e.first = r.ts as string;
+          if ((r.ts as string) > e.last) e.last = r.ts as string;
+          e.paths.add(r.path as string);
+          m.set(ip, e);
+          return m;
+        }, new Map()).values(),
+      ).map((e) => ({ ...e, paths: Array.from(e.paths).slice(0, 6) })),
       ipRows,
       recent: accessList.slice(0, 80),
       chats: chatList,
