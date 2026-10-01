@@ -19,6 +19,9 @@ export function UsernamePrompt() {
   const [gate, setGate] = useState<"checking" | "locked" | "success" | "open">("checking");
   const [savedName, setSavedName] = useState("");
   const [value, setValue] = useState("");
+  const [city, setCity] = useState("");
+  const [claimError, setClaimError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [shake, setShake] = useState(false);
 
   useEffect(() => {
@@ -32,20 +35,53 @@ export function UsernamePrompt() {
     }
   }, [pathname]);
 
-  function save() {
+  async function save() {
     const v = value.trim();
+    const c = city.trim();
     if (!isValidName(v)) {
       setShake(true);
       window.setTimeout(() => setShake(false), 400);
       return;
     }
-    // 种1年cookie（非HttpOnly——自称式名字非敏感凭据，前端可写）
-    document.cookie = `${COOKIE_NAME}=${encodeURIComponent(v)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
-    localStorage.setItem("fx_username_set", "1");
-    localStorage.setItem("fx_username", v);
-    setSavedName(v);
-    setGate("success"); // 注册成功反馈（10/2逸翔令）：确认态1.4秒再进入
-    window.setTimeout(() => setGate("open"), 1400);
+    setSubmitting(true);
+    try {
+      // 唯一性裁决（10/2逸翔令：不能重名）——服务端登记，重名409+自动建议
+      const res = await fetch("/api/invest/username-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: v, city: c }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.status === 409 && json.suggestion) {
+        setValue(json.suggestion);
+        setClaimError(`「${v}」已被使用，试试「${json.suggestion}」`);
+        setShake(true);
+        window.setTimeout(() => setShake(false), 400);
+        return;
+      }
+      if (!res.ok || !json.ok) {
+        // 登记服务不可用：降级放行（可用性优先——监控无名字，功能不受影响）
+        setClaimError("");
+      }
+      const finalName = (json.ok && json.name) || v;
+      const finalCity = (json.ok && json.city) || c;
+      document.cookie = `${COOKIE_NAME}=${encodeURIComponent(finalName)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
+      if (finalCity) document.cookie = `fx_city=${encodeURIComponent(finalCity)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
+      localStorage.setItem("fx_username_set", "1");
+      localStorage.setItem("fx_username", finalName);
+      setSavedName(finalName);
+      setGate("success");
+      window.setTimeout(() => setGate("open"), 1400);
+    } catch {
+      // 网络异常：降级放行
+      document.cookie = `${COOKIE_NAME}=${encodeURIComponent(v)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
+      localStorage.setItem("fx_username_set", "1");
+      setSavedName(v);
+      setGate("success");
+      window.setTimeout(() => setGate("open"), 1400);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (gate === "open" || gate === "checking") return null;
@@ -78,16 +114,25 @@ export function UsernamePrompt() {
             placeholder="你的名字（2-12字符）"
             className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-center text-base text-[var(--text)] outline-none focus:border-[var(--accent)]"
           />
+          <input
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && valid && !submitting && save()}
+            maxLength={12}
+            placeholder="所在城市（可选，如：泉州）"
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-center text-base text-[var(--text)] outline-none focus:border-[var(--accent)]"
+          />
           <button
-            onClick={save}
-            disabled={!valid}
+            onClick={() => void save()}
+            disabled={!valid || submitting}
             className="w-full rounded-xl bg-[var(--primary)] py-3 text-sm font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-40"
           >
-            进入
+            {submitting ? "登记中…" : "进入"}
           </button>
           {!valid && value.trim().length > 0 ? (
             <p className="text-center text-xs text-[var(--warning)]">名字需2-12个字符，仅限中文、字母、数字</p>
           ) : null}
+          {claimError ? <p className="text-center text-xs text-[var(--warning)]">{claimError}</p> : null}
         </div>
         <p className="mt-8 text-center text-xs text-[var(--text-muted)]">
           本工具为私人使用，访问记录仅用于统计
