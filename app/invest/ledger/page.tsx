@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { readAllLedger, readKbEntries } from "@/lib/supabase";
 
@@ -68,7 +69,50 @@ function parseSettle(content: string): SettleInfo | null {
   }
 }
 
-export default async function LedgerPage() {
+// 10/1 P2-7修复：页头+骨架屏立即渲染（TTFB不受Supabase查询拖累——全站最慢2.3s实锤），
+// 数据聚合+列表包Suspense流式补齐；footer保留在数据区尾部（流式后自然出现）
+export default function LedgerPage() {
+  return (
+    <div className="mx-auto max-w-3xl px-5 py-8">
+      <header className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">判断账本</h1>
+        <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">
+          AI每条判断都带失效条件，由程序按行情机械结算——不靠AI自评，不挑着展示。
+          <span className="text-[var(--text)]">被证伪的判断同样公开</span>
+          ，错的可见性就是这份账本的信任来源。
+        </p>
+      </header>
+      <Suspense fallback={<LedgerSkeleton />}>
+        <LedgerData />
+      </Suspense>
+    </div>
+  );
+}
+
+function LedgerSkeleton() {
+  return (
+    <div>
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="animate-pulse rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+            <div className="h-8 w-12 rounded bg-[var(--surface-muted)]" />
+            <div className="mt-2 h-3 w-20 rounded bg-[var(--surface-muted)]" />
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="animate-pulse rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4">
+            <div className="h-4 w-40 rounded bg-[var(--surface-muted)]" />
+            <div className="mt-3 h-3 w-full rounded bg-[var(--surface-muted)]" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+async function LedgerData() {
   const [ledger, kbRows] = await Promise.all([readAllLedger(500), readKbEntries(300)]);
 
   const settleMap = new Map<string, SettleInfo>();
@@ -107,16 +151,7 @@ export default async function LedgerPage() {
   const watching = items.length - settledCount;
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-8">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">判断账本</h1>
-        <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">
-          AI每条判断都带失效条件，由程序按行情机械结算——不靠AI自评，不挑着展示。
-          <span className="text-[var(--text)]">被证伪的判断同样公开</span>
-          ，错的可见性就是这份账本的信任来源。
-        </p>
-      </header>
-
+    <>
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
         {[
           { label: "判断总数", value: items.length },
@@ -226,6 +261,6 @@ export default async function LedgerPage() {
         存活≠正确，只代表失效条件未被触发；被证伪的判断保留在账本中作为校准依据。
         本页不构成投资建议。
       </footer>
-    </div>
+    </>
   );
 }

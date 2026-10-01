@@ -56,13 +56,28 @@ export default function FlashPage() {
     }
   }, []);
 
+  // 10/1 P3-11：权限被拒/不支持时点击给明确反馈（原实现静默返回=用户点了没反应）
+  const [notifHint, setNotifHint] = useState("");
   const toggleNotif = useCallback(async () => {
-    if (!("Notification" in window)) return;
+    if (!("Notification" in window)) {
+      setNotifHint("此浏览器不支持通知");
+      setTimeout(() => setNotifHint(""), 2500);
+      return;
+    }
     if (Notification.permission === "granted") {
       setNotifEnabled((v) => !v);
-    } else if (Notification.permission !== "denied") {
-      const perm = await Notification.requestPermission();
-      if (perm === "granted") setNotifEnabled(true);
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setNotifHint("浏览器已禁止本站通知，请在地址栏权限设置中允许");
+      setTimeout(() => setNotifHint(""), 2500);
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    if (perm === "granted") setNotifEnabled(true);
+    else if (perm === "denied") {
+      setNotifHint("通知权限被拒绝，如需提醒请在浏览器设置中允许");
+      setTimeout(() => setNotifHint(""), 2500);
     }
   }, []);
 
@@ -339,14 +354,14 @@ export default function FlashPage() {
               {/* 重要快讯通知开关 */}
               <button
                 onClick={toggleNotif}
-                title={notifEnabled ? "关闭重要快讯提醒" : "开启重要快讯提醒"}
+                title={notifHint || (notifEnabled ? "关闭重要快讯提醒" : "开启重要快讯提醒")}
                 className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   notifEnabled
                     ? "bg-[var(--warning)] text-white"
                     : "bg-[var(--surface-muted)] text-[var(--text-muted)]"
                 }`}
               >
-                {notifEnabled ? "🔔 提醒开" : "🔔 提醒关"}
+                {notifHint || (notifEnabled ? "🔔 提醒开" : "🔔 提醒关")}
               </button>
             </div>
           </header>

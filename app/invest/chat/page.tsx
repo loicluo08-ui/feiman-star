@@ -1090,6 +1090,22 @@ export default function ChatPage() {
             </div>
             {ledgerEntries.length === 0 ? (
               <p className="mt-2 text-[var(--text-secondary)]">暂无记账。AI给出主判断时自动存档（90天），再次问同一标的会主动对账。</p>
+            ) : ledgerEntries.length >= 100 ? (
+              <>
+                <p className="mt-2 rounded bg-[var(--surface-muted)] px-2 py-1 text-[var(--text-muted)]">
+                  ⏱ 账本容量提示：当前{ledgerEntries.length}/200条，最早的记录将按90天期限+200条上限滚动淘汰。
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                {[...ledgerEntries].reverse().map((e, i) => (
+                  <li key={`${e.ts}-${i}`} className="border-l-2 border-[var(--primary)]/40 pl-2">
+                    <span className="font-medium">{e.date} {e.symbol}</span>：立场={e.stance}
+                    {e.keyLevel ? <> | 关键位={e.keyLevel}</> : null}
+                    {e.invalidation ? <> | 失效={e.invalidation}</> : null}
+                    {e.confidence ? <> | 信心度={e.confidence}</> : null}
+                  </li>
+                ))}
+                </ul>
+              </>
             ) : (
               <ul className="mt-2 space-y-1.5">
                 {[...ledgerEntries].reverse().map((e, i) => (
@@ -1438,7 +1454,7 @@ export default function ChatPage() {
               onKeyDown={handleKeyDown}
               rows={1}
               maxLength={4000}
-              placeholder="输入问题，或粘贴截图让AI分析…"
+              placeholder="输入问题，或粘贴截图分析…"
               className="min-h-11 flex-1 resize-none self-center overflow-y-auto bg-transparent px-2 py-2.5 text-[16px] leading-6 outline-none"
             />
             <span className="hidden shrink-0 self-end pb-2 text-[11px] leading-none text-[var(--text-muted)] sm:block">
