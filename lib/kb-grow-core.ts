@@ -217,8 +217,11 @@ export async function growInsights(): Promise<GrowInsightResult> {
       console.error(`[kb-grow] deepseek_status=${dsRes.status} body=${body}`);
       return { insights: [], flashCount: items.length, aiOk: false, error: `ds_${dsRes.status}:${body}` };
     }
-    const dsJson = (await dsRes.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const resp = dsJson.choices?.[0]?.message?.content ?? null;
+    const dsJson = (await dsRes.json()) as { choices?: Array<{ message?: { content?: string; reasoning_content?: string } }> };
+    // 思考模型兼容：content空时取reasoning_content（DeepSeek V4.1-Flash默认思考，10/1实测content空实锤）
+    const rawMsg = dsJson.choices?.[0]?.message;
+    const rawContent = rawMsg?.content?.trim() ? rawMsg.content : (rawMsg?.reasoning_content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    const resp = rawContent || null;
     if (!resp) {
       return { insights: [], flashCount: items.length, aiOk: false, error: `ds_empty:${JSON.stringify(dsJson).slice(0, 150)}` };
     }

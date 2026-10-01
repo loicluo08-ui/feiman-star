@@ -518,6 +518,8 @@ export async function callGLMFlash(
           messages,
           temperature: options.temperature ?? 0.3,
           max_tokens: Math.min(options.max_tokens ?? 900, 1024),
+          // 混合思考模型：提炼类任务禁用思考（思考占满max_tokens致content空——10/1实测教训）
+          thinking: { type: "disabled" },
         }),
         cache: "no-store",
         signal: controller.signal,
