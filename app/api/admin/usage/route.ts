@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     // 并行拉：访问日志（kb_dynamic type=access_log，10/1改零DDL立即可用）最近500 + 对话日志最近50
     const [kbRaw, chats] = await Promise.all([
       sbRest<Array<Record<string, unknown>>>("kb_dynamic?type=eq.access_log&select=id,content,created&order=created.desc&limit=500"),
-      sbRest<Array<Record<string, unknown>>>("chat_logs?select=id,question,style,created_at&order=created_at.desc&limit=50"),
+      sbRest<Array<Record<string, unknown>>>("chat_logs?select=id,question,style&order=id.desc&limit=50"),
     ]);
 
     // kb_dynamic行解包：content JSON={ip,path,method,ua,country,city,referer}，created当ts
