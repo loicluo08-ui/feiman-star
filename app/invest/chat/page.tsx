@@ -41,6 +41,8 @@ type ChatItem = {
   /** GLM-4V转述（两段式管线回存）：追问时以文本复用，图片不再重传 */
   imageAnalysis?: string;
   injected?: string[];
+  /** 本条回答是否由并行会诊产出（发送时模式快照）——历史角标读此字段而非当前开关，防切换开关后角标撒谎 */
+  parallelDelib?: boolean;
 };
 
 type ChatHistoryRecord = {
@@ -198,6 +200,12 @@ export default function ChatPage() {
   const [style, setStyle] = useState<AnalysisStyle>("balanced");
   // 9/13阶段3：C档并行会诊开关（仅blend档生效）——3视角真并行→融合裁决→高分歧异构裁判
   const [parallelDelib, setParallelDelib] = useState(false);
+  // 统一换档入口：并行会诊开关属于blend档——切走blend自动收起重置（防状态残留：切回blend时"会诊中"莫名亮着，
+  // 下一条自动走会诊=成本2-3倍+首字50-70秒，用户感知按键自己变状态；10/1逸翔真机反馈修复）
+  function changeStyle(next: AnalysisStyle) {
+    setStyle(next);
+    if (next !== "blend") setParallelDelib(false);
+  }
   // 大师视角按钮展开态：切到大师风格后保持展开（防「选中项藏在收起组里」的迷失感），关闭新对话不重置
   const [showGurus, setShowGurus] = useState(false);
   // 判断账本面板（9/12）：本设备存档的AI主判断可视化——记账/对账链路的用户可见端
@@ -262,7 +270,7 @@ export default function ChatPage() {
       activeHistoryId.current = result.historyId;
       setMessages(result.messages);
       setHistory(result.history);
-      setStyle(result.style);
+      changeStyle(result.style);
       setLoading(false);
       setError("");
       scrollToBottom();
@@ -273,7 +281,7 @@ export default function ChatPage() {
         activeHistoryId.current = taskError.result.historyId;
         setMessages(taskError.result.messages);
         setHistory(taskError.result.history);
-        setStyle(taskError.result.style);
+        changeStyle(taskError.result.style);
       }
       setLoading(false);
       setError(taskError instanceof Error ? taskError.message : "AI暂时不可用");
@@ -328,7 +336,7 @@ export default function ChatPage() {
     activeHistoryId.current = record.id;
     lastSubmitRef.current = null;
     setMessages(record.messages);
-    setStyle(record.style);
+    changeStyle(record.style);
     setShowHistory(false);
     setError("");
     // 摘要恢复：历史存档里的summary（无则空，窗口外消息在下次提交时重新触发摘要）
@@ -482,6 +490,8 @@ export default function ChatPage() {
     injectedRef.current = [];
     const currentStyle = style;
     const parallelMode = parallelDelib;
+    // 发送时模式快照：随本轮assistant消息落档，历史角标据此渲染（防开关切换后历史角标变化）
+    const parallelActive = currentStyle === "blend" && parallelMode;
     const historyId = activeHistoryId.current || `${Date.now()}`;
     activeHistoryId.current = historyId;
     const epoch = epochRef.current;
@@ -559,7 +569,7 @@ export default function ChatPage() {
       }
     }
 
-    setMessages([...currentMessages, userItem, { role: "assistant", text: "" }]);
+    setMessages([...currentMessages, userItem, { role: "assistant", text: "", parallelDelib: parallelActive || undefined }]);
     setLoading(true);
     setError("");
     setStatusLine("");
@@ -577,7 +587,7 @@ export default function ChatPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           // 10/1深度改C：historyLedger全量传（后端按symbol优先筛选，slice(-8)会漏早期同标的轨迹）
-          body: JSON.stringify({ messages: apiMessages, style: currentStyle, historyLedger: loadLedger(), parallel: currentStyle === "blend" && parallelMode }),
+          body: JSON.stringify({ messages: apiMessages, style: currentStyle, historyLedger: loadLedger(), parallel: parallelActive }),
           signal: controller.signal,
         });
 
@@ -605,7 +615,7 @@ export default function ChatPage() {
               setMessages([
                 ...currentMessages,
                 userItem,
-                { role: "assistant", text: stripLedgerLines(answer) },
+                { role: "assistant", text: stripLedgerLines(answer), parallelDelib: parallelActive || undefined },
               ]);
               scrollToBottom();
             }
@@ -743,7 +753,7 @@ export default function ChatPage() {
         const completedMessages = [
           ...currentMessages,
           userItem,
-          { role: "assistant" as const, text: displayAnswer, injected: injectedRef.current.length > 0 ? [...injectedRef.current] : undefined },
+          { role: "assistant" as const, text: displayAnswer, injected: injectedRef.current.length > 0 ? [...injectedRef.current] : undefined, parallelDelib: parallelActive || undefined },
         ];
         const nextHistory = storeConversation(completedMessages, currentStyle, historyId, summary.get() || undefined);
         return {
@@ -761,7 +771,7 @@ export default function ChatPage() {
           const stoppedMessages = [
             ...currentMessages,
             userItem,
-            { role: "assistant" as const, text: `${stripLedgerLines(answer)}\n\n（已停止生成）`, injected: injectedRef.current.length > 0 ? [...injectedRef.current] : undefined },
+            { role: "assistant" as const, text: `${stripLedgerLines(answer)}\n\n（已停止生成）`, injected: injectedRef.current.length > 0 ? [...injectedRef.current] : undefined, parallelDelib: parallelActive || undefined },
           ];
           const nextHistory = storeConversation(stoppedMessages, currentStyle, historyId, summary.get() || undefined);
           return {
@@ -1003,7 +1013,7 @@ export default function ChatPage() {
               ].map((s) => (
                 <button
                   key={s.key}
-                  onClick={() => setStyle(s.key as typeof style)}
+                  onClick={() => changeStyle(s.key as typeof style)}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     style === s.key
                       ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
@@ -1015,7 +1025,7 @@ export default function ChatPage() {
               ))}
               {/* 大师融合旗舰：3视角独立分析→交叉检验→融合单一深度输出（深度模型+thinking）。新基线：首字约50-70秒 */}
               <button
-                onClick={() => setStyle("blend")}
+                onClick={() => changeStyle("blend")}
                 title="大师融合旗舰模式：多视角独立审视+交叉检验，融合为单一深度输出（深度模型+思维链，首字约50-70秒）"
                 className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
                   style === "blend"
@@ -1036,7 +1046,7 @@ export default function ChatPage() {
                       : "border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--text)]"
                   }`}
                 >
-                  {parallelDelib ? "⚡会诊中" : "⚡并行会诊"}
+                  {parallelDelib ? "⚡会诊开" : "⚡并行会诊"}
                 </button>
               )}
               <button
@@ -1054,7 +1064,7 @@ export default function ChatPage() {
                 GURU_STYLES.map((s) => (
                   <button
                     key={s.key}
-                    onClick={() => setStyle(s.key as typeof style)}
+                    onClick={() => changeStyle(s.key as typeof style)}
                     title={s.hint}
                     className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                       style === s.key
@@ -1250,7 +1260,7 @@ export default function ChatPage() {
                       <span className="rounded-full bg-[var(--primary)]/8 px-2 py-0.5 text-[11px] font-medium text-[var(--text-muted)]">
                         ⚡ 大师融合旗舰输出
                       </span>
-                      {parallelDelib ? (
+                      {m.parallelDelib ? (
                         <span className="rounded-full bg-[var(--warning-bg)] px-2 py-0.5 text-[11px] font-medium text-[var(--warning)]">
                           C档并行会诊
                         </span>
