@@ -18,6 +18,8 @@ export type SourceHealth = {
   ok: boolean;
   latencyMs: number | null;
   detail: string;
+  /** optional=true的源不参与总体status判定（如github_sync备份通道未配置是已知态，非故障） */
+  optional?: boolean;
 };
 
 export type HealthReport = {
@@ -42,21 +44,33 @@ async function withTimeout(label: string, probe: () => Promise<SourceHealth>): P
   }
 }
 
-/** 金十快讯：flash_newest.js可达性（与lib/flash-source同源） */
+/** 金十快讯：对齐lib/flash-source三链fallback逐条探测（10/1线上实测www带参数404而cdn链通——单URL探测会误报） */
+const JIN10_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
 async function probeJin10(): Promise<SourceHealth> {
   const start = Date.now();
-  const res = await fetch("https://cdn.jin10.com/flash_newest.js", {
-    headers: { "User-Agent": "Mozilla/5.0", Accept: "*/*" },
-    signal: AbortSignal.timeout(PROBE_TIMEOUT),
-    cache: "no-store",
-  });
-  const ok = res.ok;
-  return {
-    name: "jin10_flash",
-    ok,
-    latencyMs: Date.now() - start,
-    detail: ok ? "ok" : `http_${res.status}`,
-  };
+  const urls = [
+    `https://www.jin10.com/flash_newest.js?_=${Date.now()}`,
+    `https://cdn.jin10.com/flash_newest.js?_=${Date.now()}`,
+    "https://www.jin10.com/flash_newest.js",
+  ];
+  const fails: string[] = [];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": JIN10_UA, Referer: "https://www.jin10.com/", Accept: "*/*" },
+        signal: AbortSignal.timeout(PROBE_TIMEOUT),
+        cache: "no-store",
+      });
+      if (res.ok) {
+        return { name: "jin10_flash", ok: true, latencyMs: Date.now() - start, detail: `ok(${new URL(url).host})` };
+      }
+      fails.push(`${new URL(url).host}:${res.status}`);
+    } catch {
+      fails.push(`${new URL(url).host}:err`);
+    }
+  }
+  return { name: "jin10_flash", ok: false, latencyMs: Date.now() - start, detail: fails.join("|") };
 }
 
 /** Nasdaq财报日历：api.nasdaq.com单日探测（防bot指纹变化） */
@@ -137,7 +151,8 @@ function probeConfigs(): SourceHealth[] {
       name: "github_sync",
       ok: Boolean(process.env.GITHUB_TOKEN),
       latencyMs: null,
-      detail: Boolean(process.env.GITHUB_TOKEN) ? "configured" : "missing",
+      detail: Boolean(process.env.GITHUB_TOKEN) ? "configured" : "missing(备份通道，主通道=supabase)",
+      optional: true,
     },
   ];
 }
@@ -157,7 +172,7 @@ export async function runHealthCheck(): Promise<HealthReport> {
     withTimeout("tencent_quote", probeQt),
   ]);
   const sources = [jin10, nasdaq, sa, qt, ...probeConfigs()];
-  const status = sources.every((s) => s.ok) ? "ok" : "degraded";
+  const status = sources.filter((s) => !s.optional).every((s) => s.ok) ? "ok" : "degraded";
   const result: HealthReport = { status, checkedAt: new Date().toISOString(), sources };
   healthCache = { data: result, expiresAt: Date.now() + HEALTH_TTL };
   return result;
