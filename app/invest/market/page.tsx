@@ -228,7 +228,8 @@ export default function MarketPage() {
         const quoteResponse = await fetch(`/api/invest/market-pulse?symbols=${encodeURIComponent(symbol)}`, { cache: "no-store" });
         const quoteJson = quoteResponse.ok ? await quoteResponse.json() : null;
         const quote = quoteJson?.data?.quotes?.[0] as QuoteData | undefined;
-        if (!quote || quote.price == null) throw new Error("symbol_not_found");
+        // 10/1 P2-14：price<=0也算无效（ZZZZZ实测入列表显示$0.00死行——腾讯对未知代码返回空价被parseFloat解析为0，0!=null漏网）
+        if (!quote || quote.price == null || quote.price <= 0) throw new Error("symbol_not_found");
       }
 
       setWatchlist((previous) => [...previous, { symbol, name: exact?.name || symbol }]);

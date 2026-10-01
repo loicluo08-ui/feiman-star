@@ -25,6 +25,48 @@ import { runParallelDeliberation } from "@/lib/parallel-deliberation";
 import { ACTION_PLAN_BLOCK } from "@/lib/chat-action-plan";
 import { PLAN_LIFECYCLE_BLOCK } from "@/lib/chat-plan-lifecycle";
 import { DELIBERATION_ENHANCEMENT } from "@/lib/chat-synthesis";
+
+/** 并行会诊记账行真实值生成（10/1六轮检测P2-3：占位符"见XX"实锤——delib结构化数据在手没填）。
+ * 标的=effectiveStockCodes首只；立场=synthesis裁决段方向词推断；关键位/失效/信心度=synthesis对应段正则提取。
+ * 提取不到的字段保留"见裁决表述"引用式（宁缺勿编），但标的与立场必须有实值才输出记账行。 */
+function buildDelibLedgerLine(
+  delib: { synthesis: string; perspectives: { name: string; stance: string; key_args: string }[]; dissent_level: string; arbitrator_used: boolean },
+  stockCodes: string[],
+): string {
+  const syn = delib.synthesis || "";
+  // 标的：注入行情代码优先，缺失=不输出记账行（宁可漏记不写"（见上文分析）"垃圾行）
+  const symbol = stockCodes && stockCodes.length > 0 ? stockCodes[0] : "";
+  if (!symbol) return "【判断记账】（标的未识别，跳过记账）";
+
+  // 立场：synthesis【裁决】段+视角stance投票（多数决，平票=观望）
+  const rulingSeg = (syn.match(/【裁决】[^\n]{0,400}/) || [""])[0];
+  let stance = "观望";
+  const bullish = (rulingSeg.match(/买入|做多|看多|加仓|建仓|持有多|首笔/g) || []).length;
+  const bearish = (rulingSeg.match(/卖出|做空|看空|减仓|回避|清仓|不建仓/g) || []).length;
+  if (bullish > bearish) stance = "多";
+  else if (bearish > bullish) stance = "空";
+  else {
+    const up = delib.perspectives.filter((p) => /看多|做多|买入|持有多/.test(p.stance)).length;
+    const down = delib.perspectives.filter((p) => /看空|做空|卖出|减仓/.test(p.stance)).length;
+    if (up > down) stance = "多";
+    else if (down > up) stance = "空";
+  }
+
+  // 关键位：裁决/行动分支段首个价格样式数字（$或4-6位带小数优先，避开百分比——%前数字不取）
+  const actSeg = (syn.match(/(?:行动分支|关键位|行动计划)[^\n]{0,300}/) || [""])[0];
+  const lvMatch = actSeg.match(/\$?(\d{2,6}(?:\.\d{1,2})?)(?!\s*%)/);
+  const keyLevel = lvMatch ? lvMatch[1] : "见行动分支";
+
+  // 失效条件：失效/证伪段第一个具体表述（120字内）
+  const invMatch = syn.match(/(?:失效条件|失效预注册|证伪信号|翻转信号)[^：:\n]*[：:]\s*([^\n]{8,120})/);
+  const invalidation = invMatch ? invMatch[1].trim() : "见各视角失效条件";
+
+  // 信心度：synthesis首个N%
+  const confMatch = syn.match(/信心度[=：:]?\s*(\d{1,3}%)/);
+  const confidence = confMatch ? confMatch[1] : "见裁决表述";
+
+  return `【判断记账】标的=${symbol} | 立场=${stance} | 关键位=${keyLevel} | 失效=${invalidation} | 信心度=${confidence}`;
+}
 import { CHAT_QUALITY_BLOCK } from "@/lib/chat-quality";
 import { QUALITY_GATE_BLOCK } from "@/lib/quality-gate-block";
 import { MASTER_PERSPECTIVE_BLOCK } from "@/lib/master-perspective-block";
@@ -83,6 +125,8 @@ const requestSchema = z.object({
 // 判断记账核验：失效文本的方向词分类（跌破类=向下触发 / 突破类=向上触发）
 const TRIG_DOWN_RE = /跌破|失守|下破|低于|收于.*之下/;
 const TRIG_UP_RE = /突破|站上|上破|高于|收于.*之上/;
+// 非价格维度词（10/1 P2-12同源修复——chat注入侧verify与cron结算同病："PE破28"被当股价28机械判定产生假"失效已触发"）
+const NON_PRICE_RE = /\b(PE|PB|PS|ROE|ROA|EPS)\b|市盈率|市净率|股息|增速|增长率|涨跌幅|回报率|利润率|毛利率|净利率|仓位|比例|概率|信心度|倍\b/;
 
 const CROSS_VALIDATION_BLOCK = [
   "输出前内部交叉验证（不输出验证过程，只输出最终通过验证的回答）：",
@@ -654,7 +698,7 @@ export async function POST(request: NextRequest) {
               `**三视角原文（独立分析互不可见；分歧度=${delib.dissent_level}${delib.arbitrator_used ? "，异构裁判已介入" : ""}）**`,
               ...delib.perspectives.map(p => `◆ ${p.name}：${p.stance}`),
               "",
-              "【判断记账】标的=（见上文分析） | 立场=见融合裁决 | 关键位=见行动分支 | 失效=见各视角失效条件 | 信心度=见裁决表述",
+              buildDelibLedgerLine(delib, effectiveStockCodes),
             ].join("\n");
             fullText = delibText;
             send({ type: "patch", text: fullText });
@@ -740,6 +784,8 @@ export async function POST(request: NextRequest) {
                 const q = matchQuote(e.symbol);
                 if (!q || q.price == null) return { state: "unknown", text: "本轮未注入该标的行情，无法自动核验" };
                 const text = e.invalidation || "";
+                // 10/1 P2-12：非价格维度（PE/估值/比率类）不机械核验——口径错位会产生假"失效已触发"（KO"PE破28"实锤）
+                if (NON_PRICE_RE.test(text)) return { state: "unknown", text: "失效条件为估值/比率类非价格维度，系统不机械核验，由AI按最新基本面数据核验" };
                 const nums = text.match(/\d+(?:\.\d+)?/g);
                 if (!text || !nums || nums.length === 0) return { state: "unknown", text: `现价${q.price}，无失效价位记录，不机械核验` };
                 const level = parseFloat(nums[0]);

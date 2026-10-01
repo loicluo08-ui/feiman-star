@@ -105,3 +105,62 @@ export function clearLedger(): void {
     // localStorage满/禁用：静默（账本是增强不是依赖）
   }
 }
+
+/**
+ * 裁决行兜底提取（10/1六轮检测P2-11：记账行产出不稳定——规则27靠AI自觉，
+ * AAPL标准档实测漏记账行）。parseLedgerLine失败时从【裁决】行结构化提取：
+ * 标的=注入行情锚点行（优先）→用户文本大写代码；立场=方向词推断；
+ * 关键位=裁决行首个价格样式数字；失效=失效/证伪段首个具体表述。
+ * 提取不到标的或立场→null（宁缺勿错，不写垃圾行）。
+ */
+export function parseRulingFallback(text: string, injected: string[], userText: string): LedgerEntry | null {
+  const ruling = text.match(/【裁决】([^\n]+)/);
+  if (!ruling) return null;
+  const seg = ruling[1];
+
+  // 标的：注入行情锚点行（如"实时行情1只：NVDA 英伟达 $228.38..."或"NVIDIA CORP"）优先
+  let symbol = "";
+  const injectedText = (injected || []).join(" ");
+  const m = injectedText.match(/\b([A-Z]{2,6})\b\s*[\|·]/) || injectedText.match(/\b([A-Z]{2,6})(?:\(英伟达\)| CORP| INC| ETF)\b/);
+  if (m) symbol = m[1];
+  if (!symbol) {
+    const injectedCode = injectedText.match(/(?:行情|现价|最新价)[^\n]{0,40}?([A-Z]{2,6})/);
+    if (injectedCode) symbol = injectedCode[1];
+  }
+  // 用户文本大写代码兜底（排除常见噪声词）
+  if (!symbol) {
+    const NOISE = new Set(["PE","PB","ROE","EPS","ETF","CEO","VIX","FED","CPI","AI","ML","API","USD","MA","MA20","MA60","MA200"]);
+    const codes = userText.match(/\$?([A-Z]{2,6})\b/g) || [];
+    for (const c of codes) {
+      const clean = c.replace(/\$/g, "");
+      if (!NOISE.has(clean) && clean.length >= 2) { symbol = clean; break; }
+    }
+  }
+  if (!symbol) return null;
+
+  // 立场：裁决行动分支方向词推断
+  let stance = "观望";
+  if (/回踩买入|放量突破买入|做多|加仓|看多|建仓|维持现有仓位|首笔/.test(seg)) stance = "多";
+  else if (/卖出|做空|减仓|看空|回避|清仓|不建仓|观望不追/.test(seg)) stance = "空";
+
+  // 关键位：裁决行首个价格样式数字（2-6位，可带小数）
+  const lv = seg.match(/\$?(\d{2,6}(?:\.\d{1,2})?)/);
+  const keyLevel = lv ? lv[1] : "";
+
+  // 失效条件：失效/证伪/翻转信号段第一个具体表述
+  const invMatch = text.match(/(?:失效预注册|失效条件|证伪信号|翻转信号|失效)[^：:\n]*[：:]\s*([^\n]{8,150})/);
+  const invalidation = invMatch ? invMatch[1].trim() : "";
+
+  // 信心度：全文首个"信心度N%"
+  const conf = text.match(/信心度[=：:]?\s*(\d{1,3}%)/);
+
+  return {
+    symbol: `${symbol}（兜底提取）`,
+    stance,
+    keyLevel: keyLevel || "见裁决行动分支",
+    invalidation: invalidation || "见裁决行失效条件",
+    confidence: conf ? conf[1] : "见裁决表述",
+    date: new Date().toISOString().slice(0, 10),
+    ts: Date.now(),
+  };
+}

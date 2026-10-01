@@ -4,6 +4,17 @@
  * 过滤逻辑必须单源维护，否则客户端直连路径会绕过服务端过滤（9/5修复的教训）。
  */
 
+// 与flash-source.ts同名函数同源逻辑（内联副本防循环依赖——flash-source已import本文件）
+function formatRelativeTime(ts: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = now - ts;
+  if (diff < 10) return "刚刚";
+  if (diff < 60) return `${diff}秒前`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+  return new Date(ts * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+}
+
 export function stripHtml(html: string): string {
   // 9/6红队复核：`<[^>]+>`对纯"<"输入是二次方回溯（10K字符36ms→15K 80ms实测）
   // 超长输入先截断（正常快讯全文<1KB，5KB帽只对对抗输入生效）
@@ -105,7 +116,17 @@ export function dedupFlashItems<T extends { content_text?: string; content: stri
 
     if (verdict === "upgrade") {
       const old = kept[upgradeIndex];
-      kept[upgradeIndex] = { ...item, timestamp: Math.max(item.timestamp, old.timestamp) };
+      // 10/1 P2-1修复：合并字段一致性——timestamp取max后，time_str必须从合并后timestamp重算
+      // （原实现time_str透传新条目=旧发布时间文本，与max时间戳错配——"1小时前"排在"6分钟前"上面实锤）；
+      // is_important取OR（金十important=1被东财长文upgrade后重要标记丢失风险）
+      const mergedTs = Math.max(item.timestamp, old.timestamp);
+      const mergedImportant = (old as { is_important?: boolean }).is_important === true || (item as { is_important?: boolean }).is_important === true;
+      kept[upgradeIndex] = {
+        ...item,
+        timestamp: mergedTs,
+        time_str: formatRelativeTime(mergedTs),
+        ...(("is_important" in old || "is_important" in item) ? { is_important: mergedImportant } : {}),
+      };
       normTexts[upgradeIndex] = t;
       continue;
     }

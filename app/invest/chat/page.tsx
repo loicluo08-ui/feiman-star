@@ -2,7 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/background-task";
-import { loadLedger, parseLedgerLine, saveEntry, stripLedgerLines, clearLedger, type LedgerEntry } from "@/lib/judgment-ledger";
+import { loadLedger, parseLedgerLine, parseRulingFallback, saveEntry, stripLedgerLines, clearLedger, type LedgerEntry } from "@/lib/judgment-ledger";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 
 // 9/13流畅性P1：块级增量渲染（streaming-markdown模式）——
@@ -227,6 +227,8 @@ export default function ChatPage() {
   const [statusSteps, setStatusSteps] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState(-1);
   const injectedRef = useRef<string[]>([]);
+  // 10/1 P1-1修复：账本清空二段式确认（误点一键清光判断存档实锤——3秒未确认自动回退）
+  const [clearArmed, setClearArmed] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   // 长对话滚动摘要（窗口外记忆）：会话级状态，随历史持久化
@@ -704,20 +706,30 @@ export default function ChatPage() {
 
         // 判断记账（9/12）：先从原文提取机器记账行存档，再剥离后进对话——
         // 提取失败（无主判断/短问）静默跳过；这是跨会话判断追踪的写入端
-        const ledgerEntry = parseLedgerLine(answer);
+        const ledgerEntry = parseLedgerLine(answer) ?? parseRulingFallback(answer, injectedRef.current, text);
         if (ledgerEntry) saveEntry(ledgerEntry);
-    // 9/13自动写入管道：判断云端同步（fire-and-forget）——数据进repo→回验cron→候选池→案例库
+    // 10/1自动写入管道v2：判断云端同步（fire-and-forget）
+    // 主通道=judgment-cloud（Supabase直写→ledger页可见→结算cron可结算——10/1 P1-sync修复）；
+    // GitHub通道（judgment-sync）保留并行，未来配GITHUB_TOKEN后恢复候选池供血
     try {
       const syncedRaw = localStorage.getItem("fx_judgment_synced_v1");
       const synced = new Set<number>(syncedRaw ? JSON.parse(syncedRaw) : []);
       const fresh = loadLedger().filter((e) => !synced.has(e.ts));
       if (fresh.length > 0) {
-        fetch("/api/invest/judgment-sync", {
+        const syncPayload = JSON.stringify({ entries: fresh });
+        const cloudPost = fetch("/api/invest/judgment-cloud", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ entries: fresh }),
-        }).then((r) => r.json()).then((r) => {
-          if (r.ok) {
+          body: syncPayload,
+        }).then((r) => r.json()).catch(() => null);
+        const ghPost = fetch("/api/invest/judgment-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: syncPayload,
+        }).then((r) => r.json()).catch(() => null);
+        // 任一通道写成功即标记已同步（避免重复写库）
+        Promise.all([cloudPost, ghPost]).then(([cloud, gh]) => {
+          if ((cloud && cloud.ok) || (gh && gh.ok)) {
             fresh.forEach((e) => synced.add(e.ts));
             localStorage.setItem("fx_judgment_synced_v1", JSON.stringify(Array.from(synced).slice(-500)));
           }
@@ -758,9 +770,13 @@ export default function ChatPage() {
           };
         }
 
+        const rawMsg = taskError instanceof Error ? taskError.message : "";
+        // 10/1 P2-8：浏览器原生错误文案本地化（"Failed to fetch"裸英文直甩用户——断网实测实锤）
         const message = isAbort
           ? "已停止生成"
-          : taskError instanceof Error ? taskError.message : "AI暂时不可用";
+          : rawMsg === "Failed to fetch" || rawMsg === "Load failed" || rawMsg === "NetworkError when attempting to fetch resource."
+            ? "网络连接失败，请检查网络后点击重试"
+            : rawMsg || "AI暂时不可用";
         // 失败轮不写历史：⚠️死对话进localStorage=会话列表永久留疤+重载会话后作为assistant
         // 上下文发给API（污染模型输入+白烧token）。失败原因走error bar展示（下方catch渲染），
         // UI保留user消息+重试入口；重试成功后完整轮才落历史（storeConversation按historyId覆盖）
@@ -891,7 +907,10 @@ export default function ChatPage() {
                     const imported = JSON.parse(text);
                     if (Array.isArray(imported)) {
                       const existing = readChatHistory();
-                      const merged = [...imported, ...existing].slice(0, 50);
+                      // 10/1 P2-2修复：按会话id去重（备份恢复场景导入已存在会话不重复）
+                      const seenIds = new Set(existing.map((h) => h.id));
+                      const deduped = imported.filter((h: ChatHistoryRecord) => h && typeof h.id === "string" && !seenIds.has(h.id));
+                      const merged = [...deduped, ...existing].slice(0, 50);
                       localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(merged));
                       setHistory(merged.slice(0, 20));
                     }
@@ -958,7 +977,10 @@ export default function ChatPage() {
                         const imported = JSON.parse(text);
                         if (Array.isArray(imported)) {
                           const existing = readChatHistory();
-                          const merged = [...imported, ...existing].slice(0, 50);
+                          // 10/1 P2-2修复：按会话id去重（同上）
+                          const seenIds = new Set(existing.map((h) => h.id));
+                          const deduped = imported.filter((h: ChatHistoryRecord) => h && typeof h.id === "string" && !seenIds.has(h.id));
+                          const merged = [...deduped, ...existing].slice(0, 50);
                           localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(merged));
                           setHistory(merged.slice(0, 20));
                         }
@@ -1048,10 +1070,21 @@ export default function ChatPage() {
               <span className="font-semibold">判断账本（本设备存档的AI主判断）</span>
               {ledgerEntries.length > 0 && (
                 <button
-                  onClick={() => { clearLedger(); setLedgerEntries([]); }}
-                  className="text-[var(--text-secondary)] underline hover:text-[var(--text)]"
+                  onClick={() => {
+                    // 10/1 P1-1：二段式确认——第一次点进入待确认态（3秒回退），再点才真清
+                    if (!clearArmed) {
+                      setClearArmed(true);
+                      setTimeout(() => setClearArmed(false), 3000);
+                      return;
+                    }
+                    setClearArmed(false);
+                    clearLedger();
+                    setLedgerEntries([]);
+                  }}
+                  className={`underline ${clearArmed ? "font-semibold text-red-600 dark:text-red-400" : "text-[var(--text-secondary)] hover:text-[var(--text)]"}`}
+                  title={clearArmed ? "再次点击确认清空（3秒后自动取消）" : "清空全部判断存档"}
                 >
-                  清空
+                  {clearArmed ? "确认清空？" : "清空"}
                 </button>
               )}
             </div>

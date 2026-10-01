@@ -425,7 +425,8 @@ export default function FlashPage() {
                       )}
                     </div>
                     {item.title && <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{item.title}</h3>}
-                    <p className="text-sm leading-6 text-[var(--text-secondary)] whitespace-pre-line">{item.content_text}</p>
+                    {/* 10/1 P2-6：content_text="标题\n正文"格式且首行=标题时跳过首行（标题重复渲染实锤——一屏3-4处逐条自重复） */}
+                    <p className="text-sm leading-6 text-[var(--text-secondary)] whitespace-pre-line">{item.title && item.content_text.startsWith(item.title + "\n") ? item.content_text.slice(item.title.length + 1) : item.content_text}</p>
                   </article>
                 ))
               )}
@@ -470,7 +471,7 @@ export default function FlashPage() {
                     <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{selectedItem.title}</h3>
                   )}
                   <p className="text-xs leading-5 text-[var(--text-secondary)] whitespace-pre-line">
-                    {selectedItem.content_text}
+                    {selectedItem.title && selectedItem.content_text.startsWith(selectedItem.title + "\n") ? selectedItem.content_text.slice(selectedItem.title.length + 1) : selectedItem.content_text}
                   </p>
                 </div>
               </details>

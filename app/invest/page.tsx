@@ -1,10 +1,12 @@
 import Link from "next/link";
 
+// 10/1 P2-9命名统一：同一板块三处三名实锤（AI对话vs投资对话/财经日历vs财报日历/选股三叫）——
+// 术语对齐侧边导航+主页卡片；顺序对齐导航（快讯/市场/财报/AI选股/复盘/对话），判断账本入口补齐（六轮检测P2-5）
 const FEATURES = [
   {
-    href: "/invest/pick",
-    title: "选股",
-    desc: "输入代码或名称，查行情、估值、K线与AI解读",
+    href: "/invest/flash",
+    title: "实时快讯",
+    desc: "华尔街见闻 + 金十合并流，分钟级更新",
   },
   {
     href: "/invest/market",
@@ -12,9 +14,14 @@ const FEATURES = [
     desc: "自选行情 + 板块轮动（1d/5d/20d）+ 市场情绪",
   },
   {
-    href: "/invest/chat",
-    title: "AI对话",
-    desc: "带知识库的投资问答，支持截图/图表提问",
+    href: "/invest/calendar",
+    title: "财报日历",
+    desc: "财报日期查询（±2周窗口），提前排雷",
+  },
+  {
+    href: "/invest/pick",
+    title: "AI选股",
+    desc: "输入代码或名称，查行情、估值、K线与AI解读",
   },
   {
     href: "/invest/review",
@@ -22,14 +29,14 @@ const FEATURES = [
     desc: "录入成交流水，FIFO统计盈亏 + AI归因分析",
   },
   {
-    href: "/invest/calendar",
-    title: "财经日历",
-    desc: "财报日期查询（±2周窗口），提前排雷",
+    href: "/invest/chat",
+    title: "投资对话",
+    desc: "带知识库的投资问答，支持截图/图表提问",
   },
   {
-    href: "/invest/flash",
-    title: "实时快讯",
-    desc: "华尔街见闻 + 财联社合并流，分钟级更新",
+    href: "/invest/ledger",
+    title: "判断账本",
+    desc: "AI主判断存档与机械结算——错的可见性就是信任来源",
   },
 ];
 

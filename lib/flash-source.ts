@@ -36,7 +36,7 @@ function hasBoldTag(html: string): boolean {
   return /<b[\s>]|<strong[\s>]/.test(html);
 }
 
-function formatRelativeTime(ts: number): string {
+export function formatRelativeTime(ts: number): string {
   const now = Math.floor(Date.now() / 1000);
   const diff = now - ts;
   if (diff < 10) return "刚刚";
@@ -300,5 +300,3 @@ export async function getFlashFeed(): Promise<FlashFeed> {
     refreshPromise = null;
   }
 }
-
-export { formatRelativeTime };

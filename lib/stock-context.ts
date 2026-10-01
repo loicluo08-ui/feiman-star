@@ -12,6 +12,15 @@ const STOCK_ALIASES: Record<string, string> = {
   "迪士尼": "DIS", "耐克": "NKE", "波音": "BA", "高盛": "GS",
   "英特尔": "INTC", "intel": "INTC", "甲骨文": "ORCL", "Adobe": "ADBE", "思科": "CSCO",
   "伯克希尔": "BRK.A", "巴菲特": "BRK.A", "美团": "MPNGY", "网易": "NTES", "携程": "TCOM",
+  // 10/1 P2-13补全：高频消费/金融中文名（"可口可乐"实测缺别名→无行情注入——中文用户最自然问法拿不到现价锚点）
+  "可口可乐": "KO", "可乐": "KO", "麦当劳": "MCD", "星巴克": "SBUX",
+  "沃尔玛": "WMT", "宝洁": "PG", "强生": "JNJ", "辉瑞": "PFE", "默沙东": "MRK",
+  "花旗": "C", "美国银行": "BAC", "富国银行": "WFC", "摩根士丹利": "MS",
+  "Visa": "V", "万事达": "MA", "肯德基": "YUM", "百胜": "YUM",
+  "百事": "PEP", "百事可乐": "PEP", "卡夫": "KHC", "亨氏": "KHC",
+  "3M": "MMM", "霍尼韦尔": "HON", "卡特彼勒": "CAT", "3m": "MMM",
+  "开市客": "COST", "好市多": "COST", "家得宝": "HD", "塔吉特": "TGT",
+  "嘉信理财": "SCHW", "贝莱德": "BLK", "黑石": "BX", "PayPal": "PYPL", "贝宝": "PYPL",
 };
 
 const STOP_WORDS = new Set(["PE","PB","ROE","ROA","EPS","CEO","CFO","CTO","IPO","ETF","GDP","CPI","FED","API","JSON","HTTP","URL","USD","USA","AI","ML","PR","IR","IT","AR","VR","PC","GB","TB","CPU","GPU","RAM","SSD","HDD","USB","HDMI","WTO","WHO","NYC","LAX","SFO","DC","LA","SF","FOMC","PMI","LPR","SEC","IMF","OPEC","REIT","SPAC","NFT","ADR","ICO","DAO","APP","VS","OK","PS","ID","VIX","DXY","BUY","SELL","HOLD","LONG","SHORT","STOP","LOSS","RISK","GAIN","CALL","PUT","ETFs","AMA","FAQ","TL;DR"]);
