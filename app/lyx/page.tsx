@@ -80,6 +80,7 @@ export default function AdminPage() {
   const [data, setData] = useState<UsageData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState("");
 
   async function load(t: string) {
     setLoading(true);
@@ -186,8 +187,17 @@ export default function AdminPage() {
     <div className="mx-auto max-w-5xl px-5 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold">使用监控后台</h1>
-        <button onClick={() => void load(sessionStorage.getItem("fx_admin_token") || token)} className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs">
-          ↻ 刷新
+        <button
+          onClick={() => {
+            setLoading(true);
+            void load(sessionStorage.getItem("fx_admin_token") || token).then(() => {
+              setLastRefresh(new Date().toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+            });
+          }}
+          disabled={loading}
+          className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs disabled:opacity-40"
+        >
+          {loading ? "刷新中…" : "↻ 刷新"}
         </button>
       </div>
 
@@ -199,6 +209,7 @@ export default function AdminPage() {
           </div>
         ))}
       </div>
+        {lastRefresh ? <p className="mb-4 text-xs text-[var(--text-muted)]">数据更新于 {lastRefresh}</p> : null}
 
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-semibold">IP明细（按请求数排序）</h2>

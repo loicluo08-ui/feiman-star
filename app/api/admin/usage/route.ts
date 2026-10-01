@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
         /* 坏行按空字段处理 */
       }
       return {
-        ts: (r.created as string) || "",
+        ts: (log.ts as string) || (r.created as string) || "",
         ip: (log.ip as string) || "unknown",
         path: (log.path as string) || "",
         method: (log.method as string) || "GET",

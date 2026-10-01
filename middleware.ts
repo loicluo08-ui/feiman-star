@@ -87,6 +87,7 @@ export async function middleware(request: NextRequest) {
     const ip = clientIP(request);
     const now = new Date().toISOString();
     const logEntry = {
+      ts: new Date().toISOString(),  // 10/1修复：created列是date类型只存日期——完整时间戳放content里
       ip,
       path,
       method: request.method,
