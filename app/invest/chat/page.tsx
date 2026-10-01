@@ -186,6 +186,7 @@ const sceneTemplates = [
   { label: "突破/跌破判断", text: "帮我分析这张K线图，是否突破/跌破关键位" },
   { label: "止损策略", text: "我持有XXX成本价$YY，现在价格$ZZ，应该怎么止损？" },
   { label: "组合评估", text: "帮我看下这张持仓截图，仓位配置合理吗？" },
+  { label: "期权链/GEX", text: "分析XXX的期权链结构和GEX挤压风险，重型仓位在哪个行权价" },
 ];
 
 export default function ChatPage() {
@@ -575,7 +576,8 @@ export default function ChatPage() {
         const res = await fetch("/api/invest/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: apiMessages, style: currentStyle, historyLedger: loadLedger().slice(-8), parallel: currentStyle === "blend" && parallelMode }),
+          // 10/1深度改C：historyLedger全量传（后端按symbol优先筛选，slice(-8)会漏早期同标的轨迹）
+          body: JSON.stringify({ messages: apiMessages, style: currentStyle, historyLedger: loadLedger(), parallel: currentStyle === "blend" && parallelMode }),
           signal: controller.signal,
         });
 
