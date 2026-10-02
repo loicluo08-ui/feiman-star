@@ -91,7 +91,9 @@ export async function GET(request: NextRequest) {
     const [kbRaw, chats] = await Promise.all([
       // 10/2修复：access_log已超500条，limit窗口把最新行（含username）截掉——created是date类型，
       // order=created.desc同天并列排序不稳定。改7天滚动窗口+limit=1000（与"保留7天"清理语义对齐，旧数据查不到）
-      sbRest<Array<Record<string, unknown>>>(`kb_dynamic?type=eq.access_log&created=gte.${new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)}&select=id,content,created&order=created.desc&limit=1000`),
+      // 10/2终极修复：id前缀=毫秒时间戳（acc-{Date.now()}-rand），order=id.desc=严格插入时间降序——
+      // created(date列)同值组内排序不稳定+localeCompare的locale语义不可控（10/2晚两轮修复未根治），DB端id序一步到位
+      sbRest<Array<Record<string, unknown>>>(`kb_dynamic?type=eq.access_log&created=gte.${new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)}&select=id,content,created&order=id.desc&limit=1000`),
       sbRest<Array<Record<string, unknown>>>("chat_logs?select=id,question,style&order=id.desc&limit=50"),
     ]);
 
