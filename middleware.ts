@@ -176,20 +176,24 @@ export async function middleware(request: NextRequest) {
       // 10/2监控断流根因修复：10/1 21:36（反爬版本上线）后写入全丢——Edge方案(waitUntil挂fetch)在
       // runtime切Node后静默失效（读正常写全灭实锤：黑名单刷新/usage读取同key同表活着，唯独waitUntil包裹的POST零落库）。
       // 改为带900ms超时上限的await：Node进程常驻fetch必然完成，race只防极端慢查询拖响应，写失败静默不阻塞主功能
-      await Promise.race([
-        fetch(`${SUPABASE_URL}/rest/v1/kb_dynamic`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${SUPABASE_KEY}`,
-            apikey: SUPABASE_KEY,
-            "Content-Type": "application/json",
-            Prefer: "return=minimal",
-          },
-          body: payload,
-          cache: "no-store",
-        }),
-        new Promise((r) => setTimeout(r, 900)),
-      ]);
+      // 10/3写入全灭根因修正：900ms race在Supabase慢时砍掉写入（实测21:50后全灭）——
+      // Node runtime进程常驻，floating fetch自然完成（Edge才砍）——改裸fetch+8s超时+失败console.error（可诊断）
+      void fetch(`${SUPABASE_URL}/rest/v1/kb_dynamic`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          apikey: SUPABASE_KEY,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: payload,
+        cache: "no-store",
+        signal: AbortSignal.timeout(8000),
+      }).then((res) => {
+        if (!res.ok) console.error(`[middleware] access_log写入失败: ${res.status}`);
+      }).catch((e) => {
+        console.error("[middleware] access_log写入异常:", e instanceof Error ? e.message : e);
+      });
     } catch {
       // 监控永不阻塞主功能
     }
