@@ -69,7 +69,7 @@ export async function readKbEntries(limit = 200): Promise<KbDynamicRow[] | null>
   const out = await sbRest<KbDynamicRow[]>(
     // 10/2漏洞审计P0修复：username_claim（用户名字+城市PII）与ip_block（拉黑记录）混进语义检索
     // =PII注入AI回答+挤占知识配额——与access_log同一性质，读路径统一排除
-    `kb_dynamic?select=id,type,keywords,content,source,created,expires&type=neq.access_log&type=neq.username_claim&type=neq.ip_block&order=created.desc&limit=${limit}`
+    `kb_dynamic?select=id,type,keywords,content,source,created,expires&type=neq.access_log&type=neq.username_claim&type=neq.ip_block&type=neq.geo_cache&order=created.desc&limit=${limit}`
   );
   return out;
 }

@@ -24,10 +24,29 @@ export async function GET(request: NextRequest) {
 
   // 10/2：username_claim重置（逸翔令：设备全部重新取名）——POST {action:"reset_claims"}（token鉴权后）
   {
-    const actionBody = await request.json().catch(() => null) as { action?: string } | null;
+    const actionBody = await request.json().catch(() => null) as { action?: string; ips?: string[] } | null;
     if (actionBody?.action === "reset_claims") {
       await sbRest("kb_dynamic?type=eq.username_claim", { method: "DELETE" });
       return NextResponse.json({ ok: true, action: "reset_claims" });
+    }
+    if (actionBody?.action === "purge_ips" && Array.isArray(actionBody.ips) && actionBody.ips.length > 0) {
+      // 按IP清访问日志（测试污染数据清理）——上限20个IP/次
+      const ips = actionBody.ips.slice(0, 20).map((x) => String(x));
+      let purged = 0;
+      for (const ip of ips) {
+        // content含ip字段的行逐个查删（PostgREST对JSON内容无法直接过滤——拉近期行内存筛）
+        const rows = await sbRest<Array<{ id: string; content: string }>>("kb_dynamic?type=eq.access_log&select=id,content&order=created.desc&limit=1000");
+        for (const row of rows ?? []) {
+          try {
+            const o = JSON.parse(row.content) as { ip?: string };
+            if (o.ip === ip) {
+              await sbRest(`kb_dynamic?id=eq.${encodeURIComponent(row.id)}`, { method: "DELETE" });
+              purged += 1;
+            }
+          } catch { /* 坏行跳过 */ }
+        }
+      }
+      return NextResponse.json({ ok: true, action: "purge_ips", purged });
     }
   }
 
@@ -71,10 +90,29 @@ export async function POST(request: NextRequest) {
 
   // 10/2：username_claim重置（逸翔令：设备全部重新取名）——POST {action:"reset_claims"}（token鉴权后）
   {
-    const actionBody = await request.json().catch(() => null) as { action?: string } | null;
+    const actionBody = await request.json().catch(() => null) as { action?: string; ips?: string[] } | null;
     if (actionBody?.action === "reset_claims") {
       await sbRest("kb_dynamic?type=eq.username_claim", { method: "DELETE" });
       return NextResponse.json({ ok: true, action: "reset_claims" });
+    }
+    if (actionBody?.action === "purge_ips" && Array.isArray(actionBody.ips) && actionBody.ips.length > 0) {
+      // 按IP清访问日志（测试污染数据清理）——上限20个IP/次
+      const ips = actionBody.ips.slice(0, 20).map((x) => String(x));
+      let purged = 0;
+      for (const ip of ips) {
+        // content含ip字段的行逐个查删（PostgREST对JSON内容无法直接过滤——拉近期行内存筛）
+        const rows = await sbRest<Array<{ id: string; content: string }>>("kb_dynamic?type=eq.access_log&select=id,content&order=created.desc&limit=1000");
+        for (const row of rows ?? []) {
+          try {
+            const o = JSON.parse(row.content) as { ip?: string };
+            if (o.ip === ip) {
+              await sbRest(`kb_dynamic?id=eq.${encodeURIComponent(row.id)}`, { method: "DELETE" });
+              purged += 1;
+            }
+          } catch { /* 坏行跳过 */ }
+        }
+      }
+      return NextResponse.json({ ok: true, action: "purge_ips", purged });
     }
   }
 

@@ -171,19 +171,23 @@ export async function middleware(request: NextRequest) {
       created: now,
     });
     try {
-      // waitUntil挂住fetch生命周期（10/1实测：Edge响应完成后floating fetch被平台砍=写入全丢——
-      // 活动流0条实锤），waitUntil让平台等写入完成再回收
-      waitUntil(fetch(`${SUPABASE_URL}/rest/v1/kb_dynamic`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-          apikey: SUPABASE_KEY,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: payload,
-        cache: "no-store",
-      }));
+      // 10/2监控断流根因修复：10/1 21:36（反爬版本上线）后写入全丢——Edge方案(waitUntil挂fetch)在
+      // runtime切Node后静默失效（读正常写全灭实锤：黑名单刷新/usage读取同key同表活着，唯独waitUntil包裹的POST零落库）。
+      // 改为带900ms超时上限的await：Node进程常驻fetch必然完成，race只防极端慢查询拖响应，写失败静默不阻塞主功能
+      await Promise.race([
+        fetch(`${SUPABASE_URL}/rest/v1/kb_dynamic`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+            apikey: SUPABASE_KEY,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: payload,
+          cache: "no-store",
+        }),
+        new Promise((r) => setTimeout(r, 900)),
+      ]);
     } catch {
       // 监控永不阻塞主功能
     }

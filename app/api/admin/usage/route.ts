@@ -171,12 +171,9 @@ export async function GET(request: NextRequest) {
     } catch { /* 持久层读取失败用内存缓存兜底 */ }
     // D4修复：内存上限（Map无限增长——Vercel实例长期存活内存缓涨）
     if (geoCache.size > 500) {
-      let removed = 0;
-      for (const k of geoCache.keys()) {
-        geoCache.delete(k);
-        removed += 1;
-        if (removed >= 100) break;
-      }
+      // Iterator展开与tsconfig target冲突——改用Array.from前100键删除
+      const oldest = Array.from(geoCache.keys()).slice(0, 100);
+      for (const k of oldest) geoCache.delete(k);
     }
     const unknownIPs = ipRows.map((r) => r.ip).filter((ip) => ip && ip !== "unknown" && !geoCache.has(ip));
     if (unknownIPs.length > 0 && unknownIPs.length <= 100) {

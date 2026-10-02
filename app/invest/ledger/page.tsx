@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { readAllLedger, readKbEntries } from "@/lib/supabase";
@@ -74,16 +75,16 @@ function parseSettle(content: string): SettleInfo | null {
 
 // 10/1 P2-7修复：页头+骨架屏立即渲染（TTFB不受Supabase查询拖累——全站最慢2.3s实锤），
 // 数据聚合+列表包Suspense流式补齐；footer保留在数据区尾部（流式后自然出现）
-export default function LedgerPage() {
+export default async function LedgerPage() {
   // 10/2 A1决策：账本页进门禁（server侧检查——curl绕过client门禁的口子关闭）
   // 无cookie=渲染提示且Suspense数据区不挂载（Supabase零查询，数据零泄露）
-  const hasName = cookies().get("fx_username")?.value || "";
+  const hasName = (await cookies()).get("fx_username")?.value || "";
   if (!hasName) {
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-3xl flex-col items-center justify-center px-5">
         <p className="text-lg font-semibold text-[var(--text)]">请先在主页设置名字</p>
         <p className="mt-2 text-sm text-[var(--text-muted)]">访问记录以名字保存后即可查看判断账本。</p>
-        <a href="/" className="mt-6 rounded-xl bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-[var(--primary-foreground)]">去设置名字</a>
+        <Link href="/" className="mt-6 rounded-xl bg-[var(--primary)] px-5 py-2.5 text-sm font-medium text-[var(--primary-foreground)]">去设置名字</Link>
       </div>
     );
   }

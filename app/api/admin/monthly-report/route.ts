@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     // 读本月结算结果
     const settles = await sbRest<Array<{ id: string; content: string; created: string }>>(
-      `kb_dynamic?type=eq.insight&source=eq.cron-judgment-settle&select=id,content,created&order=created.desc&limit=100`,
+      `kb_dynamic?type=eq.insight&source=eq.cron-judgment-settle&select=id,content,created&order=created.desc&limit=400`,
     );
     const settleList = (settles ?? [])
       .map((s) => {
