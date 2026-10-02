@@ -269,19 +269,6 @@ export async function GET(request: NextRequest) {
       recent: accessList.slice(0, 80),
       // 10/2调试v3：JS处理后的accessList头部——看今天的行是否在JS层丢失
       debug_rows: accessList.slice(0, 3).map((r) => ({ ts: r.ts, path: r.path, user_type: r.user_type, ip: r.ip })),
-      // 10/2调试：access_log断流诊断v2——同数据两个查询对撞：A=带created过滤（accessList同款）B=不过滤（id序）
-      debug_rows: (await Promise.all([
-        sbRest<Array<Record<string, unknown>>>(
-          `kb_dynamic?type=eq.access_log&created=gte.${new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)}&select=id,created,content&order=created.desc&limit=3`
-        ).catch(() => null),
-        sbRest<Array<Record<string, unknown>>>(
-          "kb_dynamic?type=eq.access_log&select=id,created,content&order=id.desc&limit=3"
-        ).catch(() => null),
-      ]) ?? []).map((rows, i) => ({
-        variant: i === 0 ? "A带过滤accessList同款" : "B不过滤id序",
-        count: (rows ?? []).length,
-        rows: (rows ?? []).map((r) => ({ id: r.id, created: r.created, ts_in_content: (() => { try { return String(JSON.parse(String(r.content)).ts); } catch { return "parse_err"; } })() })),
-      })),
       chats: chatList.map((c) => ({
         ...c,
         // 10/2：对话记录按IP关联显示名（同名多IP取IP表中首个非空名字）
