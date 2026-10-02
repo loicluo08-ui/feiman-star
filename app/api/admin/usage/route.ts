@@ -267,6 +267,10 @@ export async function GET(request: NextRequest) {
       ).map((e) => ({ ...e, paths: Array.from(e.paths).slice(0, 6), ips: Array.from(e.ips) })),
       ipRows,
       recent: accessList.slice(0, 80),
+      // 10/2调试：access_log写入断流诊断——看原始行created与content真实值（部署后移除）
+      debug_rows: (await sbRest<Array<Record<string, unknown>>>(
+        "kb_dynamic?type=eq.access_log&select=id,created,content&order=id.desc&limit=5"
+      ) ?? []).map((r) => ({ id: r.id, created: r.created, content: String(r.content ?? "").slice(0, 120) })),
       chats: chatList.map((c) => ({
         ...c,
         // 10/2：对话记录按IP关联显示名（同名多IP取IP表中首个非空名字）
