@@ -267,6 +267,8 @@ export async function GET(request: NextRequest) {
       ).map((e) => ({ ...e, paths: Array.from(e.paths).slice(0, 6), ips: Array.from(e.ips) })),
       ipRows,
       recent: accessList.slice(0, 80),
+      // 10/2调试v3：JS处理后的accessList头部——看今天的行是否在JS层丢失
+      debug_rows: accessList.slice(0, 3).map((r) => ({ ts: r.ts, path: r.path, user_type: r.user_type, ip: r.ip })),
       // 10/2调试：access_log断流诊断v2——同数据两个查询对撞：A=带created过滤（accessList同款）B=不过滤（id序）
       debug_rows: (await Promise.all([
         sbRest<Array<Record<string, unknown>>>(
