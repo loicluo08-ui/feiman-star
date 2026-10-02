@@ -273,6 +273,8 @@ export async function GET(request: NextRequest) {
       ).map((e) => ({ ...e, paths: Array.from(e.paths).slice(0, 6), ips: Array.from(e.ips) })),
       ipRows,
       recent: accessList.slice(0, 80),
+      // 10/3调试：id desc前3行原始态——查content解析失败行真身（看完即删）
+      debug_rows: (kbRaw ?? []).slice(0, 3).map((r) => ({ id: String(r.id ?? "").slice(0, 30), created: r.created, content_ok: (() => { try { JSON.parse(String(r.content)); return "ok"; } catch { return "BAD"; } })(), content_head: String(r.content ?? "").slice(0, 100) })),
       // 10/2调试v3：JS处理后的accessList头部——看今天的行是否在JS层丢失
 
       chats: chatList.map((c) => ({
