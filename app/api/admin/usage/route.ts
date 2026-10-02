@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
 
-  let body: { action?: string; ip?: string };
+  let body: { action?: string; ip?: string; name?: string };
   try {
     body = await request.json();
   } catch {
@@ -25,6 +25,27 @@ export async function POST(request: NextRequest) {
   }
   const ip = (body.ip || "").trim();
   const action = body.action;
+  // 10/2 P1-E：名字解绑（不需要ip）——POST {action:"unbind", name:"X"}
+  if (action === "unbind") {
+    const uname = (body as { name?: string }).name || "";
+    if (!uname) return NextResponse.json({ error: "need_name" }, { status: 400 });
+    const rows = await sbRest<Array<{ id: string; content: string }>>("kb_dynamic?type=eq.username_claim&select=id,content");
+    let deleted = 0;
+    for (const row of rows ?? []) {
+      let nm = "";
+      try {
+        nm = (JSON.parse(row.content) as { name?: string }).name || "";
+      } catch {
+        continue;
+      }
+      if (nm === uname) {
+        await sbRest(`kb_dynamic?id=eq.${encodeURIComponent(row.id)}`, { method: "DELETE" });
+        deleted += 1;
+      }
+    }
+    return NextResponse.json({ ok: true, action: "unbind", name: uname, deleted });
+  }
+
   if (!ip || !["block", "unblock"].includes(action || "")) {
     return NextResponse.json({ error: "need_ip_and_action" }, { status: 400 });
   }
@@ -135,9 +156,19 @@ export async function GET(request: NextRequest) {
     const dayAgo = new Date(now - 24 * 3600 * 1000).toISOString();
     const weekAgo = new Date(now - 7 * 24 * 3600 * 1000).toISOString();
 
-    // 10/1中文归属地（逸翔令：监控内容用中文）——ip-api批量中文查询+24h缓存
+    // 10/1中文归属地（逸翔令：监控内容用中文）——ip-api批量中文查询
+    // 10/2 P2修复：缓存持久化到kb_dynamic（type=geo_cache）——原globalThis实例内存在Vercel多实例/冷启动下频繁失效重复打ip-api
     const geoCache = (globalThis as { __geoCache?: Map<string, string> }).__geoCache || new Map<string, string>();
     (globalThis as { __geoCache?: Map<string, string> }).__geoCache = geoCache;
+    try {
+      const persisted = await sbRest<Array<{ id: string; content: string }>>("kb_dynamic?type=eq.geo_cache&select=id,content&order=created.desc&limit=300");
+      for (const row of persisted ?? []) {
+        try {
+          const o = JSON.parse(row.content) as { ip?: string; label?: string };
+          if (o.ip && o.label && !geoCache.has(o.ip)) geoCache.set(o.ip, o.label);
+        } catch { /* 坏行跳过 */ }
+      }
+    } catch { /* 持久层读取失败用内存缓存兜底 */ }
     const unknownIPs = ipRows.map((r) => r.ip).filter((ip) => ip && ip !== "unknown" && !geoCache.has(ip));
     if (unknownIPs.length > 0 && unknownIPs.length <= 100) {
       try {
@@ -152,11 +183,25 @@ export async function GET(request: NextRequest) {
         );
         if (geoRes.ok) {
           const list = (await geoRes.json()) as Array<{ status: string; country?: string; regionName?: string; city?: string; query?: string }>;
+          const persist: Array<Record<string, unknown>> = [];
           for (const g of list) {
             if (g.status === "success" && g.query) {
               const parts = [g.country, g.regionName, g.city].filter(Boolean);
-              geoCache.set(g.query, parts.join(" ") || "未知");
+              const label = parts.join(" ") || "未知";
+              geoCache.set(g.query, label);
+              persist.push({
+                id: `geo-${g.query.replace(/[^A-Za-z0-9]/g, "-").slice(0, 40)}-${new Date().toISOString().slice(0, 7)}`,
+                type: "geo_cache",
+                keywords: [],
+                content: JSON.stringify({ ip: g.query, label }),
+                source: "usage-geo",
+                created: new Date().toISOString(),
+              });
             }
+          }
+          if (persist.length > 0) {
+            // 回写失败静默（下次冷启动重查一次，无损）
+            void sbRest("kb_dynamic", { method: "POST", prefer: "resolution=ignore-duplicates,return=minimal", body: persist }).catch(() => null);
           }
         }
       } catch {
@@ -196,10 +241,13 @@ export async function GET(request: NextRequest) {
       },
       humanIPs: Array.from(
         accessList.filter((r) => r.user_type === "human").reduce((m, r) => {
+          // P2聚合键修复：有名字按名字聚合（同人跨IP合并），无名字按IP——家庭WiFi同IP两人不再错挂名
           const ip = r.ip as string;
-          const e = m.get(ip) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), geo: (r.geo as string) || "", username: (r.username as string) || null };
+          const uname = (r.username as string) || null;
+          const aggKey = uname ? `n:${uname}` : `ip:${ip}`;
+          const e = m.get(aggKey) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), geo: (r.geo as string) || "", username: uname };
           e.count += 1;
-          // 10/2修复：username取首个非空（历史无名字行先出现会把null锁死——新标记后仍显示—）
+          // username取首个非空
           if (!e.username && r.username) e.username = (r.username as string);
           if ((r.ts as string) < e.first) e.first = r.ts as string;
           if ((r.ts as string) > e.last) e.last = r.ts as string;

@@ -73,6 +73,11 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
   response.headers.set("Cache-Control", "private, no-store");
 
+  // P2改名入口：?logout=1→清用户名cookie→门禁重弹（新名字需唯一性登记；旧名字登记残留由/lyx解绑管理释放）
+  if (request.nextUrl.searchParams.get("logout") === "1") {
+    response.cookies.set("fx_username", "", { maxAge: 0, path: "/" });
+  }
+
   // 用户名标记：URL带?setuser=名字（2-12字符中文/字母/数字）→种1年cookie
   const setUserRaw = request.nextUrl.searchParams.get("setuser");
   let setUser = "";
@@ -87,7 +92,7 @@ export async function middleware(request: NextRequest) {
     // 注意：Next的cookies.set自动encodeURIComponent一层——这里传原始值，勿手动编码（双层编码实测白名单拒绝）
     response.cookies.set("fx_username", setUser, {
       maxAge: 365 * 24 * 3600,
-      httpOnly: true,
+      httpOnly: false, // P1-D修复：非HttpOnly与门禁前端统一（自称名字非敏感凭据，JS需可读做门禁检测）
       sameSite: "lax",
       path: "/",
     });

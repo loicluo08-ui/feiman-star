@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
-import { UsernamePrompt } from "@/components/username-prompt";
+import { UsernameGate } from "@/components/username-prompt";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -52,8 +52,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        <UsernamePrompt />
-        <AppShell>{children}</AppShell>
+        <UsernameGate>
+          <AppShell>{children}</AppShell>
+        </UsernameGate>
       <Analytics />
     </body>
     </html>

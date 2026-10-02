@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 /**
- * 用户名门禁（10/2逸翔令：未填写名字不能访问 + 注册成功反馈）
- * 全屏盖层：首次访问（无fx_username）必须输入名字，保存显示成功态1.4秒再进入。
+ * 用户名门禁（10/2逸翔令：未填写名字不能访问）——包裹式重构（P0-B修复）
+ * 旧版问题：checking态渲染null=children照常挂载，数据请求已发出（"不能访问"语义不成立）
+ * 新版：本组件包裹children——checking/locked状态children不渲染（数据零加载）
  * /lyx后台（token保护）不放门禁。自称式无密码（冒充=统计噪音，无数据权限）。
  */
 const COOKIE_NAME = "fx_username";
@@ -14,7 +15,7 @@ function isValidName(v: string): boolean {
   return /^[\u4e00-\u9fa5a-zA-Z0-9_-]{2,12}$/.test(v);
 }
 
-export function UsernamePrompt() {
+export function UsernameGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [gate, setGate] = useState<"checking" | "locked" | "success" | "open">("checking");
   const [savedName, setSavedName] = useState("");
@@ -26,10 +27,12 @@ export function UsernamePrompt() {
   useEffect(() => {
     if (pathname?.startsWith("/lyx")) return; // 后台token保护，不放门禁
     if (typeof window === "undefined") return;
-    if (localStorage.getItem("fx_username_set") || document.cookie.includes(`${COOKIE_NAME}=`)) {
+    // P1-G修复：判断以cookie为准（cookie过期/清数据后必须重新注册，防静默丢名）；
+    // localStorage只存"已关闭提示"的会话标记，不作为注册凭证
+    if (document.cookie.includes(`${COOKIE_NAME}=`)) {
       setGate("open");
-      localStorage.setItem("fx_username_set", "1");
     } else {
+      localStorage.removeItem("fx_username_set");
       setGate("locked");
     }
   }, [pathname]);
@@ -57,22 +60,19 @@ export function UsernamePrompt() {
         window.setTimeout(() => setShake(false), 400);
         return;
       }
-      if (!res.ok || !json.ok) {
-        // 登记服务不可用：降级放行（可用性优先——监控无名字，功能不受影响）
-        setClaimError("");
-      }
+      // 登记服务不可用：降级放行（可用性优先——监控无名字，功能不受影响）
       const finalName = (json.ok && json.name) || v;
+      // 非HttpOnly（自称名字非敏感凭据）——与?setuser入口统一，门禁可检测
       document.cookie = `${COOKIE_NAME}=${encodeURIComponent(finalName)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
       localStorage.setItem("fx_username_set", "1");
-      localStorage.setItem("fx_username", finalName);
       setSavedName(finalName);
-      setGate("success");
+      setGate("success"); // 注册成功反馈：确认态1.4秒再进入
       window.setTimeout(() => setGate("open"), 1400);
     } catch {
       // 网络异常：降级放行
-      document.cookie = `${COOKIE_NAME}=${encodeURIComponent(v)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
+      document.cookie = `${COOKIE_NAME}=${encodeURIComponent(value.trim())}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
       localStorage.setItem("fx_username_set", "1");
-      setSavedName(v);
+      setSavedName(value.trim());
       setGate("success");
       window.setTimeout(() => setGate("open"), 1400);
     } finally {
@@ -80,7 +80,19 @@ export function UsernamePrompt() {
     }
   }
 
-  if (gate === "open" || gate === "checking") return null;
+  // P1-D修复：/lyx直接放行（不渲染门禁也不拦截children）
+  if (gate === "open" || pathname?.startsWith("/lyx")) {
+    return <>{children}</>;
+  }
+
+  // P0-B修复：checking/locked/success状态children一律不渲染（数据零加载——"不能访问"数据语义成立）
+  if (gate === "checking") {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--background)]">
+        <p className="text-sm text-[var(--text-muted)]">加载中…</p>
+      </div>
+    );
+  }
 
   if (gate === "success") {
     return (
@@ -104,7 +116,7 @@ export function UsernamePrompt() {
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && save()}
+            onKeyDown={(e) => e.key === "Enter" && valid && !submitting && save()}
             maxLength={12}
             autoFocus
             placeholder="你的名字（2-12字符）"
