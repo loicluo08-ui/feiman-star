@@ -132,8 +132,7 @@ export async function GET(request: NextRequest) {
     // 10/2确定性排序：DB端created(date列)同值组内顺序不稳定，10/2行被压尾（recent显示昨天的实锤根因）——
     // JS端按content.ts字符串降序强制重排（ts=完整ISO时间戳，字符串序=时间序）
     accessList.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
-    // 10/2调试v4：DB返回的原始行（map前）——裁决DB vs JS责任
-    const debugKbRaw = (kbRaw ?? []).slice(0, 3).map((r) => ({ id: String(r.id).slice(0, 26), created: r.created, content_head: String(r.content ?? "").slice(0, 90) }));
+
     const chatList = chats ?? [];
 
     // 聚合：按IP
@@ -273,7 +272,7 @@ export async function GET(request: NextRequest) {
       ipRows,
       recent: accessList.slice(0, 80),
       // 10/2调试v3：JS处理后的accessList头部——看今天的行是否在JS层丢失
-      debug_rows: { kb_raw_head: debugKbRaw, access_list_head: accessList.slice(0, 3).map((r) => ({ ts: r.ts, path: r.path })) },
+
       chats: chatList.map((c) => ({
         ...c,
         // 10/2：对话记录按IP关联显示名（同名多IP取IP表中首个非空名字）
