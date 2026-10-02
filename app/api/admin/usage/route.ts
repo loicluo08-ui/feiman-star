@@ -267,10 +267,19 @@ export async function GET(request: NextRequest) {
       ).map((e) => ({ ...e, paths: Array.from(e.paths).slice(0, 6), ips: Array.from(e.ips) })),
       ipRows,
       recent: accessList.slice(0, 80),
-      // 10/2调试：access_log写入断流诊断——看原始行created与content真实值（部署后移除）
-      debug_rows: (await sbRest<Array<Record<string, unknown>>>(
-        "kb_dynamic?type=eq.access_log&select=id,created,content&order=id.desc&limit=5"
-      ) ?? []).map((r) => ({ id: r.id, created: r.created, content: String(r.content ?? "").slice(0, 120) })),
+      // 10/2调试：access_log断流诊断v2——同数据两个查询对撞：A=带created过滤（accessList同款）B=不过滤（id序）
+      debug_rows: (await Promise.all([
+        sbRest<Array<Record<string, unknown>>>(
+          `kb_dynamic?type=eq.access_log&created=gte.${new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)}&select=id,created,content&order=created.desc&limit=3`
+        ).catch(() => null),
+        sbRest<Array<Record<string, unknown>>>(
+          "kb_dynamic?type=eq.access_log&select=id,created,content&order=id.desc&limit=3"
+        ).catch(() => null),
+      ]) ?? []).map((rows, i) => ({
+        variant: i === 0 ? "A带过滤accessList同款" : "B不过滤id序",
+        count: (rows ?? []).length,
+        rows: (rows ?? []).map((r) => ({ id: r.id, created: r.created, ts_in_content: (() => { try { return String(JSON.parse(String(r.content)).ts); } catch { return "parse_err"; } })() })),
+      })),
       chats: chatList.map((c) => ({
         ...c,
         // 10/2：对话记录按IP关联显示名（同名多IP取IP表中首个非空名字）
