@@ -155,8 +155,8 @@ export function validateEntry(
   const inv = e.invalidation || "";
   if (NARRATIVE_RE.test(inv) || inv.length > 60) {
     // 从正文重提：优先"失效预注册：/失效条件："标记行，其次"跌破/站上/突破+价位"句式
-    const re2 = text.match(/(?:失效预注册|失效条件|证伪信号|翻转信号)[^：:\n]*[：:]\s*([^\n]{6,60})/);
-    const re3 = re2 ? null : text.match(/([^\n]{0,20}(?:跌破|失守|站上|突破|收于)[^\n]{0,4}\$?\d{2,6}(?:\.\d{1,2})?[^\n]{0,30})/);
+    const re2 = answer.match(/(?:失效预注册|失效条件|证伪信号|翻转信号)[^：:\n]*[：:]\s*([^\n]{6,60})/);
+    const re3 = re2 ? null : answer.match(/([^\n]{0,20}(?:跌破|失守|站上|突破|收于)[^\n]{0,4}\$?\d{2,6}(?:\.\d{1,2})?[^\n]{0,30})/);
     const recovered = (re2?.[1] ?? re3?.[1] ?? "").replace(/\*\*/g, "").trim();
     e.invalidation = recovered.length >= 6 && recovered.length <= 60 ? recovered : "见裁决行失效条件";
   }
