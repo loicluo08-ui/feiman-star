@@ -131,9 +131,7 @@ export async function GET(request: NextRequest) {
         geo: (globalThis as { __geoCache?: Map<string, string> }).__geoCache?.get((log.ip as string) || "") || "",
       };
     });
-    // 10/2确定性排序：DB端created(date列)同值组内顺序不稳定，10/2行被压尾（recent显示昨天的实锤根因）——
-    // JS端按content.ts字符串降序强制重排（ts=完整ISO时间戳，字符串序=时间序）
-    accessList.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+
 
     const chatList = chats ?? [];
 
@@ -273,8 +271,7 @@ export async function GET(request: NextRequest) {
       ).map((e) => ({ ...e, paths: Array.from(e.paths).slice(0, 6), ips: Array.from(e.ips) })),
       ipRows,
       recent: accessList.slice(0, 80),
-      // 10/3调试：id desc前3行原始态——查content解析失败行真身（看完即删）
-      debug_rows: (kbRaw ?? []).slice(0, 3).map((r) => ({ id: String(r.id ?? "").slice(0, 30), created: r.created, content_ok: (() => { try { JSON.parse(String(r.content)); return "ok"; } catch { return "BAD"; } })(), content_head: String(r.content ?? "").slice(0, 100) })),
+
       // 10/2调试v3：JS处理后的accessList头部——看今天的行是否在JS层丢失
 
       chats: chatList.map((c) => ({
