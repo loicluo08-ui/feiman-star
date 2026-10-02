@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { readAllLedger, readKbEntries } from "@/lib/supabase";
+import { parseInvalidation } from "@/lib/settle-recall";
 
 /**
  * 判断账本 · 公开只读页（9/18能力工程）
@@ -239,6 +240,12 @@ async function LedgerData() {
                       观察中
                     </span>
                   )}
+                  {/* 10/3可核验分级：失效条件不可机械解析=叙事型·仅计数（宁缺勿滥——机械结算只对strict闭合） */}
+                  {!parseInvalidation(it.invalidation ?? "") ? (
+                    <span className="rounded-md bg-[var(--surface-muted)] px-2 py-0.5 text-xs text-[var(--text-muted)]" title="失效条件为叙事描述，cron无法机械核验——该判断仅计数，不进对错率">
+                      叙事型·仅计数
+                    </span>
+                  ) : null}
                 </div>
                 {envTags.length > 0 ? (
                   <p className="mt-2 flex flex-wrap gap-1.5">

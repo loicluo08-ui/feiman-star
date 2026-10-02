@@ -149,9 +149,21 @@ export function validateEntry(
     }
   }
 
+  // D 语义污染门（10/3真机实锤：VIX条目的失效条件字段装了对账叙述"失效未触发，维持原立场…信心度维持70%"——
+  // 特征=含对账词汇或超长叙述句，不是"方向词+价位/事件"格式）→ 尝试从正文重提真失效条件，提不出则降级引用式
+  const NARRATIVE_RE = /失效未触发|维持原立场|维持.{0,4}立场|信心度维持|新证据|对账|核验状态|系统能验|维持现有判断|立场未变/;
+  const inv = e.invalidation || "";
+  if (NARRATIVE_RE.test(inv) || inv.length > 60) {
+    // 从正文重提：优先"失效预注册：/失效条件："标记行，其次"跌破/站上/突破+价位"句式
+    const re2 = text.match(/(?:失效预注册|失效条件|证伪信号|翻转信号)[^：:\n]*[：:]\s*([^\n]{6,60})/);
+    const re3 = re2 ? null : text.match(/([^\n]{0,20}(?:跌破|失守|站上|突破|收于)[^\n]{0,4}\$?\d{2,6}(?:\.\d{1,2})?[^\n]{0,30})/);
+    const recovered = (re2?.[1] ?? re3?.[1] ?? "").replace(/\*\*/g, "").trim();
+    e.invalidation = recovered.length >= 6 && recovered.length <= 60 ? recovered : "见裁决行失效条件";
+  }
+
   // 失效字段混入markdown星号/正文污染清洗（S3现象：失效字段带"**"与整句正文）
   e.invalidation = e.invalidation.replace(/\*\*/g, "").trim();
-  if (e.invalidation.length > 150) e.invalidation = e.invalidation.slice(0, 150);
+  if (e.invalidation.length > 60) e.invalidation = "见裁决行失效条件";
   if (e.keyLevel.length > 60) e.keyLevel = "见裁决行动分支";
 
   return e;
