@@ -65,15 +65,13 @@ export async function POST(request: NextRequest) {
       source: "username-claim",
       created: new Date().toISOString(),
     };
-    const ok = await sbRest("kb_dynamic", {
+    // 10/2-502真因：return=minimal返回201+空body→sbRest返回null→原代码误判"写入失败"返回502
+    //（实际写入成功——登记表里已有名字实锤）。修：sbRest非2xx会throw，走到这里=写入成功；返回值不作失败依据
+    await sbRest("kb_dynamic", {
       method: "POST",
       prefer: "resolution=ignore-duplicates,return=minimal",
       body: row,
     });
-    if (!ok) {
-      console.error("[username-claim] write returned null");
-      return NextResponse.json({ error: "claim_write_failed" }, { status: 502 });
-    }
     return NextResponse.json({ ok: true, name });
   } catch (err) {
     // 全捕获+落Vercel日志（上版502无法定位的教训）
