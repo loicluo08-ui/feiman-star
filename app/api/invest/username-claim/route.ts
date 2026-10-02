@@ -1,57 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { supabaseConfigured, sbRest } from "@/lib/supabase";
+import { createHash } from "crypto";
 
 /**
- * 用户名唯一性登记（10/2逸翔令：不能重名+自报城市）
- * POST { name, city? } → kb_dynamic查重（type=username_claim, id=uname-{name}）→登记
- * 重名409+自动建议（罗逸翔2/罗逸翔3…最多试到10）。自称式：登记防重不防伪（冒充=统计噪音）。
- * 城市自报（本人填的百分百准——IP库城市精度到不了县级，实测上杭→厦门）。
+ * 用户名唯一性登记（10/2逸翔令：不能重名）
+ * POST { name } → 查重（单查询拉全量内存比对，堵N+1放大）→登记
+ * id=uname-{sha256(name)前16位}（hash id——中文id直排疑似502根因，盲修）。
+ * 重名409+自动建议（名字2/名字3…到10）。自称式：登记防重不防伪（冒充=统计噪音）。
+ * 全函数try-catch+console.error落Vercel日志（502定位需要）。
  */
 export const runtime = "nodejs";
+
+function claimId(name: string): string {
+  return `uname-${createHash("sha256").update(name).digest("hex").slice(0, 16)}`;
+}
 
 function validName(v: string): boolean {
   return /^[\u4e00-\u9fa5a-zA-Z0-9_-]{2,12}$/.test(v);
 }
-function validCity(v: string): boolean {
-  return v === "" || /^[\u4e00-\u9fa5a-zA-Z0-9_-]{2,12}$/.test(v);
-}
 
 export async function POST(request: NextRequest) {
-  const limited = enforceRateLimit(request, "usernameClaim", RATE_LIMITS.search);
-  if (limited) {
-    return NextResponse.json({ error: `请求过于频繁` }, { status: 429 });
-  }
-
-  const body = (await request.json().catch(() => null)) as { name?: string; city?: string } | null;
-  const name = (body?.name ?? "").trim();
-  const city = (body?.city ?? "").trim();
-  if (!validName(name)) return NextResponse.json({ error: "invalid_name" }, { status: 400 });
-  if (!validCity(city)) return NextResponse.json({ error: "invalid_city" }, { status: 400 });
-  if (!supabaseConfigured()) return NextResponse.json({ error: "storage_disabled" }, { status: 501 });
-
-  const rowId = `uname-${name}`;
   try {
-    // 查重：id精确匹配（id=uname-名字，名字即唯一键）
-    const existing = await sbRest<Array<{ id: string }>>(`kb_dynamic?id=eq.${encodeURIComponent(rowId)}&select=id`);
-    if (existing && existing.length > 0) {
-      // 自动建议：罗逸翔2/罗逸翔3…找到未占用的（最多10轮）
-      for (let i = 2; i <= 10; i++) {
+    const limited = enforceRateLimit(request, "usernameClaim", { maxRequests: 5, windowMs: 60_000 });
+    if (limited) {
+      return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+    }
+
+    const body = (await request.json().catch(() => null)) as { name?: string } | null;
+    const name = (body?.name ?? "").trim();
+    if (!validName(name)) return NextResponse.json({ error: "invalid_name" }, { status: 400 });
+    if (!supabaseConfigured()) return NextResponse.json({ error: "storage_disabled" }, { status: 501 });
+
+    // 单查询拉全量已登记名（内存比对——堵N+1查询放大：原实现重名建议循环probe最多10次Supabase查询）
+    const claimedRows = await sbRest<Array<{ id: string; content: string }>>(
+      "kb_dynamic?type=eq.username_claim&select=id,content"
+    );
+    const claimedNames = new Set<string>();
+    for (const row of claimedRows ?? []) {
+      try {
+        const obj = JSON.parse(row.content) as { name?: string };
+        if (obj.name) claimedNames.add(obj.name);
+      } catch {
+        /* 坏行跳过 */
+      }
+    }
+
+    if (claimedNames.has(name)) {
+      // 自动建议：名字2/名字3…找到未占用的
+      for (let i = 2; i <= 99; i++) {
         const candidate = `${name}${i}`;
-        const probe = await sbRest<Array<{ id: string }>>(`kb_dynamic?id=eq.${encodeURIComponent(`uname-${candidate}`)}&select=id`);
-        if (!probe || probe.length === 0) {
+        if (!claimedNames.has(candidate)) {
           return NextResponse.json({ ok: false, error: "name_taken", suggestion: candidate }, { status: 409 });
         }
       }
       return NextResponse.json({ ok: false, error: "name_taken" }, { status: 409 });
     }
 
-    // 登记
     const row = {
-      id: rowId,
+      id: claimId(name),
       type: "username_claim",
       keywords: [name],
-      content: JSON.stringify({ name, city: city || null, claimed_at: new Date().toISOString() }),
+      content: JSON.stringify({ name, claimed_at: new Date().toISOString() }),
       source: "username-claim",
       created: new Date().toISOString(),
     };
@@ -60,9 +70,14 @@ export async function POST(request: NextRequest) {
       prefer: "resolution=ignore-duplicates,return=minimal",
       body: row,
     });
-    if (!ok) return NextResponse.json({ error: "claim_write_failed" }, { status: 502 });
-    return NextResponse.json({ ok: true, name, city: city || null });
+    if (!ok) {
+      console.error("[username-claim] write returned null");
+      return NextResponse.json({ error: "claim_write_failed" }, { status: 502 });
+    }
+    return NextResponse.json({ ok: true, name });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message.slice(0, 100) : "claim_failed" }, { status: 500 });
+    // 全捕获+落Vercel日志（上版502无法定位的教训）
+    console.error("[username-claim] claim_failed", err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: err instanceof Error ? err.message.slice(0, 120) : "claim_failed" }, { status: 500 });
   }
 }

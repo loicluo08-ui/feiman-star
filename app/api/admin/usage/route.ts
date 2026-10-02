@@ -105,28 +105,26 @@ export async function GET(request: NextRequest) {
         city: (log.city as string) || null,
         user_type: userType,
         username: (log.username as string) || null,  // 10/2自称式用户名（middleware cookie写入）
-        user_city: (log.user_city as string) || null,  // 10/2自报城市
         geo: (globalThis as { __geoCache?: Map<string, string> }).__geoCache?.get((log.ip as string) || "") || "",
       };
     });
     const chatList = chats ?? [];
 
     // 聚合：按IP
-    const byIP = new Map<string, { count: number; first: string; last: string; paths: Set<string>; country: string | null; city: string | null; username: string | null; user_city: string | null }>();
+    const byIP = new Map<string, { count: number; first: string; last: string; paths: Set<string>; country: string | null; city: string | null; username: string | null }>();
     for (const r of accessList) {
       const ip = (r.ip as string) || "unknown";
-      const e = byIP.get(ip) || { count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), country: (r.country as string) || null, city: (r.city as string) || null, username: (r.username as string) || null, user_city: (r.user_city as string) || null };
+      const e = byIP.get(ip) || { count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), country: (r.country as string) || null, city: (r.city as string) || null, username: (r.username as string) || null };
       e.count += 1;
       // 10/2：名字/城市取首个非空（与humanIPs同口径——拉黑板块/IP明细同步显示）
       if (!e.username && r.username) e.username = r.username as string;
-      if (!e.user_city && r.user_city) e.user_city = r.user_city as string;
       if ((r.ts as string) < e.first) e.first = r.ts as string;
       if ((r.ts as string) > e.last) e.last = r.ts as string;
       e.paths.add(r.path as string);
       byIP.set(ip, e);
     }
     const ipRows = Array.from(byIP.entries())
-      .map(([ip, e]) => ({ ip, count: e.count, first: e.first, last: e.last, paths: Array.from(e.paths).slice(0, 6), country: e.country, city: e.city, username: e.username, user_city: e.user_city }))
+      .map(([ip, e]) => ({ ip, count: e.count, first: e.first, last: e.last, paths: Array.from(e.paths).slice(0, 6), country: e.country, city: e.city, username: e.username }))
       .sort((a, b) => b.count - a.count);
 
     // 聚合：AI调用数（chat/pick-analyze/flash-analyze/review-summary等AI端点）
@@ -199,11 +197,10 @@ export async function GET(request: NextRequest) {
       humanIPs: Array.from(
         accessList.filter((r) => r.user_type === "human").reduce((m, r) => {
           const ip = r.ip as string;
-          const e = m.get(ip) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), geo: (r.geo as string) || "", username: (r.username as string) || null, user_city: (r.user_city as string) || null };
+          const e = m.get(ip) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), geo: (r.geo as string) || "", username: (r.username as string) || null };
           e.count += 1;
           // 10/2修复：username取首个非空（历史无名字行先出现会把null锁死——新标记后仍显示—）
           if (!e.username && r.username) e.username = (r.username as string);
-          if (!e.user_city && r.user_city) e.user_city = (r.user_city as string);
           if ((r.ts as string) < e.first) e.first = r.ts as string;
           if ((r.ts as string) > e.last) e.last = r.ts as string;
           e.paths.add(r.path as string);
@@ -217,7 +214,6 @@ export async function GET(request: NextRequest) {
         ...c,
         // 10/2：对话记录按IP关联显示名（同名多IP取IP表中首个非空名字）
         username: (byIP.get((c.ip as string) || "unknown") as { username?: string } | undefined)?.username ?? null,
-        user_city: (byIP.get((c.ip as string) || "unknown") as { user_city?: string } | undefined)?.user_city ?? null,
       })),
     });
   } catch (err) {

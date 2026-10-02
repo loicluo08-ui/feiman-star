@@ -19,7 +19,6 @@ export function UsernamePrompt() {
   const [gate, setGate] = useState<"checking" | "locked" | "success" | "open">("checking");
   const [savedName, setSavedName] = useState("");
   const [value, setValue] = useState("");
-  const [city, setCity] = useState("");
   const [claimError, setClaimError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [shake, setShake] = useState(false);
@@ -37,7 +36,6 @@ export function UsernamePrompt() {
 
   async function save() {
     const v = value.trim();
-    const c = city.trim();
     if (!isValidName(v)) {
       setShake(true);
       window.setTimeout(() => setShake(false), 400);
@@ -49,7 +47,7 @@ export function UsernamePrompt() {
       const res = await fetch("/api/invest/username-claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: v, city: c }),
+        body: JSON.stringify({ name: v }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.status === 409 && json.suggestion) {
@@ -64,9 +62,7 @@ export function UsernamePrompt() {
         setClaimError("");
       }
       const finalName = (json.ok && json.name) || v;
-      const finalCity = (json.ok && json.city) || c;
       document.cookie = `${COOKIE_NAME}=${encodeURIComponent(finalName)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
-      if (finalCity) document.cookie = `fx_city=${encodeURIComponent(finalCity)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
       localStorage.setItem("fx_username_set", "1");
       localStorage.setItem("fx_username", finalName);
       setSavedName(finalName);
@@ -112,14 +108,6 @@ export function UsernamePrompt() {
             maxLength={12}
             autoFocus
             placeholder="你的名字（2-12字符）"
-            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-center text-base text-[var(--text)] outline-none focus:border-[var(--accent)]"
-          />
-          <input
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && valid && !submitting && save()}
-            maxLength={12}
-            placeholder="所在城市（可选，如：泉州）"
             className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-center text-base text-[var(--text)] outline-none focus:border-[var(--accent)]"
           />
           <button

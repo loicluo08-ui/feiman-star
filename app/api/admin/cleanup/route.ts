@@ -22,6 +22,15 @@ export async function GET(request: NextRequest) {
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
 
+  // 10/2：username_claim重置（逸翔令：设备全部重新取名）——POST {action:"reset_claims"}（token鉴权后）
+  {
+    const actionBody = await request.json().catch(() => null) as { action?: string } | null;
+    if (actionBody?.action === "reset_claims") {
+      await sbRest("kb_dynamic?type=eq.username_claim", { method: "DELETE" });
+      return NextResponse.json({ ok: true, action: "reset_claims" });
+    }
+  }
+
   try {
     const settles = await sbRest<Array<Record<string, unknown>>>(
       "kb_dynamic?source=eq.cron-judgment-settle&select=id,content,created",
@@ -59,6 +68,15 @@ export async function POST(request: NextRequest) {
   const token = request.headers.get("x-admin-token") || new URL(request.url).searchParams.get("token");
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
+
+  // 10/2：username_claim重置（逸翔令：设备全部重新取名）——POST {action:"reset_claims"}（token鉴权后）
+  {
+    const actionBody = await request.json().catch(() => null) as { action?: string } | null;
+    if (actionBody?.action === "reset_claims") {
+      await sbRest("kb_dynamic?type=eq.username_claim", { method: "DELETE" });
+      return NextResponse.json({ ok: true, action: "reset_claims" });
+    }
+  }
 
   try {
     // 1) 清脏结算（settle_price<=0 或 非价格维度失效条件）
