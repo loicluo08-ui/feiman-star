@@ -129,6 +129,9 @@ export async function GET(request: NextRequest) {
         geo: (globalThis as { __geoCache?: Map<string, string> }).__geoCache?.get((log.ip as string) || "") || "",
       };
     });
+    // 10/2确定性排序：DB端created(date列)同值组内顺序不稳定，10/2行被压尾（recent显示昨天的实锤根因）——
+    // JS端按content.ts字符串降序强制重排（ts=完整ISO时间戳，字符串序=时间序）
+    accessList.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
     const chatList = chats ?? [];
 
     // 聚合：按IP
