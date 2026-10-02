@@ -129,7 +129,9 @@ export async function middleware(request: NextRequest) {
   // access_logs专用表见sql/005，逸翔执行后可迁移）；写入失败静默（监控永不阻塞主功能）
   if (SUPABASE_URL && SUPABASE_KEY) {
     const ip = clientIP(request);
-    const now = new Date().toISOString();
+    // 10/2二次根因：created列=date类型（sql/005），传完整ISO时间戳被PostgreSQL拒绝=access_log整行静默丢失
+    // （total增量全来自geo_cache等其他行——access_log零落库实锤）——date-only格式才与列类型匹配
+    const now = new Date().toISOString().slice(0, 10);
     const logEntry = {
       ts: new Date().toISOString(),  // 10/1修复：created列是date类型只存日期——完整时间戳放content里
       user_type: classifyVisit(ua, path, request.method),  // 意图分类：human/searchbot/aicrawler/badbot/scan/unknown
