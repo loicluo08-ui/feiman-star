@@ -64,6 +64,12 @@ export function UsernameGate({ children }: { children: React.ReactNode }) {
       const finalName = (json.ok && json.name) || v;
       // 非HttpOnly（自称名字非敏感凭据）——与?setuser入口统一，门禁可检测
       document.cookie = `${COOKIE_NAME}=${encodeURIComponent(finalName)}; max-age=${365 * 24 * 3600}; path=/; samesite=lax`;
+      // C1修复：cookie写入验证（禁cookie/存储满时种不上——不检测会死循环门禁）
+      if (!document.cookie.includes(`${COOKIE_NAME}=`)) {
+        setClaimError("浏览器已禁用Cookie，无法保存名字——请启用Cookie后重试");
+        setSubmitting(false);
+        return;
+      }
       localStorage.setItem("fx_username_set", "1");
       setSavedName(finalName);
       setGate("success"); // 注册成功反馈：确认态1.4秒再进入

@@ -169,6 +169,15 @@ export async function GET(request: NextRequest) {
         } catch { /* 坏行跳过 */ }
       }
     } catch { /* 持久层读取失败用内存缓存兜底 */ }
+    // D4修复：内存上限（Map无限增长——Vercel实例长期存活内存缓涨）
+    if (geoCache.size > 500) {
+      let removed = 0;
+      for (const k of geoCache.keys()) {
+        geoCache.delete(k);
+        removed += 1;
+        if (removed >= 100) break;
+      }
+    }
     const unknownIPs = ipRows.map((r) => r.ip).filter((ip) => ip && ip !== "unknown" && !geoCache.has(ip));
     if (unknownIPs.length > 0 && unknownIPs.length <= 100) {
       try {
@@ -190,7 +199,8 @@ export async function GET(request: NextRequest) {
               const label = parts.join(" ") || "未知";
               geoCache.set(g.query, label);
               persist.push({
-                id: `geo-${g.query.replace(/[^A-Za-z0-9]/g, "-").slice(0, 40)}-${new Date().toISOString().slice(0, 7)}`,
+                // D3修复：id不含月份（同IP更新不堆积）+merge-duplicates
+                id: `geo-${g.query.replace(/[^A-Za-z0-9]/g, "-").slice(0, 40)}`,
                 type: "geo_cache",
                 keywords: [],
                 content: JSON.stringify({ ip: g.query, label }),
@@ -201,7 +211,7 @@ export async function GET(request: NextRequest) {
           }
           if (persist.length > 0) {
             // 回写失败静默（下次冷启动重查一次，无损）
-            void sbRest("kb_dynamic", { method: "POST", prefer: "resolution=ignore-duplicates,return=minimal", body: persist }).catch(() => null);
+            void sbRest("kb_dynamic", { method: "POST", prefer: "resolution=merge-duplicates,return=minimal", body: persist }).catch(() => null);
           }
         }
       } catch {
@@ -245,8 +255,10 @@ export async function GET(request: NextRequest) {
           const ip = r.ip as string;
           const uname = (r.username as string) || null;
           const aggKey = uname ? `n:${uname}` : `ip:${ip}`;
-          const e = m.get(aggKey) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), geo: (r.geo as string) || "", username: uname };
+          const e = m.get(aggKey) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), ips: new Set<string>(), geo: (r.geo as string) || "", username: uname };
           e.count += 1;
+          // A2修复：聚合行收集全部IP（同名多设备3个IP——拉黑/排查时找得到，不只首IP）
+          e.ips.add(ip);
           // username取首个非空
           if (!e.username && r.username) e.username = (r.username as string);
           if ((r.ts as string) < e.first) e.first = r.ts as string;
@@ -255,7 +267,7 @@ export async function GET(request: NextRequest) {
           m.set(ip, e);
           return m;
         }, new Map()).values(),
-      ).map((e) => ({ ...e, paths: Array.from(e.paths).slice(0, 6) })),
+      ).map((e) => ({ ...e, paths: Array.from(e.paths).slice(0, 6), ips: Array.from(e.ips) })),
       ipRows,
       recent: accessList.slice(0, 80),
       chats: chatList.map((c) => ({

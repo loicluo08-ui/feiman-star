@@ -11,7 +11,7 @@ type UsageData = {
   overview: { uniqueIPs: number; totalRequests: number; requests24h: number; requests7d: number; aiCalls: number; chatCount: number };
   ipRows: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; country: string | null; city: string | null; geo?: string; username?: string | null }>;
   intentStats: { human: number; searchbot: number; aicrawler: number; badbot: number; scan: number; unknown: number };
-  humanIPs: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; geo?: string; username?: string | null }>;
+  humanIPs: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; geo?: string; username?: string | null; ips?: string[] }>;
   recent: Array<{ ts: string; ip: string; path: string; method: string; ua: string | null; country: string | null; city: string | null; username?: string | null }>;
   chats: Array<{ id: number; question: string; style: string; ip: string | null; created_at: string; username?: string | null }>;
 };
@@ -308,6 +308,9 @@ export default function AdminPage() {
                       ) : (
                         r.ip
                       )}
+                      {r.ips && r.ips.length > 1 ? (
+                        <span className="ml-1 text-[10px] text-[var(--text-muted)]">（{r.ips.length}个IP）</span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 tabular-nums">{r.count}</td>
                     <td className="px-3 py-2 text-[var(--text-muted)]">{r.geo || "—"}</td>

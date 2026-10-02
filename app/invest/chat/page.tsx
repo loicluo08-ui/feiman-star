@@ -1,5 +1,8 @@
 "use client";
 
+// 10/2监控漏记修复：数据页强制动态——静态预渲染命中CDN缓存时middleware不执行=页面浏览漏记
+export const dynamic = "force-dynamic";
+
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, clearTask, type BackgroundTask } from "@/lib/background-task";
 import { loadLedger, parseLedgerLine, parseRulingFallback, saveEntry, stripLedgerLines, clearLedger, removeEntry, validateEntry, verifySaved, type LedgerEntry } from "@/lib/judgment-ledger";
