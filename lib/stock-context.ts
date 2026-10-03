@@ -230,7 +230,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
             if (roeF != null) fparts.push(`ROE ${roeF.toFixed(1)}%`);
             if (fparts.length < 2) financialLine = ""; // 可信字段不足2条，宁缺毋注（9/30 Q6：坏快照不如没快照）
             if (fparts.length >= 2) financialLine = ` | [财务快照·Finnhub] ${fparts.join("、")}（真实财报值[数据]，替代行业经验基准）`;
-          } catch {}
+          } catch (e) { console.warn(`[stock-context.ts:233]`, e instanceof Error ? e.message : e); }
         }
         if (quoteRes.status === "fulfilled" && quoteRes.value.ok) {
           const q = await quoteRes.value.json();
@@ -246,7 +246,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
           if (name === code) name = p.name || code;
           if (marketCap == null) marketCap = p.marketCapitalization ? p.marketCapitalization * 1_000_000 : null;
         }
-      } catch {}
+      } catch (e) { console.warn(`[stock-context.ts:249]`, e instanceof Error ? e.message : e); }
     }
     // 历史锚点：Yahoo chart 1y日线（免crumb，浏览器headers）。注入后AI可回答"年内涨跌/52周位置/放量缩量/距高点回撤"类问题
     // 1y而非3mo：YTD起点+6月前+52周锚点必须1y数据（3mo下meta的52周高低仍在但其余全缺）
@@ -260,7 +260,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
       const chart = yahooChart ?? (await fetchSAYahooLikeChart(code, 90) as Awaited<ReturnType<typeof getYahooChart>>);
       history = extractHistoryAnchors(chart);
       histCache.set(code, { data: history, expiresAt: Date.now() + 15 * 60 * 1000 });
-    } catch {}
+    } catch (e) { console.warn(`[stock-context.ts:263]`, e instanceof Error ? e.message : e); }
 
     // D2豁免：腾讯被闸门弃用但Finnhub价格与腾讯原始价一致(±1.5%)→真实极端行情(财报跳空/熔断级波动)，恢复数据
     if (!qtValid && qtRawPrice > 0 && fhPrice != null && fhPrice > 0) {
@@ -300,7 +300,7 @@ export async function fetchStockData(codes: string[]): Promise<Array<{
             if (marketCap == null) marketCap = meta.marketCap ?? null;
           }
         }
-      } catch {}
+      } catch (e) { console.warn(`[stock-context.ts:303]`, e instanceof Error ? e.message : e); }
     }
 
     const result = { code, name, price, pe, changePct, marketCap, previousClose, open, high, low, volume, freshness: qtTimestamp, divergence, anomaly: !qtValid && !qtRealMover && price != null, extremeMove: qtRealMover, history, financialLine };

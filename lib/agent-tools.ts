@@ -7,6 +7,7 @@ import { fetchOptionContext, buildOptionBlock } from "@/lib/option-context";
 import { fetchMacroContext } from "@/lib/macro-context";
 import { getFlashFeed } from "@/lib/flash-source";
 import { fetchStockData } from "@/lib/stock-context";
+import { DEEPSEEK_BASE_DEFAULT } from "@/lib/model-gateway";
 
 // ——— 腾讯行情（latin1解码足够：价格字段纯ASCII，中文乱码不影响解析）——
 const NAME_TO_TENCENT: Record<string, string> = {

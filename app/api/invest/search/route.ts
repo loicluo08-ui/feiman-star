@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
             }))
             .slice(0, 12);
         }
-      } catch {}
+      } catch (e) { console.warn(`[route.ts:164]`, e instanceof Error ? e.message : e); }
     }
 
     if (filtered.length === 0) {

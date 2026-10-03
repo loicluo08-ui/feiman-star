@@ -24,9 +24,12 @@ export interface GatewayChannel {
   extraHeaders?: Record<string, string>;
 }
 
+/** DeepSeek基础URL单一源——ai.ts/agent-tools统一引用（10/3拆漂移雷：智谱双定义404的同款隐患） */
+export const DEEPSEEK_BASE_DEFAULT = "https://api.deepseek.com";
+
 export const CHANNELS: Record<string, GatewayChannel> = {
   deepseek: {
-    name: "deepseek", baseEnv: "DEEPSEEK_BASE_URL", baseDefault: "https://api.deepseek.com",
+    name: "deepseek", baseEnv: "DEEPSEEK_BASE_URL", baseDefault: DEEPSEEK_BASE_DEFAULT,
     keyEnv: "DEEPSEEK_API_KEY", modelEnv: "DEEPSEEK_MODEL", modelDefault: "deepseek-flash",
     free: false, priority: 90,
   },

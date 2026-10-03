@@ -1,4 +1,5 @@
 import "server-only";
+import { DEEPSEEK_BASE_DEFAULT } from "./model-gateway";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -149,7 +150,7 @@ export async function callAI(
   if (!apiKey) return null;
   if (!(await consumeAIBudget("callAI"))) return null;
 
-  const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+  const baseUrl = process.env.DEEPSEEK_BASE_URL || DEEPSEEK_BASE_DEFAULT;
   // 2026-09-13官方核验：deepseek-v4-flash旧名对应模型已退役（请求由V4.1-Flash代服），默认值切换到正式名deepseek-flash（1M上下文）
   const model = process.env.DEEPSEEK_MODEL || "deepseek-flash";
   const maxRetries = options.retry ?? 1;
@@ -378,7 +379,7 @@ export async function* callAIStream(
   if (!apiKey || messages.length === 0) return;
   if (!(await consumeAIBudget("callAIStream"))) return;
 
-  const baseUrl = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+  const baseUrl = process.env.DEEPSEEK_BASE_URL || DEEPSEEK_BASE_DEFAULT;
   // 2026-09-13官方核验：切换正式名deepseek-flash（旧名deepseek-v4-flash仍被V4.1-Flash代服，env残留旧值不断供）
   const defaultModel = process.env.DEEPSEEK_MODEL || "deepseek-flash";
   const requestedModel = options.model?.trim() || defaultModel;

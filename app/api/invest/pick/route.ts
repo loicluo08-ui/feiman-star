@@ -329,7 +329,7 @@ export async function POST(request: NextRequest) {
         },
       };
     }
-  } catch {}
+  } catch (e) { console.warn(`[route.ts:332]`, e instanceof Error ? e.message : e); }
   const knowledge = getRelevantKnowledge(sector);
 
   const newsBlock = (input.data.news ?? []).length > 0

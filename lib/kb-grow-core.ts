@@ -114,7 +114,7 @@ function ghHeaders(token: string) {
 
 export async function readKBFromGitHub(token: string): Promise<{ entries: DynamicEntry[]; sha: string | null }> {
   const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${KB_PATH}?ref=${BRANCH}`, {
-    headers: ghHeaders(token), cache: "no-store",
+    headers: ghHeaders(token), cache: "no-store", signal: AbortSignal.timeout(30_000),
   });
   if (res.status === 404) return { entries: [], sha: null };
   if (!res.ok) throw new Error(`github_read_${res.status}`);
@@ -138,6 +138,7 @@ export async function writeKBToGitHub(
     method: "PUT",
     headers: ghHeaders(token),
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -152,7 +153,7 @@ export async function writeDailySnapshot(token: string, entries: DynamicEntry[])
   const today = new Date().toISOString().slice(0, 10);
   const path = `data/snapshots/${today}.json`;
   const readRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, {
-    headers: ghHeaders(token), cache: "no-store",
+    headers: ghHeaders(token), cache: "no-store", signal: AbortSignal.timeout(30_000),
   });
   if (readRes.ok) return; // 当日已存在，不覆盖
   const body = {
@@ -161,7 +162,7 @@ export async function writeDailySnapshot(token: string, entries: DynamicEntry[])
     branch: BRANCH,
   };
   await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-    method: "PUT", headers: ghHeaders(token), body: JSON.stringify(body),
+    method: "PUT", headers: ghHeaders(token), body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
   });
 }
 

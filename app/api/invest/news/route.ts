@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-    } catch {}
+    } catch (e) { console.warn(`[route.ts:136]`, e instanceof Error ? e.message : e); }
 
     // Finnhub company-news免费层premium-only恒空 → Yahoo兜底
     let finalNews: Array<{ headline: string; source: string; url: string; date: string; summary: string }> = news;

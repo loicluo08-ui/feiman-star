@@ -21,7 +21,7 @@ export function loadKnowledgeBase(): string {
       try {
         cachedKnowledge = readFileSync(p, "utf-8");
         if (cachedKnowledge) return cachedKnowledge;
-      } catch {}
+      } catch (e) { console.warn(`[knowledge.ts:24]`, e instanceof Error ? e.message : e); }
     }
     return "";
   } catch {
