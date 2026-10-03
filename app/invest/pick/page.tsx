@@ -1,4 +1,5 @@
 "use client";
+import { gateFetch } from "@/lib/gate-client";
 
 // 10/2监控漏记修复：数据页强制动态——静态预渲染命中CDN缓存时middleware不执行=页面浏览漏记
 export const dynamic = "force-dynamic";
@@ -423,7 +424,7 @@ export default function PickPage() {
       }, 90_000);
       let res: Response;
       try {
-        res = await fetch("/api/invest/pick", {
+        res = await gateFetch("/api/invest/pick", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -496,12 +497,12 @@ export default function PickPage() {
           const fresh = loadLedger().filter((e) => !synced.has(e.ts));
           if (fresh.length > 0) {
             const payload = JSON.stringify({ entries: fresh });
-            const cloudPost = fetch("/api/invest/judgment-cloud", {
+            const cloudPost = gateFetch("/api/invest/judgment-cloud", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: payload,
             }).then((r) => r.json()).catch(() => null);
-            const ghPost = fetch("/api/invest/judgment-sync", {
+            const ghPost = gateFetch("/api/invest/judgment-sync", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: payload,

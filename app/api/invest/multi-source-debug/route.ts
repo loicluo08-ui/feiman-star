@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,9 @@ function verdictOf(p: Probe | undefined): string {
  * 测：腾讯qt.gtimg.cn / 新浪hq.sinajs.cn / 富途futunn.com
  */
 export async function GET(request: NextRequest) {
+  const limited = await enforceRateLimitAsync(request, "admin", RATE_LIMITS.admin);
+  if (limited) return NextResponse.json({ ok: false, error: "rate_limited", retryAfter: limited.retryAfter }, { status: 429 });
+
   const adminToken = process.env.ADMIN_TOKEN;
   if (!adminToken || request.headers.get("x-admin-token") !== adminToken) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

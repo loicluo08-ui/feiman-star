@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gateCheck } from "@/lib/gate";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { z } from "zod";
 
@@ -45,6 +46,9 @@ async function readRemoteJson(token: string): Promise<{ entries: Entry[]; sha: s
 }
 
 export async function POST(request: NextRequest) {
+  // 10/3审计P0：共享口令闸（写路径fail-closed——FX_GATE_TOKEN未配置=通道关闭）
+  const gated = gateCheck(request, "FX_GATE_TOKEN", "required");
+  if (gated) return gated;
   // P0①：IP限流（此前缺失——脚本刷写=每次commit烧Vercel构建额度）
   const limited = await enforceRateLimitAsync(request, "judgmentSync", { maxRequests: 10, windowMs: 60_000 });
   if (limited) {

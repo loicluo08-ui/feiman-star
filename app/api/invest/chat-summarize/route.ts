@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gateCheck } from "@/lib/gate";
 import { z } from "zod";
 import { callAI, type ChatMessage } from "@/lib/ai";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
@@ -34,6 +35,9 @@ const SUMMARY_PROMPT = [
 ].join("\n");
 
 export async function POST(request: NextRequest) {
+  // 10/3审计P0：共享口令闸（env未设=维持现状；设置FX_GATE_TOKEN即激活门禁）
+  const gated = gateCheck(request, "FX_GATE_TOKEN", "open_until_configured");
+  if (gated) return gated;
   const limited = await enforceRateLimitAsync(request, "chat", RATE_LIMITS.chat);
   if (limited) {
     return NextResponse.json(

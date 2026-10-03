@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gateCheck } from "@/lib/gate";
 import { FLASH_KB } from "@/lib/flash-kb";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { aiBudgetGuard } from "@/lib/ai-budget";
@@ -8,6 +9,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  // 10/3审计P0：共享口令闸（env未设=维持现状；设置FX_GATE_TOKEN即激活门禁）
+  const gated = gateCheck(request, "FX_GATE_TOKEN", "open_until_configured");
+  if (gated) return gated;
   const limited = await enforceRateLimitAsync(request, "flash-analyze", RATE_LIMITS.flashAnalyze);
 
   // AI预算熔断（P1第二道闸）：余额低于熔断线时全站AI停服，损失封顶

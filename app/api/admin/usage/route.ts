@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { supabaseConfigured, sbRest } from "@/lib/supabase";
 
 /**
@@ -10,9 +11,12 @@ import { supabaseConfigured, sbRest } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  const limited = await enforceRateLimitAsync(request, "admin", RATE_LIMITS.admin);
+  if (limited) return NextResponse.json({ ok: false, error: "rate_limited", retryAfter: limited.retryAfter }, { status: 429 });
+
   const ADMIN = process.env.ADMIN_TOKEN;
   if (!ADMIN) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
-  // 10/2漏洞审计P2修复：header优先（token不进URL=不进CDN日志/浏览器历史/Referer）；query保留兼容旧链接
+  // 10/2漏洞审计P2修复：header优先（token不进URL=不进CDN日志/浏览器历史/Referer）；query保留兼容旧链接 (安全审计修复10/3：P0×3（FX_GATE_TOKEN共享口令闸：7个AI路由open-until-configured+judgment-cloud/judgment-sync/team-upload写路径fail-closed；judgment-cloud限流30→10；insertChatLog IP改取cf-connecting-ip防伪造）+P1（admin五路由节流20每分+x-admin-token header兼容cron旧?token=；AI端点限流收紧300→20/120→10）+前端gateFetch自动prompt重试（5页面10调用点）+yarn.lock重生成（顺手修frozen-lockfile失配）+env.example补全——build绿20/20)
   const token = request.headers.get("x-admin-token") || new URL(request.url).searchParams.get("token");
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
@@ -76,9 +80,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const limited = await enforceRateLimitAsync(request, "admin", RATE_LIMITS.admin);
+  if (limited) return NextResponse.json({ ok: false, error: "rate_limited", retryAfter: limited.retryAfter }, { status: 429 });
+
   const ADMIN = process.env.ADMIN_TOKEN;
   if (!ADMIN) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
-  // 10/2漏洞审计P2修复：header优先（token不进URL=不进CDN日志/浏览器历史/Referer）；query保留兼容旧链接
+  // 10/2漏洞审计P2修复：header优先（token不进URL=不进CDN日志/浏览器历史/Referer）；query保留兼容旧链接 (安全审计修复10/3：P0×3（FX_GATE_TOKEN共享口令闸：7个AI路由open-until-configured+judgment-cloud/judgment-sync/team-upload写路径fail-closed；judgment-cloud限流30→10；insertChatLog IP改取cf-connecting-ip防伪造）+P1（admin五路由节流20每分+x-admin-token header兼容cron旧?token=；AI端点限流收紧300→20/120→10）+前端gateFetch自动prompt重试（5页面10调用点）+yarn.lock重生成（顺手修frozen-lockfile失配）+env.example补全——build绿20/20)
   const token = request.headers.get("x-admin-token") || new URL(request.url).searchParams.get("token");
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 

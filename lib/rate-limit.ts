@@ -7,17 +7,18 @@
  *    用户请求被缓存吸收，放宽不影响上游；stock(腾讯)/search(Finnhub+Yahoo兜底)上游宽松或有兜底。
  */
 export const RATE_LIMITS = {
-  chat: { maxRequests: 300, windowMs: 60_000 },   // 300次/分（AI，正常使用不可能触线，防脚本底线）
-  pick: { maxRequests: 120, windowMs: 60_000 },   // 120次/分（AI）
-  review: { maxRequests: 120, windowMs: 60_000 }, // 120次/分（AI）
+  chat: { maxRequests: 20, windowMs: 60_000 },    // 20次/分（AI；10/3审计收紧——配FX_GATE_TOKEN后真人无感）
+  pick: { maxRequests: 10, windowMs: 60_000 },    // 10次/分（AI；10/3审计收紧）
+  review: { maxRequests: 10, windowMs: 60_000 },  // 10次/分（AI；10/3审计收紧）
   flash: { maxRequests: 300, windowMs: 60_000 },  // 300次/分（金十+华尔街，服务端缓存挡上游）
   stock: { maxRequests: 300, windowMs: 60_000 },  // 300次/分（腾讯源宽松+15分钟锚点缓存）
   search: { maxRequests: 240, windowMs: 60_000 }, // 240次/分（Finnhub免费60/分，10分钟结果缓存吸收）
-  parseTrades: { maxRequests: 120, windowMs: 60_000 },   // AI
-  reviewSummary: { maxRequests: 120, windowMs: 60_000 }, // AI
+  parseTrades: { maxRequests: 10, windowMs: 60_000 },    // AI（10/3审计收紧）
+  reviewSummary: { maxRequests: 10, windowMs: 60_000 },  // AI（10/3审计收紧）
   marketPulse: { maxRequests: 180, windowMs: 60_000 },   // 30秒缓存+60分钟日线缓存挡上游
   news: { maxRequests: 180, windowMs: 60_000 },          // 10分钟缓存挡上游
-  flashAnalyze: { maxRequests: 60, windowMs: 60_000 },   // AI（快讯单条分析）
+  flashAnalyze: { maxRequests: 10, windowMs: 60_000 },   // AI（快讯单条分析；10/3审计收紧）
+  admin: { maxRequests: 20, windowMs: 60_000 },          // admin后台+debug端点（10/3审计新增：爆破节流）
 } as const;
 
 /** KV限流（如果配置了KV环境变量则启用全局限流，否则降级为内存限流）

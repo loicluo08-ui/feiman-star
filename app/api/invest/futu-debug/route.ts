@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** 富途数据源诊断端点（仅临时排查用） */
 export async function GET(request: NextRequest) {
+  const limited = await enforceRateLimitAsync(request, "admin", RATE_LIMITS.admin);
+  if (limited) return NextResponse.json({ ok: false, error: "rate_limited", retryAfter: limited.retryAfter }, { status: 429 });
+
   const adminToken = process.env.ADMIN_TOKEN;
   const provided = request.headers.get("x-admin-token");
   if (!adminToken || provided !== adminToken) {

@@ -1,4 +1,5 @@
 "use client";
+import { gateFetch } from "@/lib/gate-client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getTask, startTask, updateTaskProgress, type BackgroundTask } from "@/lib/background-task";
@@ -242,7 +243,7 @@ export default function ReviewPage() {
 
     setSummaryLoading(true);
     try {
-      const response = await fetch("/api/invest/review-summary", {
+      const response = await gateFetch("/api/invest/review-summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -326,7 +327,7 @@ export default function ReviewPage() {
       let parseMode: "ai" | "fallback" = "fallback";
 
       try {
-        const parseResponse = await fetch("/api/invest/parse-trades", {
+        const parseResponse = await gateFetch("/api/invest/parse-trades", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ trades: currentTrades }),
@@ -368,7 +369,7 @@ export default function ReviewPage() {
       }, 90_000);
       let res: Response;
       try {
-        res = await fetch("/api/invest/review", {
+        res = await gateFetch("/api/invest/review", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

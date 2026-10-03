@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { supabaseConfigured, sbRest } from "@/lib/supabase";
 import { callAI } from "@/lib/ai";
 
@@ -21,10 +22,13 @@ type LedgerRow = {
 };
 
 export async function GET(request: NextRequest) {
+  const limited = await enforceRateLimitAsync(request, "admin", RATE_LIMITS.admin);
+  if (limited) return NextResponse.json({ ok: false, error: "rate_limited", retryAfter: limited.retryAfter }, { status: 429 });
+
   const ADMIN = process.env.ADMIN_TOKEN;
   if (!ADMIN) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
   const url = new URL(request.url);
-  const token = url.searchParams.get("token");
+  const token = request.headers.get("x-admin-token") || url.searchParams.get("token");
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
 

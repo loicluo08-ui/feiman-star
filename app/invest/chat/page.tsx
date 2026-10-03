@@ -1,4 +1,5 @@
 "use client";
+import { gateFetch } from "@/lib/gate-client";
 
 // 10/2监控漏记修复：数据页强制动态——静态预渲染命中CDN缓存时middleware不执行=页面浏览漏记
 export const dynamic = "force-dynamic";
@@ -562,7 +563,7 @@ export default function ChatPage() {
         .map((m) => ({ role: m.role, text: m.text }));
       lastSummarizedCountRef.current = overflowCount;
       if (newPart.length > 0) {
-        void fetch("/api/invest/chat-summarize", {
+        void gateFetch("/api/invest/chat-summarize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prevSummary: currentSummary, messages: newPart }),
@@ -592,7 +593,7 @@ export default function ChatPage() {
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        const res = await fetch("/api/invest/chat", {
+        const res = await gateFetch("/api/invest/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           // 10/1深度改C：historyLedger全量传（后端按symbol优先筛选，slice(-8)会漏早期同标的轨迹）
@@ -743,12 +744,12 @@ export default function ChatPage() {
       const fresh = loadLedger().filter((e) => !synced.has(e.ts));
       if (fresh.length > 0) {
         const syncPayload = JSON.stringify({ entries: fresh });
-        const cloudPost = fetch("/api/invest/judgment-cloud", {
+        const cloudPost = gateFetch("/api/invest/judgment-cloud", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: syncPayload,
         }).then((r) => r.json()).catch(() => null);
-        const ghPost = fetch("/api/invest/judgment-sync", {
+        const ghPost = gateFetch("/api/invest/judgment-sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: syncPayload,

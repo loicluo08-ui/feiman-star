@@ -1,4 +1,5 @@
 "use client";
+import { gateFetch } from "@/lib/gate-client";
 
 import { useCallback, useRef, useState } from "react";
 
@@ -18,7 +19,7 @@ export default function TeamUploadPage() {
     const form = new FormData();
     form.append("file", file);
     try {
-      const res = await fetch("/api/team-upload", { method: "POST", body: form });
+      const res = await gateFetch("/api/team-upload", { method: "POST", body: form });
       const data = (await res.json()) as { ok: boolean; error?: string; path?: string };
       if (data.ok) {
         setState("done");

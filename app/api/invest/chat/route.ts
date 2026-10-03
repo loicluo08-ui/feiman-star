@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gateCheck } from "@/lib/gate";
 import { z } from "zod";
 import { callAI, callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type VisionMessage } from "@/lib/ai";
 import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
@@ -167,6 +168,9 @@ const CROSS_VALIDATION_BLOCK = [
 ].join("\n");
 
 export async function POST(request: NextRequest) {
+  // 10/3审计P0：共享口令闸（env未设=维持现状；设置FX_GATE_TOKEN即激活门禁）
+  const gated = gateCheck(request, "FX_GATE_TOKEN", "open_until_configured");
+  if (gated) return gated;
   const limited = await enforceRateLimitAsync(request, "chat", RATE_LIMITS.chat);
 
   // AI预算熔断（P1第二道闸）：余额低于熔断线时全站AI停服，损失封顶
@@ -1220,7 +1224,8 @@ export async function POST(request: NextRequest) {
         // P2①对话日志入库（评测/反思原料）——done前同步写，失败静默不阻塞
         try {
           const { insertChatLog } = await import("@/lib/supabase");
-          const chatIP = (request.headers.get("x-forwarded-for") || "").split(",")[0].trim() || request.headers.get("x-real-ip") || null;
+          // 10/3审计：XFF首段可被攻击者伪造污染chat_logs——CF在场用cf-connecting-ip，否则取XFF最右段（最近代理追加，最难伪造）
+const chatIP = request.headers.get("cf-connecting-ip") || (request.headers.get("x-forwarded-for") || "").split(",").map(s => s.trim()).filter(Boolean).pop() || request.headers.get("x-real-ip") || null;
           await insertChatLog({ ip: chatIP,
             question: (lastUserText || trimmedQuestion || "").slice(0, 4000),
             answer: fullText.slice(0, 20000),

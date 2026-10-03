@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gateCheck } from "@/lib/gate";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { supabaseConfigured, insertLedgerRows, readAllLedger } from "@/lib/supabase";
 import { parseInvalidation } from "@/lib/settle-recall";
@@ -61,7 +62,10 @@ function sanitizeEntry(raw: unknown): CloudEntry | null {
 }
 
 export async function POST(request: NextRequest) {
-  const limited = await enforceRateLimitAsync(request, "judgmentCloud", { maxRequests: 30, windowMs: 60_000 });
+  // 10/3审计P0：共享口令闸（写路径fail-closed——FX_GATE_TOKEN未配置=通道关闭）
+  const gated = gateCheck(request, "FX_GATE_TOKEN", "required");
+  if (gated) return gated;
+  const limited = await enforceRateLimitAsync(request, "judgmentCloud", { maxRequests: 10, windowMs: 60_000 }); // 10/3审计收紧30→10
   if (limited) {
     return NextResponse.json(
       { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },

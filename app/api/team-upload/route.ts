@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gateCheck } from "@/lib/gate";
 
 const REPO = "loicluo08-ui/team-inbox";
 const MAX_SIZE = 4 * 1024 * 1024; // Vercel serverless 请求体安全上限
@@ -24,6 +25,9 @@ async function ghApi(token: string, path: string, method: string, body?: unknown
 }
 
 export async function POST(req: NextRequest) {
+  // 10/3审计P0：共享口令闸（写路径fail-closed——FX_GATE_TOKEN未配置=通道关闭）
+  const gated = gateCheck(req, "FX_GATE_TOKEN", "required");
+  if (gated) return gated;
   const token = process.env.TEAM_INBOX_TOKEN;
   if (!token) {
     return NextResponse.json({ ok: false, error: "服务端上传凭据未配置（TEAM_INBOX_TOKEN）" }, { status: 500 });
