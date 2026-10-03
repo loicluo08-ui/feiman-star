@@ -38,7 +38,8 @@ export const CHANNELS: Record<string, GatewayChannel> = {
   volc: {
     name: "volc", baseEnv: "VOLC_BASE_URL", baseDefault: "https://ark.cn-beijing.volces.com/api/v3",
     keyEnv: "VOLC_API_KEY", modelEnv: "VOLC_MODEL", modelDefault: "doubao-seed-1-6-flash-250715",
-    free: true, priority: 20,
+    // 10/3逸翔令：豆包不用——InvalidEndpointOrModel需账号侧开通ep端点，priority=-1摘出降级链
+    free: true, priority: -1,
   },
   siliconflow: {
     name: "siliconflow", baseEnv: "SILICONFLOW_BASE_URL", baseDefault: "https://api.siliconflow.cn/v1",
@@ -66,7 +67,7 @@ export const CHANNELS: Record<string, GatewayChannel> = {
 /** 任务→通道降级链：extract/eval=免费池优先（成本0），chat/heavy=付费主脑优先 */
 export function chainFor(task: TaskKind): GatewayChannel[] {
   const all = Object.values(CHANNELS);
-  const configured = all.filter((c) => (process.env[c.keyEnv] || "").trim());
+  const configured = all.filter((c) => (process.env[c.keyEnv] || "").trim() && c.priority >= 0);
   if (task === "chat" || task === "heavy") {
     // 付费主脑优先，免费池只做灾难兜底（保产品可用性）
     return [...configured].sort((a, b) => (a.free === b.free ? a.priority - b.priority : a.free ? 1 : -1));
