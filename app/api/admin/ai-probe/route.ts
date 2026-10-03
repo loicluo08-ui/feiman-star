@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
   if (token !== adminToken) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
+  const listMode = url.searchParams.get("list") === "1";
 
   const rows: ProbeRow[] = [];
   for (const ch of Object.values(CHANNELS)) {
@@ -43,6 +44,23 @@ export async function GET(request: NextRequest) {
     const base = (process.env[ch.baseEnv] || ch.baseDefault).replace(/\/$/, "");
     const t0 = Date.now();
     try {
+      // list=1模式：调GET /models返回该通道真实可用模型列表（排模型退役/改名类404）
+      if (listMode) {
+        const lm = await fetch(`${base}/models`, {
+          headers: { Authorization: `Bearer ${key}`, ...(ch.extraHeaders ?? {}) },
+          signal: AbortSignal.timeout(12000),
+        });
+        const latency = Date.now() - t0;
+        if (lm.ok) {
+          const body = await lm.json().catch(() => ({}));
+          const ids = Array.isArray(body?.data) ? body.data.map((m: { id?: string }) => m.id).filter(Boolean) : [];
+          const row: ProbeRow & { models?: string[] } = { channel: ch.name, configured: true, ok: true, latencyMs: latency, model: `${ids.length}个模型`, free: ch.free, models: ids.slice(0, 40) };
+          rows.push(row);
+        } else {
+          rows.push({ channel: ch.name, configured: true, ok: false, latencyMs: latency, model, free: ch.free, error: `HTTP ${lm.status}` });
+        }
+        continue;
+      }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 12_000);
       const res = await fetch(`${base}/chat/completions`, {

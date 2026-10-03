@@ -31,7 +31,7 @@ export const CHANNELS: Record<string, GatewayChannel> = {
     free: false, priority: 90,
   },
   glm: {
-    name: "glm", baseEnv: "ZHIPU_BASE_URL", baseDefault: "https://open.bigmodel.cn/api/v4",
+    name: "glm", baseEnv: "ZHIPU_BASE_URL", baseDefault: "https://open.bigmodel.cn/api/paas/v4",
     keyEnv: "ZHIPU_API_KEY", modelEnv: "ZHIPU_TEXT_MODEL", modelDefault: "glm-4.7-flash",
     free: true, priority: 10,
   },
@@ -47,7 +47,7 @@ export const CHANNELS: Record<string, GatewayChannel> = {
   },
   openrouter: {
     name: "openrouter", baseEnv: "OPENROUTER_BASE_URL", baseDefault: "https://openrouter.ai/api/v1",
-    keyEnv: "OPENROUTER_API_KEY", modelEnv: "OPENROUTER_MODEL", modelDefault: "deepseek/deepseek-chat-v3-0324:free",
+    keyEnv: "OPENROUTER_API_KEY", modelEnv: "OPENROUTER_MODEL", modelDefault: "qwen/qwen3.8-27b:free",
     free: true, priority: 40,
     extraHeaders: { "X-Title": "FeimanStar" },
   },
