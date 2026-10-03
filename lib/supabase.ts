@@ -161,8 +161,10 @@ export async function matchKbSemantic(
 ): Promise<KbDynamicRow[] | null> {
   if (!supabaseConfigured() || queryVector.length === 0) return null;
   try {
+    // 10/3 P1修复：必须带type过滤——access_log每天+56条洪流，limit=200无过滤时
+    // 三天后老知识条目将被挤出窗口，语义检索慢性死亡（见output/ops_log/kb_semantic_audit_1003.md）
     const rows = await sbRest<Array<KbDynamicRow & { embedding: string | null }>>(
-      "kb_dynamic?select=id,type,keywords,content,source,created,expires,embedding&order=created.desc&limit=200"
+      "kb_dynamic?select=id,type,keywords,content,source,created,expires,embedding&type=neq.access_log&type=neq.username_claim&type=neq.ip_block&type=neq.geo_cache&order=created.desc&limit=200"
     );
     if (!rows) return null;
     const today = new Date().toISOString().slice(0, 10);

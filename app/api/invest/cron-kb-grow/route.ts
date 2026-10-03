@@ -81,11 +81,13 @@ export async function GET(request: NextRequest) {
                 await updateKbEmbedding(emptyRows[i].id, vectors[i]);
                 backfilled += 1;
               }
+            } else {
+              console.error(`[cron-kb-grow] 存量回填向量化返回空（${emptyRows.length}条待补）`);
             }
           }
         }
-      } catch {
-        // 补向量化失败静默
+      } catch (bfErr) {
+        console.error("[cron-kb-grow] 无新数据分支的存量回填异常:", bfErr instanceof Error ? bfErr.message : String(bfErr));
       }
       return NextResponse.json({ ok: true, changed: false, total: entries.length, embed_backfill: backfilled });
     }
@@ -98,17 +100,23 @@ export async function GET(request: NextRequest) {
       commitSha = write.commitSha?.slice(0, 7);
     }
     try {
-      void 0;
-      // P2③向量化：allFresh条目（快照+洞察）生成embedding入库（语义检索底座），失败静默（关键词路由兜底）
+      // P2③向量化：allFresh条目（快照+洞察）生成embedding入库（语义检索底座）
+      // 10/3教训：原为"失败静默（关键词路由兜底）"——智谱embedding-2余额不足429连续被拒72h、库存0向量无人知晓。
+      // 10/3换SiliconFlow免费模型+失败全部可观测（见output/ops_log/kb_semantic_audit_1003.md）
       const { embedTexts } = await import("@/lib/kb-embedding");
       const vectors = await embedTexts(allFresh.map((f) => f.content));
-      if (vectors) {
+      if (!vectors) {
+        console.error(`[cron-kb-grow] 向量化返回空——新条目${allFresh.length}条无向量，语义检索将无法召回（关键词路由兜底中）`);
+      } else {
+        let embFail = 0;
         for (let i = 0; i < allFresh.length; i++) {
-          await updateKbEmbedding(allFresh[i].id, vectors[i]);
+          const ok = await updateKbEmbedding(allFresh[i].id, vectors[i]);
+          if (!ok) embFail += 1;
         }
+        if (embFail > 0) console.error(`[cron-kb-grow] 向量写入失败${embFail}/${allFresh.length}条`);
       }
-    } catch {
-      // DB写失败不影响git json通道
+    } catch (embErr) {
+      console.error("[cron-kb-grow] 向量化段异常:", embErr instanceof Error ? embErr.message : String(embErr));
     }
     // 10/3增强：存量embedding回填每次轮次都跑（原逻辑只在"无新数据"分支触发——
     // 而每3小时快照必有更新，该分支实际永远不进=存量空embedding条目永远无法被语义检索召回）
@@ -120,14 +128,19 @@ export async function GET(request: NextRequest) {
       if (emptyRows.length > 0) {
         const vecs = await emb2(emptyRows.map((r) => r.content));
         if (vecs) {
+          let fillFail = 0;
           for (let i = 0; i < emptyRows.length; i++) {
-            await updEmb(emptyRows[i].id, vecs[i]);
+            const ok = await updEmb(emptyRows[i].id, vecs[i]);
+            if (!ok) fillFail += 1;
           }
-          console.log(`[cron-kb-grow] embedding回填${emptyRows.length}条存量条目`);
+          if (fillFail > 0) console.error(`[cron-kb-grow] 存量回填写入失败${fillFail}/${emptyRows.length}条`);
+          console.log(`[cron-kb-grow] embedding回填${emptyRows.length - fillFail}条存量条目`);
+        } else {
+          console.error(`[cron-kb-grow] 存量回填向量化返回空（${emptyRows.length}条待补）`);
         }
       }
-    } catch {
-      // 回填失败静默
+    } catch (rfErr) {
+      console.error("[cron-kb-grow] 存量embedding回填异常:", rfErr instanceof Error ? rfErr.message : String(rfErr));
     }
     try {
       if (token) await writeDailySnapshot(token, fresh);
