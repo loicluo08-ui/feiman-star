@@ -7,12 +7,14 @@ import { buildImpactMessages, parseImpact, STOCK_POOL } from "@/lib/flash-impact
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// 快讯影响标注（10/4）：批量≤10条 → 利好/利空各≤5只（候选池硬约束防幻觉）
+// 快讯影响标注（10/4）：批量≤5条 → 利好/利空各≤5只（候选池硬约束防幻觉）
 // 缓存：content hash → 内存Map（与快讯源5分钟缓存语义对齐）
 
 const cache = new Map<string, { data: unknown; ts: number }>();
 const CACHE_TTL = 5 * 60_000;
-const MAX_ITEMS = 10;
+// 批量上限5条（免费池吞吐甜点）：5条×10只×理由≤18字≈1600输出token；
+// 首版10条/3000token实测数学必截断（后段条目系统性丢失），拆批+前端2并发覆盖
+const MAX_ITEMS = 5;
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "flashAnalyze", RATE_LIMITS.flashAnalyze);
@@ -67,20 +69,20 @@ export async function POST(request: NextRequest) {
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        { task: "extract", responseFormat: "json", temperature: 0.2, max_tokens: 3000, retry: 1, timeout: 45_000 },
+        { task: "extract", responseFormat: "json", temperature: 0.2, max_tokens: 2500, retry: 1, timeout: 60_000 },
       );
       const parsed = parseImpact(typeof raw === "string" ? raw : String(raw ?? ""), pending.map((p) => p.id));
       for (const p of pending) {
-        const val = parsed[p.id] || { bull: [], bear: [], weak: true };
-        results[p.id] = val;
-        cache.set(`imp:${hash(p.content)}`, { data: val, ts: now });
+        const val = parsed[p.id];
+        if (val) {
+          results[p.id] = val;
+          cache.set(`imp:${hash(p.content)}`, { data: val, ts: now });
+        }
+        // 模型漏答/截断条目：不下发也不缓存——前端不存state，下轮items轮询自动重试（空结果缓存5分钟会让缺口固化）
       }
     } catch (err) {
       console.error("[flash-impact] ai_error", err instanceof Error ? err.message : String(err));
-      // AI失败：已命中缓存的照常返回，未命中的标空（前端不渲染标注行）
-      for (const p of pending) {
-        if (!results[p.id]) results[p.id] = { bull: [], bear: [], weak: true, failed: true };
-      }
+      // AI失败：已命中缓存的照常返回；未命中的不下发——前端下轮轮询自动重试
     }
   }
 

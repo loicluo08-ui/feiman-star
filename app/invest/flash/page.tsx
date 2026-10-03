@@ -345,28 +345,41 @@ export default function FlashPage() {
     setAiError(null);
   }, []);
 
-  // 批量拉影响标注（10/4）：items更新后对未标注的前10条请求；后端内容hash缓存5分钟，实际新调用量=新增快讯数
+  // 批量拉影响标注（10/4逸翔令"每条消息"）：全部未标注条目分批拉取——每批10条拆2并发×5条/请求
+  // （服务端批量上限5：免费池单请求≈1600输出token是吞吐甜点，10条/3000token必截断）。
+  // 服务端内容hash缓存5分钟，实际新调用量=新增快讯数；失败条目不入state，items轮询自动重试
   useEffect(() => {
     if (impactInFlightRef.current || items.length === 0) return;
-    const targets = items.slice(0, 10).filter((i) => !impacts[i.id]);
+    const targets = items.filter((i) => !impacts[i.id]);
     if (targets.length === 0) return;
     impactInFlightRef.current = true;
-    fetch("/api/invest/flash-impact", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: targets.map((i) => ({ id: i.id, title: i.title, content: (i.content_text || i.content).slice(0, 500) })),
-      }),
-    })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((j) => {
-        const data = j?.data || {};
-        setImpacts((prev) => ({ ...prev, ...data }));
+    const post = (chunk: typeof targets) =>
+      fetch("/api/invest/flash-impact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: chunk.map((it) => ({ id: it.id, title: it.title, content: (it.content_text || it.content).slice(0, 500) })),
+        }),
       })
-      .catch(() => {})
-      .finally(() => {
-        impactInFlightRef.current = false;
-      });
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((j) => {
+          const data = j?.data || {};
+          setImpacts((prev) => ({ ...prev, ...data }));
+        })
+        .catch(() => {});
+    (async () => {
+      for (let i = 0; i < targets.length; i += 10) {
+        const batch = targets.slice(i, i + 10);
+        const half = Math.ceil(batch.length / 2);
+        await Promise.all(
+          [batch.slice(0, half), batch.slice(half)]
+            .filter((g) => g.length > 0)
+            .map((g) => post(g))
+        );
+      }
+    })().finally(() => {
+      impactInFlightRef.current = false;
+    });
   }, [items, impacts]);
 
   const filtered = filter === "important" ? items.filter((i) => i.is_important) : items;
@@ -511,12 +524,12 @@ export default function FlashPage() {
                             )}
                             {imp.bull.length > 0 && (
                               <span className="font-medium text-[var(--positive)]">
-                                🟢利好：{imp.bull.map((s) => `${s.symbol}·${s.reason.slice(0, 16)}`).join("　")}
+                                🟢利好：{imp.bull.map((s) => `${s.symbol}·${s.reason.length > 22 ? s.reason.slice(0, 22) + "…" : s.reason}`).join("　")}
                               </span>
                             )}
                             {imp.bear.length > 0 && (
                               <span className="font-medium text-[var(--negative)]">
-                                🔴利空：{imp.bear.map((s) => `${s.symbol}·${s.reason.slice(0, 16)}`).join("　")}
+                                🔴利空：{imp.bear.map((s) => `${s.symbol}·${s.reason.length > 22 ? s.reason.slice(0, 22) + "…" : s.reason}`).join("　")}
                               </span>
                             )}
                           </div>
