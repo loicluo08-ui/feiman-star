@@ -110,6 +110,25 @@ export async function GET(request: NextRequest) {
     } catch {
       // DB写失败不影响git json通道
     }
+    // 10/3增强：存量embedding回填每次轮次都跑（原逻辑只在"无新数据"分支触发——
+    // 而每3小时快照必有更新，该分支实际永远不进=存量空embedding条目永远无法被语义检索召回）
+    try {
+      const { readKbEntries, updateKbEmbedding: updEmb } = await import("@/lib/supabase");
+      const { embedTexts: emb2 } = await import("@/lib/kb-embedding");
+      const allRows = (await readKbEntries(200)) || [];
+      const emptyRows = allRows.filter((r) => !r.embedding && (!r.expires || r.expires >= new Date().toISOString().slice(0, 10)));
+      if (emptyRows.length > 0) {
+        const vecs = await emb2(emptyRows.map((r) => r.content));
+        if (vecs) {
+          for (let i = 0; i < emptyRows.length; i++) {
+            await updEmb(emptyRows[i].id, vecs[i]);
+          }
+          console.log(`[cron-kb-grow] embedding回填${emptyRows.length}条存量条目`);
+        }
+      }
+    } catch {
+      // 回填失败静默
+    }
     try {
       if (token) await writeDailySnapshot(token, fresh);
     } catch {

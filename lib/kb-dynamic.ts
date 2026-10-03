@@ -26,7 +26,7 @@ export async function selectDynamicKB(
     const now = new Date().toISOString().slice(0, 10);
     const q = (userText || "").toLowerCase();
     // Supabase为主源（服务端cron持续写入），git json为兜底（DB未配置/查询失败时）
-    let list: Array<{ id: string; type: string; keywords: string[]; content: string; source: string; created: string; expires?: string | null }> = [];
+    let list: Array<{ id: string; type: string; keywords: string[]; content: string; source: string; created: string; expires?: string | null; sem?: boolean }> = [];
     if (supabaseConfigured()) {
       const rows = await readKbEntries(80);
       if (rows && rows.length > 0) {
@@ -54,6 +54,7 @@ export async function selectDynamicKB(
                   id: r.id, type: r.type, keywords: r.keywords || [],
                   content: r.content, source: r.source, created: r.created,
                   expires: r.expires ?? undefined,
+                  sem: true,
                 });
                 seenIds.add(r.id);
               }
@@ -64,21 +65,26 @@ export async function selectDynamicKB(
     } catch {
       // 语义检索失败静默——关键词路由兜底
     }
-    const picked: Array<{ id: string; type: string; keywords: string[]; content: string; source: string; created: string; expires?: string | null }> = [];
+    // 10/3增强：相关性加权排序（原纯时间排序——最新但弱相关的条目吃满注入预算，
+    // 强相关的较早洞察被截断）。评分=语义命中3分（向量相似>0.75内）+每命中1个关键词2分；
+    // 同分按新鲜度。快照条目keywords含标的名，问题提到该标的即命中。
+    interface PickedEntry { id: string; type: string; keywords: string[]; content: string; source: string; created: string; expires?: string | null; sem: boolean; score: number }
+    const picked: PickedEntry[] = [];
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (e.expires && e.expires < now) continue;
       const kws = e.keywords || [];
-      let hit = false;
+      let kwHits = 0;
       for (let j = 0; j < kws.length; j++) {
-        if (q.indexOf(kws[j].toLowerCase()) >= 0) {
-          hit = true;
-          break;
-        }
+        if (q.indexOf(kws[j].toLowerCase()) >= 0) kwHits += 1;
       }
-      if (hit) picked.push(e);
+      const sem = (e as { sem?: boolean }).sem === true;
+      if (kwHits > 0 || sem) {
+        picked.push({ ...e, sem, score: (sem ? 3 : 0) + kwHits * 2 });
+      }
     }
     picked.sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score;
       return a.created < b.created ? 1 : -1;
     });
     const parts: string[] = [];
