@@ -42,7 +42,8 @@ ${persp.map((p, i) => `【视角${i + 1}】${p}`).join("\n\n")}
 裁决规则（按可信度加权，陈述权重理由）：
 1. 逐视角检查：其结论被哪条证据支持/削弱（ACH淘汰式——用证据筛，不用投票数）。
 2. 分歧处理：观点对立时说明分歧轴是什么、本场景下哪方适用条件更成立；可信度相当时给双场景，不强行平均。
-3. 输出结构：①【裁决】一句话结论（含方向+信心度N%）②各视角一句话立场标注（采纳/降权/否决+一句理由）③融合后的核心论据（≤3条）④失效条件（三性：可观察/可量化/可定时）⑤若三位分析师分歧重大（方向相反且各有硬证据），显式标注"分歧度高：给出双场景结论"。
+3. **矛盾调和（最高优先）**：正文中禁止保留未调和的对立断言——同一标的不得同时出现"无法定价/无法估值/高度不确定"与具体涨跌幅/目标价；各视角的冲突结论必须收敛为单一裁决或显式双场景（"若X则…；若Y则…"），融合时逐条核对。
+4. 输出结构：①【裁决】一句话结论（含方向+信心度N%）②各视角一句话立场标注（采纳/降权/否决+一句理由）③融合后的核心论据（≤3条）④失效条件（三性：可观察/可量化/可定时）⑤若三位分析师分歧重大（方向相反且各有硬证据），显式标注"分歧度高：给出双场景结论"。
 600字内，直接输出裁决不铺垫。`;
 
 const ARBITRATOR_PROMPT = (persp: string[], question: string) => `你是跨模型仲裁裁判（与前述分析师来自不同AI厂商）。三位分析师对"${question}"的结论如下：
@@ -113,6 +114,30 @@ export async function runParallelDeliberation(
     return null;
   }
   if (synthesis.trim().length < 100) return null;
+
+  // 10/3盲测修复：矛盾消解终审——Q6实锤"无法定价vs估值跌60%"并存未调和被判失分。
+  // 正则预门控成本（命中才发起调和调用），调和失败/未产出则保留原 synthesis（fail-open）
+  const CONTRADICTION_GATE =
+    /(无法定价|无法估值|难以定价|难以估值|高度不确定|无法用DCF|无法锚定)/.test(synthesis) &&
+    /(跌|涨|下跌|上涨|下跌|上涨)\s*\d{1,2}(\.\d)?\s*%|目标价\s*\$?\s*\d/.test(synthesis);
+  if (CONTRADICTION_GATE) {
+    try {
+      let reconciled = "";
+      for await (const chunk of callAIStream(
+        [
+          { role: "system" as const, content: `你是投资委员会终审编辑。以下裁决正文若存在未调和的对立断言（如同标的既"无法定价/无法估值"又给具体涨跌幅或目标价），只修正矛盾处：收敛为单一裁决或改为显式双场景（"若X则…；若Y则…"）。除此之外一字不动，禁止新增机制解释。直接输出修正后的完整正文，不要任何前后缀说明。若无矛盾，原样输出。` },
+          { role: "user" as const, content: synthesis },
+        ] as never,
+        { temperature: 0.2, max_tokens: 3000, timeout: 90_000, signal },
+      )) {
+        reconciled += (chunk as { text?: string }).text ?? "";
+      }
+      if (reconciled.trim().length >= 100) synthesis = reconciled.trim();
+      else console.error("[parallel-deliberation] reconcile_output_too_short, keep original");
+    } catch (e) {
+      console.error("[parallel-deliberation] reconcile_error, keep original", e);
+    }
+  }
 
   // 分歧检测（E队OpenQ：阈值需实验定标——首版用方向词对立启发式）
   const bull = /看多|买入|增持|做多/.test(ok.map(r => r.stance).join(""));

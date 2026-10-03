@@ -130,6 +130,8 @@ const requestSchema = z.object({
   style: z.enum(CHAT_STYLES).optional().default("balanced"),
   // 9/13阶段3：C档并行会诊开关（实验态）——true时深度/blend题走3视角并行→融合仲裁（E队方案三）
   parallel: z.boolean().optional().default(false),
+  // 10/3盲测修复：审计附录开关——true时并行会诊答案附带"三视角原文+判断记账"审计段，默认关（盲评实锤附录=失分项）
+  include_audit: z.boolean().optional().default(false),
   // 9/12判断记账（跨会话判断追踪）：前端localStorage存档的历史主判断，结构化传回做回访对账
   historyLedger: z
     .array(
@@ -766,15 +768,22 @@ export async function POST(request: NextRequest) {
             );
             if (!delib) throw new Error("deliberation_failed");
             // 9/26 P2修复：裁决置顶（第一句=核心判断，符合结论式锚），三视角原文降为尾部审计附录；删机制自白（9/25减法口径）
-            const delibText = [
-              delib.synthesis,
-              "",
-              "---",
-              `**三视角原文（独立分析互不可见；分歧度=${delib.dissent_level}${delib.arbitrator_used ? "，异构裁判已介入" : ""}）**`,
-              ...delib.perspectives.map(p => `◆ ${p.name}：${p.stance}`),
-              "",
-              buildDelibLedgerLine(delib, effectiveStockCodes),
-            ].join("\n");
+            // 10/3盲测修复：审计附录降开关——盲评实锤附录占篇幅50%被判"内部仲裁术语"，对话场景默认关（include_audit=true才附带）
+            const includeAudit = input.data.include_audit === true;
+            const synthesisBody = includeAudit
+              ? delib.synthesis
+              : delib.synthesis.replace(/\n*【异构仲裁注记（GLM）】[\s\S]*$/, "").trimEnd();
+            const delibText = includeAudit
+              ? [
+                  synthesisBody,
+                  "",
+                  "---",
+                  `**三视角原文（独立分析互不可见；分歧度=${delib.dissent_level}${delib.arbitrator_used ? "，异构裁判已介入" : ""}）**`,
+                  ...delib.perspectives.map(p => `◆ ${p.name}：${p.stance}`),
+                  "",
+                  buildDelibLedgerLine(delib, effectiveStockCodes),
+                ].join("\n")
+              : synthesisBody;
             fullText = delibText;
             send({ type: "patch", text: fullText });
             send({ type: "done" });
