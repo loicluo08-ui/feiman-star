@@ -66,6 +66,12 @@ export default function FlashPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const aiAbortRef = useRef<AbortController | null>(null);
 
+  // 影响标注（10/4逸翔令：每条快讯自动评价利好/利空各≤5只——候选池硬约束防幻觉，后端5分钟缓存）
+  interface ImpactStock { symbol: string; name: string; reason: string; }
+  interface ImpactData { bull: ImpactStock[]; bear: ImpactStock[]; weak?: boolean; failed?: boolean; }
+  const [impacts, setImpacts] = useState<Record<string, ImpactData>>({});
+  const impactInFlightRef = useRef(false);
+
   // 浏览器通知：重要快讯弹窗
   const [notifEnabled, setNotifEnabled] = useState(false);
   const notifiedRef = useRef<Set<string>>(new Set());
@@ -339,6 +345,30 @@ export default function FlashPage() {
     setAiError(null);
   }, []);
 
+  // 批量拉影响标注（10/4）：items更新后对未标注的前10条请求；后端内容hash缓存5分钟，实际新调用量=新增快讯数
+  useEffect(() => {
+    if (impactInFlightRef.current || items.length === 0) return;
+    const targets = items.slice(0, 10).filter((i) => !impacts[i.id]);
+    if (targets.length === 0) return;
+    impactInFlightRef.current = true;
+    fetch("/api/invest/flash-impact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: targets.map((i) => ({ id: i.id, title: i.title, content: (i.content_text || i.content).slice(0, 500) })),
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j) => {
+        const data = j?.data || {};
+        setImpacts((prev) => ({ ...prev, ...data }));
+      })
+      .catch(() => {})
+      .finally(() => {
+        impactInFlightRef.current = false;
+      });
+  }, [items, impacts]);
+
   const filtered = filter === "important" ? items.filter((i) => i.is_important) : items;
 
   return (
@@ -469,6 +499,30 @@ export default function FlashPage() {
                     {item.title && <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{item.title}</h3>}
                     {/* 10/1 P2-6：content_text="标题\n正文"格式且首行=标题时跳过首行（标题重复渲染实锤——一屏3-4处逐条自重复） */}
                     <p className="text-sm leading-6 text-[var(--text-secondary)] whitespace-pre-line">{stripDupTitle(item.title, item.content_text)}</p>
+                    {/* 影响标注行（10/4）：利好/利空各≤5只——failed或全空不渲染（宁缺毋编） */}
+                    {(() => {
+                      const imp = impacts[item.id];
+                      if (!imp || imp.failed || (imp.bull.length === 0 && imp.bear.length === 0)) return null;
+                      return (
+                        <div className="mt-2 rounded-lg bg-[var(--surface-muted)] px-2.5 py-1.5 text-[11px] leading-5">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {imp.weak && (
+                              <span className="rounded bg-[var(--surface)] px-1 py-0.5 text-[10px] text-[var(--text-muted)]">与股市关联弱</span>
+                            )}
+                            {imp.bull.length > 0 && (
+                              <span className="font-medium text-[var(--positive)]">
+                                🟢利好：{imp.bull.map((s) => `${s.symbol}·${s.reason.slice(0, 16)}`).join("　")}
+                              </span>
+                            )}
+                            {imp.bear.length > 0 && (
+                              <span className="font-medium text-[var(--negative)]">
+                                🔴利空：{imp.bear.map((s) => `${s.symbol}·${s.reason.slice(0, 16)}`).join("　")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </article>
                 ))
               )}

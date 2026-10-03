@@ -1,0 +1,107 @@
+import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { aiBudgetGuard } from "@/lib/ai-budget";
+import { callAI } from "@/lib/ai";
+import { buildImpactMessages, parseImpact, STOCK_POOL } from "@/lib/flash-impact";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// 快讯影响标注（10/4）：批量≤10条 → 利好/利空各≤5只（候选池硬约束防幻觉）
+// 缓存：content hash → 内存Map（与快讯源5分钟缓存语义对齐）
+
+const cache = new Map<string, { data: unknown; ts: number }>();
+const CACHE_TTL = 5 * 60_000;
+const MAX_ITEMS = 10;
+
+export async function POST(request: NextRequest) {
+  const limited = await enforceRateLimitAsync(request, "flashAnalyze", RATE_LIMITS.flashAnalyze);
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
+  const budget = await aiBudgetGuard();
+  if (!budget.allowed) {
+    return NextResponse.json({ error: budget.reason }, { status: 503, headers: { "Retry-After": "600" } });
+  }
+
+  let body: { items?: Array<{ id?: string; title?: string; content?: string }> };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "请求格式错误" }, { status: 400 });
+  }
+  const rawItems = (body.items || [])
+    .filter((x) => typeof x.content === "string" && (x.content as string).length >= 5)
+    .slice(0, MAX_ITEMS)
+    .map((x, i) => ({
+      id: String(x.id || `f${i}`),
+      title: String(x.title || "").slice(0, 120),
+      content: String(x.content).slice(0, 800),
+    }));
+  if (rawItems.length === 0) {
+    return NextResponse.json({ error: "无有效快讯内容" }, { status: 400 });
+  }
+
+  // 缓存命中检查（逐条级：混合命中时只评未命中的）
+  const now = Date.now();
+  const results: Record<string, unknown> = {};
+  const pending: typeof rawItems = [];
+  for (const it of rawItems) {
+    const key = `imp:${hash(it.content)}`;
+    const hit = cache.get(key);
+    if (hit && now - hit.ts < CACHE_TTL) {
+      results[it.id] = hit.data;
+    } else {
+      pending.push(it);
+    }
+  }
+
+  if (pending.length > 0) {
+    const { system, user } = buildImpactMessages(pending);
+    try {
+      const raw = await callAI(
+        [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        { task: "extract", responseFormat: "json", temperature: 0.2, max_tokens: 3000, retry: 1, timeout: 45_000 },
+      );
+      const parsed = parseImpact(typeof raw === "string" ? raw : String(raw ?? ""), pending.map((p) => p.id));
+      for (const p of pending) {
+        const val = parsed[p.id] || { bull: [], bear: [], weak: true };
+        results[p.id] = val;
+        cache.set(`imp:${hash(p.content)}`, { data: val, ts: now });
+      }
+    } catch (err) {
+      console.error("[flash-impact] ai_error", err instanceof Error ? err.message : String(err));
+      // AI失败：已命中缓存的照常返回，未命中的标空（前端不渲染标注行）
+      for (const p of pending) {
+        if (!results[p.id]) results[p.id] = { bull: [], bear: [], weak: true, failed: true };
+      }
+    }
+  }
+
+  // 清理过期缓存（防Map无限涨）
+  if (cache.size > 500) {
+    for (const k of Array.from(cache.keys())) {
+      const v = cache.get(k);
+      if (v && now - v.ts > CACHE_TTL) cache.delete(k);
+    }
+  }
+
+  return NextResponse.json(
+    { data: results, pool_size: STOCK_POOL.length, timestamp: new Date().toISOString() },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
+
+function hash(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
