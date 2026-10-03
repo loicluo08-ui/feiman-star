@@ -85,10 +85,22 @@ export function mergeEntries(existing: DynamicEntry[], fresh: DynamicEntry[]): {
   const today = new Date().toISOString().slice(0, 10);
   const kept = existing.filter((e) => !e.expires || e.expires >= today);
   const freshKeys = new Set(fresh.map((f) => f.keywords.join("|")));
+  // 10/3 P1：洞察内容去重——同日多轮生长提炼同一批快讯会产出近似洞察（feed换血慢时更甚），
+  // 按content前30字判重，与库存量或本批内重复的跳过，防低价值堆积挤占语义检索配额
+  const seenInsight = new Set(
+    kept.filter((e) => e.type === "insight").map((e) => e.content.slice(0, 30))
+  );
+  const dedupedFresh = fresh.filter((f) => {
+    if (f.type !== "insight") return true;
+    const k = f.content.slice(0, 30);
+    if (seenInsight.has(k)) return false;
+    seenInsight.add(k);
+    return true;
+  });
   const merged = kept
     .filter((e) => e.type !== "data_snapshot" || !freshKeys.has(e.keywords.join("|")))
-    .concat(fresh);
-  return { merged, added: fresh.length };
+    .concat(dedupedFresh);
+  return { merged, added: dedupedFresh.length };
 }
 
 // ——— GitHub Contents API持久化（serverless可写层）———
@@ -208,12 +220,15 @@ function parseInsights(resp: string, flashCount: number, feedSource: string): Gr
   if (!m) return { insights: [], flashCount, aiOk: true, error: "no_json" };
   const parsed = JSON.parse(m[0]) as Array<{ keywords?: string[]; content?: string; direction?: string }>;
   const today = new Date().toISOString().slice(0, 10);
+  const hour = new Date().toISOString().slice(11, 13);
   const expire = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   const insights: DynamicEntry[] = [];
   parsed.forEach((p, i) => {
     if (!p.content || !p.keywords || p.keywords.length === 0) return;
     insights.push({
-      id: `insight_${today}_${i}`,
+      // 10/3 P1：id带小时片——原`insight_${today}_${i}`在同日多轮生长时撞id，
+      // route层Map按id去重导致后轮覆盖前轮（一天最多存活最后5条）
+      id: `insight_${today}_${hour}_${i}`,
       type: "insight",
       keywords: [...p.keywords.slice(0, 5), today, "洞察"],
       content: `${p.content}（方向：${p.direction ?? "未标注"}；来源：${feedSource}${today}快讯提炼）`,

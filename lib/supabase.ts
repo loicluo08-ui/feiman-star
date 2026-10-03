@@ -55,12 +55,31 @@ export interface KbDynamicRow {
 
 export async function upsertKbEntries(rows: KbDynamicRow[]): Promise<boolean> {
   if (rows.length === 0) return true;
-  const out = await sbRest("kb_dynamic?on_conflict=id", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body: rows,
-  });
-  return out !== null;
+  // 10/3 P0修复：PGRST102 "All object keys must match"——存量行expires/embedding为NULL，读回映射成
+  // undefined后JSON.stringify丢弃键，与新行（有键）混批导致行键不齐→400。KB动态层因此28天静默停摆
+  // （9/13实锤：快照停在9/13、洞察0条）。写入前统一键集（可空字段显式补null）。
+  const norm = rows.map((r) => ({
+    id: r.id,
+    type: r.type,
+    keywords: Array.isArray(r.keywords) ? r.keywords : [],
+    content: r.content,
+    source: r.source,
+    created: r.created,
+    expires: r.expires ?? null,
+    embedding: r.embedding ?? null,
+  }));
+  // 返回值语义修正（与insertLedgerRows同款）：return=minimal时201空body→sbRest返回null，
+  // 原实现`out!==null`把成功误报为false。语义=异常false，正常返回（含null）true。
+  try {
+    await sbRest("kb_dynamic?on_conflict=id", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: norm,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function readKbEntries(limit = 200): Promise<KbDynamicRow[] | null> {
