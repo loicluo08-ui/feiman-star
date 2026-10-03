@@ -45,11 +45,20 @@ export async function selectDynamicKB(
       if ((userText || "").length >= 6) {
         const qv = await embedTexts([userText.slice(0, 500)]);
         if (qv && qv[0]) {
-          const semRows = await matchKbSemantic(qv[0], 6);
+          const semRows = await matchKbSemantic(qv[0], 12);
           if (semRows && semRows.length > 0) {
             const seenIds = new Set(list.map((e) => e.id));
+            const seenSym = new Set<string>(); // 10/3：同标的日频快照只注入最相关一条——120条快照下近似条目会刷满语义候选
             for (const r of semRows) {
               if (!seenIds.has(r.id) && (!r.expires || r.expires >= now)) {
+                // 10/3：机械结算记录不进对话知识块（content=机器JSON污染上下文）——
+                // 证伪召回走settle-recall专用通道，kb_dynamic副本仅保留幂等账本职能
+                if (r.source === "cron-judgment-settle") continue;
+                const symMatch = r.type === "data_snapshot" ? ((r.content.match(/^(.+?)行情快照（/) || [])[1] || "") : "";
+                if (symMatch) {
+                  if (seenSym.has(symMatch)) continue;
+                  seenSym.add(symMatch);
+                }
                 list.push({
                   id: r.id, type: r.type, keywords: r.keywords || [],
                   content: r.content, source: r.source, created: r.created,
