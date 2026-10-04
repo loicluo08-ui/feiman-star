@@ -160,10 +160,27 @@ export function parseImpact(raw: string, expectedIds: string[]): Record<string, 
     } catch {
       const s = text.indexOf("["), e = text.lastIndexOf("]");
       const so = text.indexOf("{"), eo = text.lastIndexOf("}");
-      if (s !== -1 && e > s && (so === -1 || s < so)) parsed = JSON.parse(text.slice(s, e + 1));
-      else if (so !== -1 && eo > so) parsed = JSON.parse(text.slice(so, eo + 1));
-      else if (s !== -1 && e > s) parsed = JSON.parse(text.slice(s, e + 1));
-      else return out;
+      // 截断恢复（10/4部署终审实锤：免费池生成中断→JSON尾部缺失→所有直解析全灭=空结果真凶）：
+      // 从最后一个"}"逐个回退，补"]"/"]}"闭合，抢救已完成条目（缺失条目未缓存下轮自动重试）
+      if (so !== -1 || s !== -1) {
+        let recovered = false;
+        for (let end = eo; end > Math.max(so, s, 0) && !recovered; end = text.lastIndexOf("}", end - 1)) {
+          const body = text.slice(Math.min(...[so, s].filter((x) => x !== -1)), end + 1);
+          for (const closer of ["]", "]}", "}"]) {
+            try {
+              parsed = JSON.parse(body + closer);
+              recovered = true;
+              break;
+            } catch { /* 回退上一个}换闭合方式重试 */ }
+          }
+        }
+      }
+      if (parsed === undefined) {
+        if (s !== -1 && e > s && (so === -1 || s < so)) parsed = JSON.parse(text.slice(s, e + 1));
+        else if (so !== -1 && eo > so) parsed = JSON.parse(text.slice(so, eo + 1));
+        else if (s !== -1 && e > s) parsed = JSON.parse(text.slice(s, e + 1));
+        else return out;
+      }
     }
     // 统一映射出口（10/4修复轮：数组/对象两分支各写一份曾分叉出错）——
     // exact-id优先；完全无回显（模型重编号）且数量一致才启用位置兜底；部分回显宁缺毋错（缺失条目下轮自动重试）
