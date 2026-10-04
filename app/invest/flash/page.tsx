@@ -81,7 +81,8 @@ export default function FlashPage() {
 
   // 影响标注（10/4逸翔令：每条快讯自动评价利好/利空各≤5只——候选池硬约束防幻觉，后端5分钟缓存）
   interface ImpactStock { symbol: string; name: string; reason: string; }
-  interface ImpactData { bull: ImpactStock[]; bear: ImpactStock[]; weak?: boolean; failed?: boolean; }
+  interface SectorImpact { name: string; bull: ImpactStock[]; bear: ImpactStock[]; }
+  interface ImpactData { analysis?: string; sectors?: SectorImpact[]; weak?: boolean; failed?: boolean; }
   const [impacts, setImpacts] = useState<Record<string, ImpactData>>({});
   const impactInFlightRef = useRef(false);
   const gateCancelRef = useRef(false); // 口令取消标记：取消弹框后停止自动拉取防轮询弹框轰炸
@@ -575,27 +576,33 @@ export default function FlashPage() {
                     {item.title && <h3 className="mb-1 text-sm font-bold text-[var(--text)]">{item.title}</h3>}
                     {/* 10/1 P2-6：content_text="标题\n正文"格式且首行=标题时跳过首行（标题重复渲染实锤——一屏3-4处逐条自重复） */}
                     <p className="text-sm leading-6 text-[var(--text-secondary)] whitespace-pre-line">{stripDupTitle(item.title, item.content_text)}</p>
-                    {/* 影响标注行（10/4）：利好/利空各≤5只——failed或全空不渲染（宁缺毋编） */}
+                    {/* 影响标注行v2（10/5）：一句总判断+六板块分组利好利空——failed或全空不渲染（宁缺毋编） */}
                     {(() => {
                       const imp = impacts[item.id];
-                      if (!imp || imp.failed || (imp.bull.length === 0 && imp.bear.length === 0)) return null;
+                      if (!imp || imp.failed) return null;
+                      const hasSectors = imp.sectors && imp.sectors.length > 0;
+                      if (!hasSectors && !imp.weak) return null;
+                      const trim = (t: string) => (t.length > 14 ? t.slice(0, 14) + "…" : t);
                       return (
-                        <div className="mt-2 rounded-lg bg-[var(--surface-muted)] px-2.5 py-1.5 text-[11px] leading-5">
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                            {imp.weak && (
-                              <span className="rounded bg-[var(--surface)] px-1 py-0.5 text-[10px] text-[var(--text-muted)]">与股市关联弱</span>
-                            )}
-                            {imp.bull.length > 0 && (
-                              <span className="font-medium text-[var(--positive)]">
-                                🟢利好：{imp.bull.map((s) => `${s.symbol}·${s.reason.length > 22 ? s.reason.slice(0, 22) + "…" : s.reason}`).join("　")}
-                              </span>
-                            )}
-                            {imp.bear.length > 0 && (
-                              <span className="font-medium text-[var(--negative)]">
-                                🔴利空：{imp.bear.map((s) => `${s.symbol}·${s.reason.length > 22 ? s.reason.slice(0, 22) + "…" : s.reason}`).join("　")}
-                              </span>
-                            )}
-                          </div>
+                        <div className="mt-2 space-y-1 rounded-lg bg-[var(--surface-muted)] px-2.5 py-1.5 text-[11px] leading-5">
+                          {imp.analysis && <div className="font-medium text-[var(--text)]">【判断】{imp.analysis}</div>}
+                          {hasSectors &&
+                            imp.sectors!.map((sec) => (
+                              <div key={sec.name} className="flex flex-wrap items-center gap-x-2">
+                                <span className="rounded bg-[var(--accent-surface)] px-1 py-0.5 font-medium text-[var(--accent)]">{sec.name}</span>
+                                {sec.bull.map((st) => (
+                                  <span key={st.symbol} className="font-medium text-[var(--positive)]">
+                                    🟢{st.symbol}·{trim(st.reason)}
+                                  </span>
+                                ))}
+                                {sec.bear.map((st) => (
+                                  <span key={st.symbol} className="font-medium text-[var(--negative)]">
+                                    🔴{st.symbol}·{trim(st.reason)}
+                                  </span>
+                                ))}
+                              </div>
+                            ))}
+                          {imp.weak && !hasSectors && <div className="text-[var(--text-muted)]">与六大板块关联弱</div>}
                         </div>
                       );
                     })()}

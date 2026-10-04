@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   const results: Record<string, unknown> = {};
   const pending: typeof rawItems = [];
   for (const it of rawItems) {
-    const key = `imp:${hash(it.content)}`;
+    const key = `imp:v2:${hash(it.content)}`;
     const hit = cache.get(key);
     if (hit && now - hit.ts < CACHE_TTL) {
       results[it.id] = hit.data;
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         ],
         // json模式不传（10/4实测：json_object强制对象根+部分免费通道对response_format直接400）——
         // 契约靠prompt的{"results":[...]}+parseImpact形态归一解析兜底，全部通道可用性优先
-        { task: "extract", temperature: 0.2, max_tokens: 2500, retry: 1, timeout: 60_000 },
+        { task: "extract", temperature: 0.2, max_tokens: 3000, retry: 1, timeout: 60_000 },
       );
       aiRaw = typeof raw === "string" ? raw : String(raw ?? "");
       const parsed = parseImpact(aiRaw, pendingShort.map((p) => p.id));
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
         const val = parsed[p.id];
         if (val) {
           results[shortToOriginal.get(p.id) ?? p.id] = val;
-          cache.set(`imp:${hash(p.content)}`, { data: val, ts: now });
+          cache.set(`imp:v2:${hash(p.content)}`, { data: val, ts: now });
         }
         // 模型漏答/截断条目：不下发也不缓存——前端不存state，下轮items轮询自动重试（空结果缓存5分钟会让缺口固化）
       }
