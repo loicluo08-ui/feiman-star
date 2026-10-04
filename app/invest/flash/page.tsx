@@ -26,6 +26,7 @@ const SOURCE_BADGES: Record<string, { label: string; cls: string }> = {
   华尔街见闻: { label: "见闻", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
   东方财富: { label: "东财", cls: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300" },
   新浪财经: { label: "新浪", cls: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
+  同花顺: { label: "同花顺", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
 };
 
 // 金十channel含义
@@ -249,6 +250,7 @@ export default function FlashPage() {
       if (othersBoard.some((i) => i.source === "华尔街见闻")) sources.push("华尔街见闻");
       if (othersBoard.some((i) => i.source === "东方财富")) sources.push("东方财富");
       if (othersBoard.some((i) => i.source === "新浪财经")) sources.push("新浪财经");
+      if (othersBoard.some((i) => i.source === "同花顺")) sources.push("同花顺");
       if (sources.length === 0 && serverData.source) sources.push(serverData.source);
 
       setSource(sources.join("+") || "金十数据");
@@ -675,7 +677,7 @@ export default function FlashPage() {
       {/* Footer */}
       <footer className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
         <p className="text-xs leading-5 text-[var(--text-muted)]">
-          快讯来源：金十数据（专板）｜华尔街见闻 + 东方财富 + 新浪财经（全市场板）。快讯按「主要/次要」分级标记，5秒自动刷新，点击快讯可查看AI分析。数据可能有数秒延迟，仅供研究参考，不构成投资建议。
+          快讯来源：金十数据（专板）｜华尔街见闻 + 东方财富 + 新浪财经 + 同花顺（全市场板）。快讯按「主要/次要」分级标记，5秒自动刷新，点击快讯可查看AI分析。数据可能有数秒延迟，仅供研究参考，不构成投资建议。
         </p>
       </footer>
     </div>

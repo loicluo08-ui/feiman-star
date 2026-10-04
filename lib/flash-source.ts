@@ -284,6 +284,59 @@ async function fetchSina724(): Promise<FlashItem[]> {
   }
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 数据源5: 同花顺快讯（10/4二轮扩源）：A股圈一线快讯，import=3且color=2=主要（红字）
+// ⚠️ 必须带Referer，否则返回400"请求参数错误"
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface ThsItem {
+  id: string;
+  title: string;
+  digest: string;
+  ctime: string;
+  import?: string;
+  color?: string;
+}
+
+async function fetch10jqka(): Promise<FlashItem[]> {
+  try {
+    const res = await fetch(
+      "https://news.10jqka.com.cn/tapp/news/push/stock/?page=1&pagesize=20&track=website&tag=",
+      {
+        headers: { "User-Agent": UA, Referer: "https://news.10jqka.com.cn/" },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    if (!res.ok) return [];
+    const payload = (await res.json()) as { code?: string; data?: { list?: ThsItem[] } };
+    const items = payload.data?.list;
+    if (String(payload.code ?? "") !== "200" || !Array.isArray(items)) return [];
+
+    return items.flatMap((item) => {
+      const title = (item.title || "").trim();
+      const content = (item.digest || "").trim();
+      if (!title && !content) return [];
+      const ts = Number(item.ctime);
+      if (!Number.isFinite(ts) || ts <= 0) return [];
+      const major = item.import !== undefined && item.import !== "0" || item.color === "2";
+      return [{
+        id: `ths_${item.id}`,
+        title,
+        content: content || title,
+        content_text: title ? (content.startsWith(title) ? content : `${title}\n${content}`) : content,
+        time_str: formatRelativeTime(ts),
+        timestamp: ts,
+        is_important: major,
+        importance: major ? "major" : "minor",
+        channels: [],
+        source: "同花顺",
+      } satisfies FlashItem];
+    });
+  } catch {
+    return [];
+  }
+}
+
 let lastSuccessCache: FlashBoards | null = null;
 let lastSuccessTime = 0;
 const CACHE_TTL = 5 * 60 * 1000;
@@ -327,11 +380,12 @@ export async function getFlashBoards(): Promise<FlashBoards> {
   }
 
   refreshPromise = (async () => {
-    const [jin10Items, wscnItems, emItems, sinaItems] = await Promise.all([
+    const [jin10Items, wscnItems, emItems, sinaItems, thsItems] = await Promise.all([
       fetchJin10(),
       fetchWallstreetCN(),
       fetchEastmoney(),
       fetchSina724(),
+      fetch10jqka(),
     ]);
 
     const qualityOk = (i: FlashItem) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text);
@@ -339,8 +393,8 @@ export async function getFlashBoards(): Promise<FlashBoards> {
     // 金十专板：单源全量（原有能力不变），板内也过一遍去重防同条重推
     const jin10 = dedupFlashItems(jin10Items.filter(qualityOk)).slice(0, 30);
 
-    // 合流板：见闻+东财+新浪跨源去重（金十CDN缓存4小时延迟的教训——跨源重叠靠dedup处理）
-    const otherRaw = [...wscnItems, ...emItems, ...sinaItems].filter(qualityOk);
+    // 合流板：见闻+东财+新浪+同花顺跨源去重（金十CDN缓存4小时延迟的教训——跨源重叠靠dedup处理）
+    const otherRaw = [...wscnItems, ...emItems, ...sinaItems, ...thsItems].filter(qualityOk);
     const others = dedupFlashItems(otherRaw).slice(0, 30);
 
     if (jin10.length === 0 && others.length === 0) {
@@ -366,11 +420,13 @@ export async function getFlashBoards(): Promise<FlashBoards> {
     const wscnMax = maxTs(wscnItems);
     const emMax = maxTs(emItems);
     const sinaMax = maxTs(sinaItems);
-    const freshest = Math.max(jin10Max, wscnMax, emMax, sinaMax);
+    const thsMax = maxTs(thsItems);
+    const freshest = Math.max(jin10Max, wscnMax, emMax, sinaMax, thsMax);
     if (jin10Items.length > 0) sources.push("金十数据");
     if (wscnItems.length > 0 && wscnMax === freshest && freshest > 0) sources.push("华尔街见闻");
     if (emItems.length > 0 && emMax === freshest && freshest > 0) sources.push("东方财富");
     if (sinaItems.length > 0 && sinaMax === freshest && freshest > 0) sources.push("新浪财经");
+    if (thsItems.length > 0 && thsMax === freshest && freshest > 0) sources.push("同花顺");
     throttleSource = sources.join("+") || "金十数据";
     boards.source = throttleSource;
 
