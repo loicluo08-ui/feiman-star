@@ -66,8 +66,16 @@ export async function POST(request: NextRequest) {
   }
 
   let aiRaw = "";
-  if (pending.length > 0) {
-    const { system, user } = buildImpactMessages(pending);
+  // 10/4终审实锤：模型不回显27位长id（jin10_20261004204001063800）→exact-id过滤全丢=空结果第三形态。
+  // route内部压缩成短序号传模型，返回时映射回原id——前端契约零改动
+  const shortToOriginal = new Map<string, string>();
+  const pendingShort = pending.map((p, idx) => {
+    const short = `q${idx + 1}`;
+    shortToOriginal.set(short, p.id);
+    return { ...p, id: short };
+  });
+  if (pendingShort.length > 0) {
+    const { system, user } = buildImpactMessages(pendingShort);
     try {
       const raw = await callAI(
         [
@@ -79,11 +87,11 @@ export async function POST(request: NextRequest) {
         { task: "extract", temperature: 0.2, max_tokens: 2500, retry: 1, timeout: 60_000 },
       );
       aiRaw = typeof raw === "string" ? raw : String(raw ?? "");
-      const parsed = parseImpact(aiRaw, pending.map((p) => p.id));
-      for (const p of pending) {
+      const parsed = parseImpact(aiRaw, pendingShort.map((p) => p.id));
+      for (const p of pendingShort) {
         const val = parsed[p.id];
         if (val) {
-          results[p.id] = val;
+          results[shortToOriginal.get(p.id) ?? p.id] = val;
           cache.set(`imp:${hash(p.content)}`, { data: val, ts: now });
         }
         // 模型漏答/截断条目：不下发也不缓存——前端不存state，下轮items轮询自动重试（空结果缓存5分钟会让缺口固化）

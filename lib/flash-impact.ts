@@ -165,22 +165,24 @@ export function parseImpact(raw: string, expectedIds: string[]): Record<string, 
       else if (s !== -1 && e > s) parsed = JSON.parse(text.slice(s, e + 1));
       else return out;
     }
-    if (Array.isArray(parsed)) {
-      const arr = parsed as Array<Record<string, unknown>>;
+    // 统一映射出口（10/4修复轮：数组/对象两分支各写一份曾分叉出错）——
+    // exact-id优先；完全无回显（模型重编号）且数量一致才启用位置兜底；部分回显宁缺毋错（缺失条目下轮自动重试）
+    const mapWithFallback = (arr: Array<Record<string, unknown>>) => {
       for (const item of arr) take(item, String(item?.id ?? ""));
-      // 位置兜底（10/4部署后实测：模型偶发不回显id而重编号——exact-id全丢=空结果第二种形态）：
-      // exact-id未覆盖到的expectedIds按数组序号对位映射（长度一致才启用，防错位）
-      const missing = expectedIds.filter((id) => !out[id]);
-      if (missing.length > 0 && missing.length === arr.length) {
+      const matchedExact = arr.filter((it) => expectedIds.includes(String(it?.id ?? ""))).length;
+      if (matchedExact === 0 && arr.length === expectedIds.length) {
         arr.forEach((item, idx) => {
-          if (!out[missing[idx]]) take(item, missing[idx]);
+          if (!out[expectedIds[idx]]) take(item, expectedIds[idx]);
         });
       }
+    };
+    if (Array.isArray(parsed)) {
+      mapWithFallback(parsed as Array<Record<string, unknown>>);
     } else if (parsed && typeof parsed === "object") {
       const obj = parsed as Record<string, unknown>;
       const arrKey = ["results", "data", "items", "list", "impacts"].find((k) => Array.isArray(obj[k]));
       if (arrKey) {
-        for (const item of obj[arrKey] as Array<Record<string, unknown>>) take(item, String(item?.id ?? ""));
+        mapWithFallback(obj[arrKey] as Array<Record<string, unknown>>);
       } else {
         // id键控映射：{"real1":{"bull":[...],"bear":[...],"weak":false}}
         for (const [k, v] of Object.entries(obj)) {
