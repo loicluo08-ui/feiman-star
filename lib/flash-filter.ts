@@ -121,11 +121,14 @@ export function dedupFlashItems<T extends { content_text?: string; content: stri
       // is_important取OR（金十important=1被东财长文upgrade后重要标记丢失风险）
       const mergedTs = Math.max(item.timestamp, old.timestamp);
       const mergedImportant = (old as { is_important?: boolean }).is_important === true || (item as { is_important?: boolean }).is_important === true;
+      // 10/4主次标记：合并时importance同取OR（任一major→major），防跨源同条合并丢标记
+      const mergedMajor = (old as { importance?: string }).importance === "major" || (item as { importance?: string }).importance === "major" || mergedImportant;
       kept[upgradeIndex] = {
         ...item,
         timestamp: mergedTs,
         time_str: formatRelativeTime(mergedTs),
         ...(("is_important" in old || "is_important" in item) ? { is_important: mergedImportant } : {}),
+        ...((("importance" in old || "importance" in item) || ("is_important" in old || "is_important" in item)) ? { importance: (mergedMajor ? "major" : "minor") as "major" | "minor" } : {}),
       };
       normTexts[upgradeIndex] = t;
       continue;

@@ -15,9 +15,18 @@ interface FlashItem {
   time_str: string;
   timestamp: number;
   is_important: boolean;
+  importance?: "major" | "minor";
   channels: number[];
   source: string;
 }
+
+// 来源徽标配色（10/4扩源：合流板每条标来源，金十保持品牌橙）
+const SOURCE_BADGES: Record<string, { label: string; cls: string }> = {
+  金十数据: { label: "金十", cls: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" },
+  华尔街见闻: { label: "见闻", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
+  东方财富: { label: "东财", cls: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300" },
+  新浪财经: { label: "新浪", cls: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
+};
 
 // 金十channel含义
 const CHANNEL_NAMES: Record<number, string> = {
@@ -45,10 +54,13 @@ function stripDupTitle(title: string, content: string): string {
 }
 
 export default function FlashPage() {
-  const [items, setItems] = useState<FlashItem[]>([]);
+  // 双板块（10/4逸翔令）：金十专板（原能力不变）+ 全市场合流板（见闻+东财+新浪）
+  const [jin10Items, setJin10Items] = useState<FlashItem[]>([]);
+  const [otherItems, setOtherItems] = useState<FlashItem[]>([]);
+  const [board, setBoard] = useState<"jin10" | "others">("jin10");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "important">("all");
+  const [filter, setFilter] = useState<"all" | "major" | "minor">("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const [source, setSource] = useState<string>("");
@@ -107,23 +119,24 @@ export default function FlashPage() {
     }
   }, []);
 
-  // 新的重要快讯触发通知
+  // 新的主要快讯触发通知（两板块都监控，主次标记10/4：importance==="major"）
   useEffect(() => {
     if (!notifEnabled) return;
-    const newImportant = items.filter(
-      (i) => i.is_important && !notifiedRef.current.has(i.id)
+    const all = [...jin10Items, ...otherItems];
+    const newImportant = all.filter(
+      (i) => i.importance === "major" && !notifiedRef.current.has(i.id)
     );
     for (const item of newImportant) {
       notifiedRef.current.add(item.id);
       try {
-        new Notification("重要快讯", {
+        new Notification("主要快讯", {
           body: item.content.slice(0, 100),
           tag: item.id,
           icon: "/favicon.ico",
         });
       } catch {}
     }
-  }, [items, notifEnabled]);
+  }, [jin10Items, otherItems, notifEnabled]);
 
   // 客户端直连金十（绕过Vercel网络限制，cache-buster绕CDN缓存）
   const fetchJin10Client = useCallback(async (): Promise<FlashItem[]> => {
@@ -180,6 +193,7 @@ export default function FlashPage() {
           time_str: timeStr,
           timestamp: ts,
           is_important: item.important === 1 || /<b[\s>]|<strong[\s>]/.test(content),
+          importance: (item.important === 1 || /<b[\s>]|<strong[\s>]/.test(content)) ? "major" : "minor",
           channels: item.channel || [],
           source: "金十数据",
         };
@@ -189,25 +203,25 @@ export default function FlashPage() {
     }
   }, []);
 
-  // 服务端API（华尔街见闻+财联社补充+金十兜底）——透传HTTP状态，503/0=源不可用（2026-09-26审计P1-1）
+  // 服务端API（10/4双板块：data=金十专板兜底，others=见闻+东财+新浪合流板）——透传HTTP状态，503/0=源不可用（2026-09-26审计P1-1）
   const fetchServerFlash = useCallback(async (): Promise<{
     data: FlashItem[];
+    others: FlashItem[];
     source: string;
-    stats?: Record<string, number>;
     status: number;
   }> => {
     try {
       const res = await fetch("/api/invest/flash", { cache: "no-store" });
-      if (!res.ok) return { data: [], source: "", status: res.status };
+      if (!res.ok) return { data: [], others: [], source: "", status: res.status };
       const json = await res.json();
       return {
         data: json.data || [],
+        others: json.others || [],
         source: json.source || "",
-        stats: json.stats,
         status: 200,
       };
     } catch {
-      return { data: [], source: "", status: 0 };
+      return { data: [], others: [], source: "", status: 0 };
     }
   }, []);
 
@@ -217,39 +231,39 @@ export default function FlashPage() {
     inFlightRef.current = true;
     setRefreshing(true);
     try {
-      // 并行：客户端直连金十 + 服务端API
-      const [jin10Items, serverData] = await Promise.all([
+      // 并行：客户端直连金十 + 服务端API（双板块一次带回）
+      const [jin10Client, serverData] = await Promise.all([
         fetchJin10Client(),
         fetchServerFlash(),
       ]);
 
-      // 金十客户端数据为主源，服务端数据全量合并（华尔街见闻无CDN缓存，实时性好）
-      let allItems: FlashItem[] = filterFlashItems([...jin10Items, ...serverData.data]);
+      // 金十专板：客户端直连为主源，服务端金十兜底（原有能力不变，9/6红队收紧：同一套filter+dedup）
+      const jin10Merged = filterFlashItems([...jin10Client, ...serverData.data]);
+      const jin10Board = dedupFlashItems(jin10Merged).slice(0, 30);
+      // 全市场板：见闻+东财+新浪合流（纯服务端）
+      const othersBoard = dedupFlashItems(filterFlashItems(serverData.others)).slice(0, 30);
 
-      // 9/6红队收紧：客户端去重改用与服务端同一套 lib/flash-filter.dedupFlashItems
-      // （原20字前缀指纹会误杀"非农16万vs21万人"类数字差在前的两条不同快讯）
-      const deduped = dedupFlashItems(allItems);
-
-      const newItems = deduped.slice(0, 30);
-
-      // 更新source显示
+      // 更新source显示（10/4顺手修：原实现漏东方财富/新浪）
       const sources: string[] = [];
-      if (jin10Items.length > 0 || serverData.data.some((i) => i.source === "金十数据")) sources.push("金十数据");
-      if (serverData.data.some((i) => i.source === "华尔街见闻")) sources.push("华尔街见闻");
+      if (jin10Board.length > 0 || serverData.data.some((i) => i.source === "金十数据")) sources.push("金十数据");
+      if (othersBoard.some((i) => i.source === "华尔街见闻")) sources.push("华尔街见闻");
+      if (othersBoard.some((i) => i.source === "东方财富")) sources.push("东方财富");
+      if (othersBoard.some((i) => i.source === "新浪财经")) sources.push("新浪财经");
       if (sources.length === 0 && serverData.source) sources.push(serverData.source);
 
       setSource(sources.join("+") || "金十数据");
-      // 显示最新快讯的时间，而非前端拉取时间
-      const latestTs = newItems[0]?.timestamp;
-      if (latestTs) {
+      // 显示最新快讯的时间，而非前端拉取时间（两板块取最大）
+      const latestTs = Math.max(jin10Board[0]?.timestamp ?? 0, othersBoard[0]?.timestamp ?? 0);
+      if (latestTs > 0) {
         setLastUpdate(new Date(latestTs * 1000).toLocaleTimeString("zh-CN", { hour12: false }));
       } else {
         setLastUpdate(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
       }
 
+      const newAll = [...jin10Board, ...othersBoard];
       if (prevIdsRef.current.size > 0) {
         const newSet = new Set<string>();
-        for (const item of newItems) {
+        for (const item of newAll) {
           if (!prevIdsRef.current.has(item.id)) newSet.add(item.id);
         }
         if (newSet.size > 0 && newSet.size < 10) {
@@ -260,12 +274,13 @@ export default function FlashPage() {
       }
 
       // 双源全挂：保留旧列表+错误横幅（还原服务端503语义，此前被catch吞掉用户误以为真没快讯——2026-09-26审计P1-1）
-      if (newItems.length === 0 && jin10Items.length === 0 && (serverData.status >= 500 || serverData.status === 0)) {
+      if (newAll.length === 0 && jin10Client.length === 0 && (serverData.status >= 500 || serverData.status === 0)) {
         setError(serverData.status === 0 ? "快讯数据源网络异常，当前显示最后成功拉取的数据" : "快讯数据源暂时不可用，当前显示最后成功拉取的数据");
       } else {
         setError(null);
-        prevIdsRef.current = new Set(newItems.map((i) => i.id));
-        setItems(newItems);
+        prevIdsRef.current = new Set(newAll.map((i) => i.id));
+        setJin10Items(jin10Board);
+        setOtherItems(othersBoard);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "获取失败");
@@ -345,9 +360,13 @@ export default function FlashPage() {
     setAiError(null);
   }, []);
 
+  // 当前板块的列表（10/4双板：派生值，切换板块即切换列表与影响标注作用域）
+  const items = board === "jin10" ? jin10Items : otherItems;
+
   // 批量拉影响标注（10/4逸翔令"每条消息"）：全部未标注条目分批拉取——每批10条拆2并发×5条/请求
   // （服务端批量上限5：免费池单请求≈1600输出token是吞吐甜点，10条/3000token必截断）。
   // 服务端内容hash缓存5分钟，实际新调用量=新增快讯数；失败条目不入state，items轮询自动重试
+  // 10/4双板合并：items为当前板块派生值，两板各自触发标注拉取
   useEffect(() => {
     if (impactInFlightRef.current || items.length === 0) return;
     const targets = items.filter((i) => !impacts[i.id]);
@@ -382,7 +401,9 @@ export default function FlashPage() {
     });
   }, [items, impacts]);
 
-  const filtered = filter === "important" ? items.filter((i) => i.is_important) : items;
+  const filtered = filter === "all" ? items : items.filter((i) => i.importance === filter);
+  const majorCount = items.filter((i) => i.importance === "major").length;
+  const minorCount = items.length - majorCount;
 
   return (
     <div className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
@@ -432,11 +453,33 @@ export default function FlashPage() {
             </div>
           </header>
 
-          {/* Filter */}
+          {/* 板块切换（10/4逸翔令：金十单独一个板块，其他源合流） */}
+          <div className="mb-3 flex rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-1 text-xs">
+            {([
+              { key: "jin10", label: "金十专板", count: jin10Items.length },
+              { key: "others", label: "全市场", count: otherItems.length },
+            ] as const).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setBoard(tab.key)}
+                className={`flex-1 rounded-md px-3 py-1.5 transition-colors ${
+                  board === tab.key
+                    ? "bg-[var(--surface)] font-medium text-[var(--text)] shadow-sm"
+                    : "text-[var(--text-muted)] hover:text-[var(--text)]"
+                }`}
+              >
+                {tab.label}
+                <span className="ml-1.5 opacity-50">{tab.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Filter（主次标记10/4：全部/主要/次要） */}
           <div className="mb-4 flex gap-2">
             {([
               { key: "all", label: "全部" },
-              { key: "important", label: "重要" },
+              { key: "major", label: `主要 ${majorCount}` },
+              { key: "minor", label: `次要 ${minorCount}` },
             ] as const).map((tab) => (
               <button
                 key={tab.key}
@@ -481,18 +524,24 @@ export default function FlashPage() {
                       newIds.has(item.id)
                         ? "border-[var(--accent)] bg-[var(--accent-surface)] shadow-lg"
                         : "border-[var(--border)] bg-[var(--surface)]"
-                    } ${item.is_important ? "border-l-4 border-l-[var(--warning)]" : ""} ${
+                    } ${item.importance === "major" || (item.importance === undefined && item.is_important) ? "border-l-4 border-l-[var(--warning)]" : ""} ${
                       selectedItem?.id === item.id ? "ring-1 ring-[var(--accent)]" : ""
                     }`}
                   >
                     <div className="mb-1.5 flex items-center gap-2 text-[10px]">
                       <span className="font-mono text-[var(--text-muted)]">{item.time_str}</span>
-                      {item.is_important && (
-                        <span className="rounded bg-[var(--warning)] px-1.5 py-0.5 font-medium text-white">重要</span>
+                      {/* 主次类型标记（10/4逸翔令）：major=红「主」+左侧竖条，minor=灰「次」 */}
+                      {item.importance === "major" ? (
+                        <span className="rounded bg-[var(--warning)] px-1.5 py-0.5 font-medium text-white">主</span>
+                      ) : (
+                        <span className="rounded bg-[var(--surface-muted)] px-1.5 py-0.5 text-[var(--text-muted)]">次</span>
                       )}
-                      {item.source === "金十数据" && (
-                        <span className="rounded bg-orange-100 px-1.5 py-0.5 font-medium text-orange-700 dark:bg-orange-900 dark:text-orange-300">金十</span>
-                      )}
+                      {(() => {
+                        const badge = SOURCE_BADGES[item.source];
+                        return badge && (
+                          <span className={`rounded px-1.5 py-0.5 font-medium ${badge.cls}`}>{badge.label}</span>
+                        );
+                      })()}
                       {item.channels.map((ch) => (
                         <span key={ch} className="rounded bg-[var(--surface-muted)] px-1 py-0.5 text-[var(--text-muted)]">
                           {CHANNEL_NAMES[ch] || ch}
@@ -569,10 +618,12 @@ export default function FlashPage() {
                 <div className="mt-2">
                   <div className="mb-2 flex items-center gap-2 text-[10px]">
                     <span className="font-mono text-[var(--text-muted)]">{selectedItem.time_str}</span>
-                    {selectedItem.is_important && (
-                      <span className="rounded bg-[var(--warning)] px-1.5 py-0.5 font-medium text-white">重要</span>
+                    {selectedItem.importance === "major" ? (
+                      <span className="rounded bg-[var(--warning)] px-1.5 py-0.5 font-medium text-white">主要</span>
+                    ) : (
+                      <span className="rounded bg-[var(--surface-muted)] px-1.5 py-0.5 text-[var(--text-muted)]">次要</span>
                     )}
-                    <span className="rounded bg-orange-100 px-1.5 py-0.5 font-medium text-orange-700 dark:bg-orange-900 dark:text-orange-300">
+                    <span className="rounded bg-[var(--surface-muted)] px-1.5 py-0.5 font-medium text-[var(--text-secondary)]">
                       {selectedItem.source}
                     </span>
                   </div>
@@ -624,7 +675,7 @@ export default function FlashPage() {
       {/* Footer */}
       <footer className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
         <p className="text-xs leading-5 text-[var(--text-muted)]">
-          快讯来源：金十数据（主）/华尔街见闻（备）。5秒自动刷新，点击快讯可查看AI分析。数据可能有数秒延迟，仅供研究参考，不构成投资建议。
+          快讯来源：金十数据（专板）｜华尔街见闻 + 东方财富 + 新浪财经（全市场板）。快讯按「主要/次要」分级标记，5秒自动刷新，点击快讯可查看AI分析。数据可能有数秒延迟，仅供研究参考，不构成投资建议。
         </p>
       </footer>
     </div>
