@@ -19,7 +19,7 @@ const MAX_ITEMS = 5;
 
 export async function POST(request: NextRequest) {
   // AI消费路由必须过共享口令闸（10/4交叉验证轮补漏：端点02:02建于门禁14:09之前，8路由名单漏了本路由）
-  const gated = gateCheck(request, "FX_GATE_TOKEN", "open_until_configured");
+  const gated = gateCheck(request, "FX_AI_GATE_TOKEN", "open_until_configured");
   if (gated) return gated;
   const limited = await enforceRateLimitAsync(request, "flashAnalyze", RATE_LIMITS.flashAnalyze);
   if (limited) {

@@ -29,8 +29,8 @@ const parsedTradeSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  // 10/3审计P0：共享口令闸（env未设=维持现状；设置FX_GATE_TOKEN即激活门禁）
-  const gated = gateCheck(request, "FX_GATE_TOKEN", "open_until_configured");
+  // 10/3审计P0：AI消费口令闸（独立env=FX_AI_GATE_TOKEN：10/4逸翔令访问口令对公众去除——此env线上不配置=免口令放行，限流兜底；写路径仍走FX_GATE_TOKEN保持fail-closed）
+  const gated = gateCheck(request, "FX_AI_GATE_TOKEN", "open_until_configured");
   if (gated) return gated;
   const limited = await enforceRateLimitAsync(request, "parseTrades", RATE_LIMITS.parseTrades);
 

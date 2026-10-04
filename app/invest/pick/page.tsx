@@ -501,12 +501,12 @@ export default function PickPage() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: payload,
-            }).then((r) => r.json()).catch(() => null);
+            }, { silent: true }).then((r) => r.json()).catch(() => null);
             const ghPost = gateFetch("/api/invest/judgment-sync", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: payload,
-            }).then((r) => r.json()).catch(() => null);
+            }, { silent: true }).then((r) => r.json()).catch(() => null);
             void Promise.all([cloudPost, ghPost]).then(([cloud, gh]) => {
               if ((cloud && cloud.ok) || (gh && gh.ok)) {
                 fresh.forEach((e) => synced.add(e.ts));

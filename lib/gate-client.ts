@@ -27,7 +27,11 @@ export function clearGateToken(): void {
   }
 }
 
-export async function gateFetch(input: string, init: RequestInit = {}): Promise<Response> {
+export async function gateFetch(
+  input: string,
+  init: RequestInit = {},
+  opts: { silent?: boolean } = {}
+): Promise<Response> {
   const headers = new Headers(init.headers || {});
   const token = getGateToken();
   if (token) headers.set("x-gate-token", token);
@@ -42,6 +46,10 @@ export async function gateFetch(input: string, init: RequestInit = {}): Promise<
     body = null;
   }
   if (!body || body.error !== "gate_required") return res;
+
+  // silent模式（10/4访问口令去除配套）：内部设备带token无感通过；外部设备被拦时
+  // 不弹prompt静默失败——写权限（judgment上报/team-upload）不对公众开放，弹窗引导输口令=反而邀请
+  if (opts.silent) return res;
 
   let entered = "";
   try {

@@ -748,12 +748,12 @@ export default function ChatPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: syncPayload,
-        }).then((r) => r.json()).catch(() => null);
+        }, { silent: true }).then((r) => r.json()).catch(() => null);
         const ghPost = gateFetch("/api/invest/judgment-sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: syncPayload,
-        }).then((r) => r.json()).catch(() => null);
+        }, { silent: true }).then((r) => r.json()).catch(() => null);
         // 任一通道写成功即标记已同步（避免重复写库）
         Promise.all([cloudPost, ghPost]).then(([cloud, gh]) => {
           if ((cloud && cloud.ok) || (gh && gh.ok)) {
