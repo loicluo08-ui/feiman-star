@@ -3,6 +3,7 @@ import { gateCheck } from "@/lib/gate";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { supabaseConfigured, insertLedgerRows, readAllLedger } from "@/lib/supabase";
 import { parseInvalidation } from "@/lib/settle-recall";
+import { bump } from "@/lib/health-counters";
 
 /**
  * 判断记账云端直写（10/1六轮检测P1-sync修复——判断云端同步全链路死亡）
@@ -63,8 +64,12 @@ function sanitizeEntry(raw: unknown): CloudEntry | null {
 
 export async function POST(request: NextRequest) {
   // 10/3审计P0：共享口令闸（写路径fail-closed——FX_GATE_TOKEN未配置=通道关闭）
+  bump("sync_cloud_req");
   const gated = gateCheck(request, "FX_GATE_TOKEN", "required");
-  if (gated) return gated;
+  if (gated) {
+    bump("sync_cloud_gate_blocked");
+    return gated;
+  }
   const limited = await enforceRateLimitAsync(request, "judgmentCloud", { maxRequests: 10, windowMs: 60_000 }); // 10/3审计收紧30→10
   if (limited) {
     return NextResponse.json(
@@ -137,7 +142,9 @@ export async function POST(request: NextRequest) {
 
   const ok = await insertLedgerRows(deduped as never[]);
   if (!ok) {
+    bump("sync_cloud_fail");
     return NextResponse.json({ ok: false, error: "supabase_write_failed" }, { status: 502 });
   }
+  bump("sync_cloud_ok");
   return NextResponse.json({ ok: true, written: rows.length });
 }

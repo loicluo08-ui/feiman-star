@@ -11,6 +11,9 @@
 
 export type TaskKind = "extract" | "eval" | "heavy" | "chat";
 
+// 10/4健康埋点：通道成败计数（反静默——降级次数在health-summary可见，不再只散在日志里）
+import { bump } from "@/lib/health-counters";
+
 export interface GatewayChannel {
   name: string;
   baseEnv: string;
@@ -123,6 +126,7 @@ export async function gatewayChat(
       if (!res.ok) {
         const body = (await res.text()).slice(0, 180);
         tried.push({ channel: ch.name, ok: false, detail: `http_${res.status}:${body}` });
+        bump(`ai_fail_${ch.name}`);
         continue;
       }
       const json = (await res.json()) as {
@@ -134,9 +138,11 @@ export async function gatewayChat(
         || (msg?.reasoning_content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
       if (text) {
         tried.push({ channel: ch.name, ok: true, detail: "ok" });
+        bump(`ai_ok_${ch.name}`);
         return { text, via: ch.name, tried };
       }
       tried.push({ channel: ch.name, ok: false, detail: "empty_content" });
+      bump(`ai_fail_${ch.name}`);
     } catch (e) {
       tried.push({ channel: ch.name, ok: false, detail: e instanceof Error ? e.message.slice(0, 100) : "unknown" });
     }
