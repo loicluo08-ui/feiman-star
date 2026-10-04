@@ -34,10 +34,12 @@ interface SourceStat {
 const sourceStats = new Map<string, SourceStat>();
 const moduleLoadedAt = Date.now();
 
-async function guarded(name: string, fn: () => Promise<FlashItem[]>): Promise<FlashItem[]> {
+async function guarded(name: string, fn: () => Promise<FlashItem[]>, key?: string): Promise<FlashItem[]> {
   const stat = (): SourceStat => sourceStats.get(name) ?? { ok: 0, fail: 0, lastOkAt: 0, lastItems: 0, lastError: "" };
-  // 运维开关（10/4故障演练+长期杠杆）：FLASH_SOURCE_OFF=逗号分隔源名，命中的源跳过外呼（某源抽风时免代码热关）
-  if ((process.env.FLASH_SOURCE_OFF || "").split(/[,\s]+/).filter(Boolean).includes(name)) {
+  // 运维开关（10/4故障演练+长期杠杆）：FLASH_SOURCE_OFF=逗号分隔源名或ASCII键，命中的源跳过外呼（某源抽风时免代码热关）
+  // ASCII键理由：中文值经Vercel env存储疑似编码不稳（首轮演练开关未触发实锤）
+  const offList = (process.env.FLASH_SOURCE_OFF || "").split(/[,\s]+/).filter(Boolean);
+  if (offList.includes(name) || (key && offList.includes(key))) {
     bump(`flash_off_${name}`);
     const s = stat();
     s.lastError = "disabled_by_env";
@@ -467,12 +469,12 @@ export async function getFlashBoards(): Promise<FlashBoards> {
 
   refreshPromise = (async () => {
     const [jin10Items, wscnItems, emItems, sinaItems, thsItems, clsItems] = await Promise.all([
-      guarded("金十数据", fetchJin10),
-      guarded("华尔街见闻", fetchWallstreetCN),
-      guarded("东方财富", fetchEastmoney),
-      guarded("新浪财经", fetchSina724),
-      guarded("同花顺", fetch10jqka),
-      guarded("财联社", fetchCls),
+      guarded("金十数据", fetchJin10, "jin10"),
+      guarded("华尔街见闻", fetchWallstreetCN, "wscn"),
+      guarded("东方财富", fetchEastmoney, "em"),
+      guarded("新浪财经", fetchSina724, "sina"),
+      guarded("同花顺", fetch10jqka, "ths"),
+      guarded("财联社", fetchCls, "cls"),
     ]);
 
     const qualityOk = (i: FlashItem) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text);
