@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  let aiRaw = "";
   if (pending.length > 0) {
     const { system, user } = buildImpactMessages(pending);
     try {
@@ -77,7 +78,8 @@ export async function POST(request: NextRequest) {
         // 契约靠prompt的{"results":[...]}+parseImpact形态归一解析兜底，全部通道可用性优先
         { task: "extract", temperature: 0.2, max_tokens: 2500, retry: 1, timeout: 60_000 },
       );
-      const parsed = parseImpact(typeof raw === "string" ? raw : String(raw ?? ""), pending.map((p) => p.id));
+      aiRaw = typeof raw === "string" ? raw : String(raw ?? "");
+      const parsed = parseImpact(aiRaw, pending.map((p) => p.id));
       for (const p of pending) {
         const val = parsed[p.id];
         if (val) {
@@ -101,7 +103,14 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { data: results, pool_size: STOCK_POOL.length, timestamp: new Date().toISOString() },
+    {
+      data: results,
+      pool_size: STOCK_POOL.length,
+      timestamp: new Date().toISOString(),
+      ...(pending.length > 0 && Object.keys(results).length === 0
+        ? { debug: { ai_raw_head: String(aiRaw ?? "").slice(0, 300), ai_raw_len: String(aiRaw ?? "").length } }
+        : {}),
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

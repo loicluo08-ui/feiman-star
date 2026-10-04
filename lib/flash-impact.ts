@@ -166,7 +166,16 @@ export function parseImpact(raw: string, expectedIds: string[]): Record<string, 
       else return out;
     }
     if (Array.isArray(parsed)) {
-      for (const item of parsed as Array<Record<string, unknown>>) take(item, String(item?.id ?? ""));
+      const arr = parsed as Array<Record<string, unknown>>;
+      for (const item of arr) take(item, String(item?.id ?? ""));
+      // 位置兜底（10/4部署后实测：模型偶发不回显id而重编号——exact-id全丢=空结果第二种形态）：
+      // exact-id未覆盖到的expectedIds按数组序号对位映射（长度一致才启用，防错位）
+      const missing = expectedIds.filter((id) => !out[id]);
+      if (missing.length > 0 && missing.length === arr.length) {
+        arr.forEach((item, idx) => {
+          if (!out[missing[idx]]) take(item, missing[idx]);
+        });
+      }
     } else if (parsed && typeof parsed === "object") {
       const obj = parsed as Record<string, unknown>;
       const arrKey = ["results", "data", "items", "list", "impacts"].find((k) => Array.isArray(obj[k]));
