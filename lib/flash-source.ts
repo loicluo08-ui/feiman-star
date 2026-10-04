@@ -36,6 +36,14 @@ const moduleLoadedAt = Date.now();
 
 async function guarded(name: string, fn: () => Promise<FlashItem[]>): Promise<FlashItem[]> {
   const stat = (): SourceStat => sourceStats.get(name) ?? { ok: 0, fail: 0, lastOkAt: 0, lastItems: 0, lastError: "" };
+  // 运维开关（10/4故障演练+长期杠杆）：FLASH_SOURCE_OFF=逗号分隔源名，命中的源跳过外呼（某源抽风时免代码热关）
+  if ((process.env.FLASH_SOURCE_OFF || "").split(/[,\s]+/).filter(Boolean).includes(name)) {
+    bump(`flash_off_${name}`);
+    const s = stat();
+    s.lastError = "disabled_by_env";
+    sourceStats.set(name, s);
+    return [];
+  }
   try {
     const items = await fn();
     bump(`flash_ok_${name}`);
