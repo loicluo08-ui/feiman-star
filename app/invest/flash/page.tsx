@@ -1,5 +1,5 @@
 "use client";
-import { gateFetch } from "@/lib/gate-client";
+import { gateFetch, getGateToken } from "@/lib/gate-client";
 
 // 10/2监控漏记修复：数据页强制动态——静态预渲染命中CDN缓存时middleware不执行=页面浏览漏记
 export const dynamic = "force-dynamic";
@@ -84,6 +84,7 @@ export default function FlashPage() {
   interface ImpactData { bull: ImpactStock[]; bear: ImpactStock[]; weak?: boolean; failed?: boolean; }
   const [impacts, setImpacts] = useState<Record<string, ImpactData>>({});
   const impactInFlightRef = useRef(false);
+  const gateCancelRef = useRef(false); // 口令取消标记：取消弹框后停止自动拉取防轮询弹框轰炸
 
   // 浏览器通知：重要快讯弹窗
   const [notifEnabled, setNotifEnabled] = useState(false);
@@ -371,19 +372,30 @@ export default function FlashPage() {
   // 10/4双板合并：items为当前板块派生值，两板各自触发标注拉取
   useEffect(() => {
     if (impactInFlightRef.current || items.length === 0) return;
+    if (gateCancelRef.current) {
+      if (!getGateToken()) return;
+      gateCancelRef.current = false;
+    }
     const targets = items.filter((i) => !impacts[i.id]);
     if (targets.length === 0) return;
     impactInFlightRef.current = true;
     const post = (chunk: typeof targets) =>
-      fetch("/api/invest/flash-impact", {
+      gateFetch("/api/invest/flash-impact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: chunk.map((it) => ({ id: it.id, title: it.title, content: (it.content_text || it.content).slice(0, 500) })),
         }),
       })
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((r) => {
+          if (r.status === 401) {
+            gateCancelRef.current = true; // 取消/口令错：本轮止步，不弹框轰炸
+            return null;
+          }
+          return r.ok ? r.json() : Promise.reject(new Error(String(r.status)));
+        })
         .then((j) => {
+          if (!j) return;
           const data = j?.data || {};
           setImpacts((prev) => ({ ...prev, ...data }));
         })

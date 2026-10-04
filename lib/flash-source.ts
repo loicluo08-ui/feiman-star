@@ -1,6 +1,8 @@
 // 快讯数据源公共模块（9/6从flash route抽出）
 // 供 flash route 和 chat 实时讯息注入共用——同一serverless实例共享节流缓存
+import { createHash } from "crypto";
 import { isLowQuality, isEnglishDominant, dedupFlashItems } from "@/lib/flash-filter";
+import { bump } from "@/lib/health-counters";
 
 export type FlashImportance = "major" | "minor";
 
@@ -19,6 +21,50 @@ export interface FlashItem {
 }
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+// ━━━ 源级观测层（10/4架构优化：guarded统一计数，进程窗口期指标）━━━
+
+interface SourceStat {
+  ok: number;
+  fail: number;
+  lastOkAt: number;
+  lastItems: number;
+  lastError: string;
+}
+const sourceStats = new Map<string, SourceStat>();
+const moduleLoadedAt = Date.now();
+
+async function guarded(name: string, fn: () => Promise<FlashItem[]>): Promise<FlashItem[]> {
+  const stat = (): SourceStat => sourceStats.get(name) ?? { ok: 0, fail: 0, lastOkAt: 0, lastItems: 0, lastError: "" };
+  try {
+    const items = await fn();
+    bump(`flash_ok_${name}`);
+    bump(`flash_items_${name}`, items.length);
+    const s = stat();
+    s.ok += 1;
+    s.lastOkAt = Date.now();
+    s.lastItems = items.length;
+    s.lastError = "";
+    sourceStats.set(name, s);
+    return items;
+  } catch (e) {
+    bump(`flash_fail_${name}`);
+    const s = stat();
+    s.fail += 1;
+    s.lastError = e instanceof Error ? e.message.slice(0, 80) : "unknown";
+    sourceStats.set(name, s);
+    return []; // 单源死→缺该源内容，其余源照常出feed（health可见降级）
+  }
+}
+
+/** 源级运行时统计（health端点聚合用；进程冷启动后为空=尚未拉取，非故障） */
+export function getFlashSourceStats(): { since: string; sources: Record<string, SourceStat> } {
+  const sources: Record<string, SourceStat> = {};
+  sourceStats.forEach((v, k) => {
+    sources[k] = { ...v };
+  });
+  return { since: new Date(moduleLoadedAt).toISOString(), sources };
+}
 
 function stripHtml(html: string): string {
   return html
@@ -132,7 +178,6 @@ interface WscnItem {
 }
 
 async function fetchWallstreetCN(): Promise<FlashItem[]> {
-  try {
     const res = await fetch(
       "https://api-one-wscn.awtmt.com/apiv1/content/lives?channel=global-channel&limit=20",
       {
@@ -163,9 +208,6 @@ async function fetchWallstreetCN(): Promise<FlashItem[]> {
         source: "华尔街见闻",
       } satisfies FlashItem;
     });
-  } catch {
-    return [];
-  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -183,7 +225,6 @@ type EmItem = {
 // 东方财富7×24快讯（9/6第三源）：财联社接口已死（HTML盾页），东财JSON直通。
 // 价值：A股/宏观时段补充（金十美股时段强，东财国内时段覆盖更好）
 async function fetchEastmoney(): Promise<FlashItem[]> {
-  try {
     const res = await fetch(
       `https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=20&req_trace=${Date.now()}`,
       {
@@ -224,9 +265,6 @@ async function fetchEastmoney(): Promise<FlashItem[]> {
         source: "东方财富",
       } satisfies FlashItem];
     });
-  } catch {
-    return [];
-  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -242,7 +280,6 @@ interface SinaFeedItem {
 }
 
 async function fetchSina724(): Promise<FlashItem[]> {
-  try {
     const res = await fetch(
       `https://zhibo.sina.com.cn/api/zhibo/feed?page=1&page_size=20&zhibo_id=152&_=${Date.now()}`,
       { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(5000) },
@@ -279,9 +316,6 @@ async function fetchSina724(): Promise<FlashItem[]> {
         source: "新浪财经",
       } satisfies FlashItem];
     });
-  } catch {
-    return [];
-  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -299,7 +333,6 @@ interface ThsItem {
 }
 
 async function fetch10jqka(): Promise<FlashItem[]> {
-  try {
     const res = await fetch(
       "https://news.10jqka.com.cn/tapp/news/push/stock/?page=1&pagesize=20&track=website&tag=",
       {
@@ -332,9 +365,54 @@ async function fetch10jqka(): Promise<FlashItem[]> {
         source: "同花顺",
       } satisfies FlashItem];
     });
-  } catch {
-    return [];
-  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 数据源6: 财联社电报（10/4第六源，Alex验证线移植）。9/6曾判死=HTML盾页；
+// 10/4实测v1/roll/get_roll_list带签名活着：sign=md5(sha1(参数串))，参数顺序必须与签名串逐字一致
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface ClsItem {
+  id: number;
+  title?: string;
+  content?: string;
+  brief?: string;
+  ctime: number; // epoch秒（实测）
+  bold?: number; // 1=加粗重要
+  ad?: { id?: number; url?: string }; // 非广告时为全空结构体（id=0且url空）
+}
+
+async function fetchCls(): Promise<FlashItem[]> {
+  const params = "app=CailianpressWeb&category=&last_time=&os=web&refresh_type=1&rn=20&sv=7.7.5";
+  const sign = createHash("md5").update(createHash("sha1").update(params).digest("hex")).digest("hex");
+  const res = await fetch(`https://www.cls.cn/v1/roll/get_roll_list?${params}&sign=${sign}`, {
+    headers: { "User-Agent": UA, Referer: "https://www.cls.cn/telegraph" },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`http_${res.status}`);
+  const payload = (await res.json()) as { errno?: number; data?: { roll_data?: ClsItem[] } };
+  if (payload.errno !== 0 || !Array.isArray(payload.data?.roll_data)) throw new Error(`cls_errno_${payload.errno ?? "unknown"}`);
+
+  return payload.data.roll_data.flatMap((it): FlashItem[] => {
+    if (!it || (it.ad && ((it.ad.id ?? 0) !== 0 || !!it.ad.url))) return []; // 广告位剔除
+    // 电报体：标题已含于正文【】壳内——title置空防双显，整条作为content
+    const text = stripHtml(it.content || it.title || it.brief || "");
+    if (text.length < 8) return [];
+    if (!Number.isFinite(it.ctime) || it.ctime <= 0) return [];
+    const major = it.bold === 1;
+    return [{
+      id: `cls_${it.id}`,
+      title: "",
+      content: text,
+      content_text: text,
+      time_str: formatRelativeTime(it.ctime),
+      timestamp: it.ctime,
+      is_important: major,
+      importance: major ? "major" : "minor",
+      channels: [],
+      source: "财联社",
+    } satisfies FlashItem];
+  });
 }
 
 let lastSuccessCache: FlashBoards | null = null;
@@ -380,12 +458,13 @@ export async function getFlashBoards(): Promise<FlashBoards> {
   }
 
   refreshPromise = (async () => {
-    const [jin10Items, wscnItems, emItems, sinaItems, thsItems] = await Promise.all([
-      fetchJin10(),
-      fetchWallstreetCN(),
-      fetchEastmoney(),
-      fetchSina724(),
-      fetch10jqka(),
+    const [jin10Items, wscnItems, emItems, sinaItems, thsItems, clsItems] = await Promise.all([
+      guarded("金十数据", fetchJin10),
+      guarded("华尔街见闻", fetchWallstreetCN),
+      guarded("东方财富", fetchEastmoney),
+      guarded("新浪财经", fetchSina724),
+      guarded("同花顺", fetch10jqka),
+      guarded("财联社", fetchCls),
     ]);
 
     const qualityOk = (i: FlashItem) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text);
@@ -393,8 +472,8 @@ export async function getFlashBoards(): Promise<FlashBoards> {
     // 金十专板：单源全量（原有能力不变），板内也过一遍去重防同条重推
     const jin10 = dedupFlashItems(jin10Items.filter(qualityOk)).slice(0, 30);
 
-    // 合流板：见闻+东财+新浪+同花顺跨源去重（金十CDN缓存4小时延迟的教训——跨源重叠靠dedup处理）
-    const otherRaw = [...wscnItems, ...emItems, ...sinaItems, ...thsItems].filter(qualityOk);
+    // 合流板：见闻+东财+新浪+同花顺+财联社跨源去重（金十CDN缓存4小时延迟的教训——跨源重叠靠dedup处理）
+    const otherRaw = [...wscnItems, ...emItems, ...sinaItems, ...thsItems, ...clsItems].filter(qualityOk);
     const others = dedupFlashItems(otherRaw).slice(0, 30);
 
     if (jin10.length === 0 && others.length === 0) {
@@ -421,12 +500,14 @@ export async function getFlashBoards(): Promise<FlashBoards> {
     const emMax = maxTs(emItems);
     const sinaMax = maxTs(sinaItems);
     const thsMax = maxTs(thsItems);
-    const freshest = Math.max(jin10Max, wscnMax, emMax, sinaMax, thsMax);
+    const clsMax = maxTs(clsItems);
+    const freshest = Math.max(jin10Max, wscnMax, emMax, sinaMax, thsMax, clsMax);
     if (jin10Items.length > 0) sources.push("金十数据");
     if (wscnItems.length > 0 && wscnMax === freshest && freshest > 0) sources.push("华尔街见闻");
     if (emItems.length > 0 && emMax === freshest && freshest > 0) sources.push("东方财富");
     if (sinaItems.length > 0 && sinaMax === freshest && freshest > 0) sources.push("新浪财经");
     if (thsItems.length > 0 && thsMax === freshest && freshest > 0) sources.push("同花顺");
+    if (clsItems.length > 0 && clsMax === freshest && freshest > 0) sources.push("财联社");
     throttleSource = sources.join("+") || "金十数据";
     boards.source = throttleSource;
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { aiBudgetGuard } from "@/lib/ai-budget";
+import { gateCheck } from "@/lib/gate";
 import { callAI } from "@/lib/ai";
 import { buildImpactMessages, parseImpact, STOCK_POOL } from "@/lib/flash-impact";
 
@@ -17,6 +18,9 @@ const CACHE_TTL = 5 * 60_000;
 const MAX_ITEMS = 5;
 
 export async function POST(request: NextRequest) {
+  // AI消费路由必须过共享口令闸（10/4交叉验证轮补漏：端点02:02建于门禁14:09之前，8路由名单漏了本路由）
+  const gated = gateCheck(request, "FX_GATE_TOKEN", "open_until_configured");
+  if (gated) return gated;
   const limited = await enforceRateLimitAsync(request, "flashAnalyze", RATE_LIMITS.flashAnalyze);
   if (limited) {
     return NextResponse.json(
@@ -69,7 +73,9 @@ export async function POST(request: NextRequest) {
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        { task: "extract", responseFormat: "json", temperature: 0.2, max_tokens: 2500, retry: 1, timeout: 60_000 },
+        // json模式不传（10/4实测：json_object强制对象根+部分免费通道对response_format直接400）——
+        // 契约靠prompt的{"results":[...]}+parseImpact形态归一解析兜底，全部通道可用性优先
+        { task: "extract", temperature: 0.2, max_tokens: 2500, retry: 1, timeout: 60_000 },
       );
       const parsed = parseImpact(typeof raw === "string" ? raw : String(raw ?? ""), pending.map((p) => p.id));
       for (const p of pending) {

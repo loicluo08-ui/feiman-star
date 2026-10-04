@@ -1,6 +1,29 @@
+import { createHash } from "crypto";
 import { getQtStocks } from "@/lib/qt";
 import { fetchSADaily } from "@/lib/stockanalysis";
 import { supabaseConfigured } from "@/lib/supabase";
+import { getFlashSourceStats } from "@/lib/flash-source";
+
+/** 快讯六源运行时统计聚合（10/4架构优化：guarded埋点→此处汇总，死源不再静默） */
+function flashSourcesEntry(): SourceHealth {
+  const { since, sources } = getFlashSourceStats();
+  const names = Object.keys(sources);
+  if (names.length === 0) {
+    return { name: "flash_sources", ok: true, latencyMs: null, detail: `no_data_yet(冷启动,自${since.slice(11, 19)})` };
+  }
+  const parts = names.map((n) => {
+    const s = sources[n];
+    return `${n}:${s.ok}ok/${s.fail}fail${s.lastError ? `(最后错:${s.lastError})` : ""}`;
+  });
+  // ok判定：至少一个源10分钟内成功过=feed还能产出（全灭才false）
+  const anyAlive = names.some((n) => Date.now() - sources[n].lastOkAt < 10 * 60_000);
+  return {
+    name: "flash_sources",
+    ok: anyAlive,
+    latencyMs: null,
+    detail: parts.join(" ") || "empty",
+  };
+}
 
 /**
  * 数据源健康检查（10/1外部评审v1.2采纳 P0-3）
@@ -71,6 +94,72 @@ async function probeJin10(): Promise<SourceHealth> {
     }
   }
   return { name: "jin10_flash", ok: false, latencyMs: Date.now() - start, detail: fails.join("|") };
+}
+
+/** 新浪财经7x24：直播室feed可达性+内容校验（10/4第四源） */
+async function probeSina724(): Promise<SourceHealth> {
+  const start = Date.now();
+  try {
+    const res = await fetch("https://zhibo.sina.com.cn/api/zhibo/feed?page=1&page_size=5&zhibo_id=152", {
+      headers: { "User-Agent": JIN10_UA, Referer: "https://finance.sina.com.cn/7x24/" },
+      signal: AbortSignal.timeout(PROBE_TIMEOUT),
+      cache: "no-store",
+    });
+    if (!res.ok) return { name: "sina_724", ok: false, latencyMs: Date.now() - start, detail: `http_${res.status}` };
+    const payload = (await res.json()) as { result?: { data?: { feed?: { list?: unknown[] } } } };
+    const n = payload.result?.data?.feed?.list?.length ?? 0;
+    return {
+      name: "sina_724",
+      ok: n > 0,
+      latencyMs: Date.now() - start,
+      detail: n > 0 ? `ok(${n}条)` : "empty_list",
+    };
+  } catch {
+    return { name: "sina_724", ok: false, latencyMs: Date.now() - start, detail: "probe_exception" };
+  }
+}
+
+/** 财联社电报：签名接口可达性（sign算法=md5(sha1(参数串))，与lib/flash-source.fetchCls同源逻辑） */
+async function probeCls(): Promise<SourceHealth> {
+  const start = Date.now();
+  try {
+    const params = "app=CailianpressWeb&category=&last_time=&os=web&refresh_type=1&rn=5&sv=7.7.5";
+    const sign = createHash("md5").update(createHash("sha1").update(params).digest("hex")).digest("hex");
+    const res = await fetch(`https://www.cls.cn/v1/roll/get_roll_list?${params}&sign=${sign}`, {
+      headers: { "User-Agent": JIN10_UA, Referer: "https://www.cls.cn/telegraph" },
+      signal: AbortSignal.timeout(PROBE_TIMEOUT),
+      cache: "no-store",
+    });
+    if (!res.ok) return { name: "cls_telegraph", ok: false, latencyMs: Date.now() - start, detail: `http_${res.status}` };
+    const payload = (await res.json()) as { errno?: number; data?: { roll_data?: unknown[] } };
+    const n = payload.errno === 0 ? payload.data?.roll_data?.length ?? 0 : 0;
+    return {
+      name: "cls_telegraph",
+      ok: n > 0,
+      latencyMs: Date.now() - start,
+      detail: n > 0 ? `ok(${n}条)` : `errno_${payload.errno ?? "unknown"}`,
+    };
+  } catch {
+    return { name: "cls_telegraph", ok: false, latencyMs: Date.now() - start, detail: "probe_exception" };
+  }
+}
+
+/** 同花顺快讯：推送接口可达性+条目校验（10/4第六源） */
+async function probeThs(): Promise<SourceHealth> {
+  const start = Date.now();
+  try {
+    const res = await fetch("https://news.10jqka.com.cn/tapp/news/push/stock/?page=1&pagesize=5&track=website&tag=", {
+      headers: { "User-Agent": JIN10_UA, Referer: "https://news.10jqka.com.cn/tw/" },
+      signal: AbortSignal.timeout(PROBE_TIMEOUT),
+      cache: "no-store",
+    });
+    if (!res.ok) return { name: "ths_flash", ok: false, latencyMs: Date.now() - start, detail: `http_${res.status}` };
+    const payload = (await res.json()) as { data?: { list?: unknown[] } };
+    const n = payload.data?.list?.length ?? 0;
+    return { name: "ths_flash", ok: n > 0, latencyMs: Date.now() - start, detail: n > 0 ? `ok(${n}条)` : "empty_list" };
+  } catch {
+    return { name: "ths_flash", ok: false, latencyMs: Date.now() - start, detail: "probe_exception" };
+  }
 }
 
 /** Nasdaq财报日历：api.nasdaq.com单日探测（防bot指纹变化） */
@@ -165,13 +254,16 @@ export async function runHealthCheck(): Promise<HealthReport> {
     return healthCache.data;
   }
 
-  const [jin10, nasdaq, sa, qt] = await Promise.all([
+  const [jin10, sina, cls, ths, nasdaq, sa, qt] = await Promise.all([
     withTimeout("jin10_flash", probeJin10),
+    withTimeout("sina_724", probeSina724),
+    withTimeout("cls_telegraph", probeCls),
+    withTimeout("ths_flash", probeThs),
     withTimeout("nasdaq_calendar", probeNasdaq),
     withTimeout("stockanalysis_daily", probeStockAnalysis),
     withTimeout("tencent_quote", probeQt),
   ]);
-  const sources = [jin10, nasdaq, sa, qt, ...probeConfigs()];
+  const sources = [jin10, sina, cls, ths, flashSourcesEntry(), nasdaq, sa, qt, ...probeConfigs()];
   const status = sources.filter((s) => !s.optional).every((s) => s.ok) ? "ok" : "degraded";
   const result: HealthReport = { status, checkedAt: new Date().toISOString(), sources };
   healthCache = { data: result, expiresAt: Date.now() + HEALTH_TTL };
