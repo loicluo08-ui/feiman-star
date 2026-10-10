@@ -1,0 +1,257 @@
+{
+ "date": "2026-10-10T17:05:03.610Z",
+ "exact_match": "20/20",
+ "precision_at_module": 1,
+ "recall_at_module": 1,
+ "full_fallback_count": 0,
+ "results": [
+  {
+   "q": "石油板块现在的估值逻辑是什么",
+   "expect": [
+    1
+   ],
+   "got": [
+    1
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "银行股和科技股的PE差距合理吗",
+   "expect": [
+    1,
+    2
+   ],
+   "got": [
+    1,
+    2
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "TSLA财报前怎么布局",
+   "expect": [
+    1,
+    2,
+    11
+   ],
+   "got": [
+    1,
+    2,
+    11
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "上次恐慌割肉的行为偏差怎么克服",
+   "expect": [
+    6
+   ],
+   "got": [
+    6
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "期权的Delta中性怎么构建",
+   "expect": [
+    8,
+    9,
+    10
+   ],
+   "got": [
+    8,
+    9,
+    10
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "芒格和巴菲特对安全边际的理解差异",
+   "expect": [
+    11
+   ],
+   "got": [
+    11
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "英伟达现在能不能抄底",
+   "expect": [
+    1,
+    2,
+    11
+   ],
+   "got": [
+    1,
+    2,
+    11
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "帮我看看AAPL的估值",
+   "expect": [
+    1,
+    2,
+    11
+   ],
+   "got": [
+    1,
+    2,
+    11
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "追涨杀跌之后如何修复心态",
+   "expect": [
+    6
+   ],
+   "got": [
+    6
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "备兑开仓和covered call的区别",
+   "expect": [
+    8,
+    10
+   ],
+   "got": [
+    8,
+    10
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "成本伦怎么分析",
+   "expect": [],
+   "got": [],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "最近有什么消息",
+   "expect": [],
+   "got": [],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "NVDA期权怎么展期",
+   "expect": [
+    1,
+    2,
+    8,
+    9,
+    10,
+    11
+   ],
+   "got": [
+    1,
+    2,
+    8,
+    9,
+    10,
+    11
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "自由现金流折现怎么算",
+   "expect": [
+    2
+   ],
+   "got": [
+    2
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "索罗斯的反身性在A股怎么用",
+   "expect": [
+    11
+   ],
+   "got": [
+    11
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "半导体行业现在处于周期什么位置",
+   "expect": [
+    1
+   ],
+   "got": [
+    1
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "下跌时该止损还是摊平",
+   "expect": [
+    1,
+    2,
+    6,
+    11
+   ],
+   "got": [
+    1,
+    2,
+    6,
+    11
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "IV高点适合卖期权吗",
+   "expect": [
+    8,
+    9,
+    10
+   ],
+   "got": [
+    8,
+    9,
+    10
+   ],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "腾讯控股怎么样",
+   "expect": [],
+   "got": [],
+   "ok": true,
+   "fullFallback": false
+  },
+  {
+   "q": "账面亏损50%舍不得卖",
+   "expect": [
+    6
+   ],
+   "got": [
+    6
+   ],
+   "ok": true,
+   "fullFallback": false
+  }
+ ]
+}

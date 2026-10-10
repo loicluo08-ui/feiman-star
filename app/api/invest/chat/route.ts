@@ -4,7 +4,7 @@ import { z } from "zod";
 import { callAI, callAIStream, callVisionAI, callZhipuStream, type ChatMessage, type VisionMessage } from "@/lib/ai";
 import { crossValidate, verifyNumericAnchors } from "@/lib/cross-validate";
 import { buildSourcePool, verifySourceLabels } from "@/lib/source-integrity";
-import { selectKBForQuestion } from "@/lib/kb-router";
+import { selectKBForQuestion, KB_BOUNDARY_BLOCK } from "@/lib/kb-router";
 import { selectDynamicKB } from "@/lib/kb-dynamic";
 import { runAgentDataCollection } from "@/lib/agent-tools";
 import { buildSettleRecallBlock, normalizeSymbol, readSettleRecords } from "@/lib/settle-recall";
@@ -358,6 +358,7 @@ export async function POST(request: NextRequest) {
     "<knowledge_base>",
     kbSelection.kb,
     dynKB.block,
+    KB_BOUNDARY_BLOCK(dynKB.latestCreated, dynKB.totalEntries),
     "</knowledge_base>",
   ].join("\n");
 

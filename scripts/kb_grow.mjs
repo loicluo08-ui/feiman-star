@@ -75,12 +75,63 @@ async function main() {
   const freshKeys = new Set(fresh.map((f) => f.keywords.join("|")));
   const merged = kept.filter((e) => e.type !== "data_snapshot" || !freshKeys.has(e.keywords.join("|"))).concat(fresh);
 
-  if (JSON.stringify(merged) === JSON.stringify(db.entries || [])) {
+  // ── Lint轮（10/11 B2，GBrain三大操作闭环映射：同主题合并+过期迁出+矛盾标记）──
+  function lintEntries(entries) {
+    const today = new Date().toISOString().slice(0, 10);
+    // 过期迁出（git历史即归档，selectDynamicKB本来就过滤过期——文件层面同 步清理防无限膨胀）
+    let kept = entries.filter((e) => !e.expires || e.expires >= today);
+    const jaccard = (a, b) => {
+      const A = new Set((a.keywords || []).map((k) => (k || "").toLowerCase()));
+      const B = new Set((b.keywords || []).map((k) => (k || "").toLowerCase()));
+      let inter = 0;
+      for (const k of B) if (A.has(k)) inter++;
+      const union = A.size + B.size - inter;
+      return union > 0 ? inter / union : 0;
+    };
+    const dirOf = (e) => { const m = (e.content || "").match(/方向：([^；)]{1,6})/); return m ? m[1].trim() : ""; };
+    // insight同主题合并：Jaccard>0.5 → 保留created新的（GBrain Ingest：新知识更新旧断言而非并存）
+    const insights = kept.filter((e) => e.type === "insight");
+    const others = kept.filter((e) => e.type !== "insight");
+    const dropped = new Set();
+    for (let i = 0; i < insights.length; i++) {
+      if (dropped.has(i)) continue;
+      for (let j = i + 1; j < insights.length; j++) {
+        if (dropped.has(j)) continue;
+        if (jaccard(insights[i], insights[j]) > 0.5) {
+          if (insights[i].created >= insights[j].created) dropped.add(j);
+          else { dropped.add(i); break; }
+        }
+      }
+    }
+    const mergedInsights = insights.filter((_, idx) => !dropped.has(idx));
+    // 矛盾标记：同主题且方向相反 → 双方content互指（多空并存是信息不是bug——AI注入时可见矛盾，人审裁决留给结算）
+    for (let i = 0; i < mergedInsights.length; i++) {
+      for (let j = i + 1; j < mergedInsights.length; j++) {
+        if (jaccard(mergedInsights[i], mergedInsights[j]) <= 0.5) continue;
+        const da = dirOf(mergedInsights[i]);
+        const db = dirOf(mergedInsights[j]);
+        const conflict = (da.includes("利多") && db.includes("利空")) || (da.includes("利空") && db.includes("利多"));
+        if (conflict) {
+          if (!mergedInsights[i].content.includes("方向相反条目")) {
+            mergedInsights[i] = { ...mergedInsights[i], content: mergedInsights[i].content + ` ⚠️与条目${mergedInsights[j].id}方向相反（多空并存，引用时说明分歧）` };
+          }
+          if (!mergedInsights[j].content.includes("方向相反条目")) {
+            mergedInsights[j] = { ...mergedInsights[j], content: mergedInsights[j].content + ` ⚠️与条目${mergedInsights[i].id}方向相反（多空并存，引用时说明分歧）` };
+          }
+        }
+      }
+    }
+    console.log(`[kb_grow][lint] 过期迁出${entries.length - kept.length}条，同主题合并${dropped.size}条，剩余${[...others, ...mergedInsights].length}条`);
+    return [...others, ...mergedInsights];
+  }
+  const linted = lintEntries(merged);
+
+  if (JSON.stringify(linted) === JSON.stringify(db.entries || [])) {
     console.log("[kb_grow] 无变化，跳过commit");
     return;
   }
-  writeFileSync(DATA, JSON.stringify({ entries: merged }, null, 1));
-  console.log(`[kb_grow] 写入${merged.length}条（新增${fresh.length}）`);
+  writeFileSync(DATA, JSON.stringify({ entries: linted }, null, 1));
+  console.log(`[kb_grow] 写入${linted.length}条（新增${fresh.length}）`);
 
   if (!NOCOMMIT) {
     try {

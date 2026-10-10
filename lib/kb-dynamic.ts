@@ -21,7 +21,7 @@ const raw = rawDynamic as { entries: DynamicEntry[] };
 export async function selectDynamicKB(
   userText: string,
   maxChars = 4000
-): Promise<{ block: string; count: number }> {
+): Promise<{ block: string; count: number; latestCreated?: string; totalEntries?: number }> {
   try {
     const now = new Date().toISOString().slice(0, 10);
     const q = (userText || "").toLowerCase();
@@ -103,11 +103,15 @@ export async function selectDynamicKB(
       used += picked[i].content.length;
     }
     if (parts.length === 0) return { block: "", count: 0 };
+    // 10/11 B1（GBrain缺口声明映射）：带出动态层元信息——chat组装"知识边界"声明用
+    const latestCreated = list.reduce(function (m, e) { return e.created > m ? e.created : m; }, "");
     return {
       block:
         "\n\n【动态知识层（每日自动采集沉淀，引用时注明数据日期）】\n" +
         parts.join("\n"),
       count: parts.length,
+      latestCreated: latestCreated || undefined,
+      totalEntries: list.length,
     };
   } catch {
     return { block: "", count: 0 };

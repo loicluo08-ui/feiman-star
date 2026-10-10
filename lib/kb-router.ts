@@ -62,6 +62,23 @@ function moduleNumber(block: KBBlock): number {
 // 3.9K代价小，任何标准/深度档都该带（此前只靠标的/关键词触发，苹果微软等大票不在正则里=漏注入）
 const CORE_MODULES = [3, 4, 5, 7, 12, 99];
 
+/**
+ * KB知识边界声明（10/11 B1，GBrain缺口分析映射）：
+ * 静态层基准日已在KB头部（更新日期行，永注入）；此块补动态层元信息+未覆盖声明。
+ * GBrain机制：每个回答携带"brain还不知道什么"——防模型用常识补足知识库没有的具体事实。
+ */
+export function KB_BOUNDARY_BLOCK(dynLatest?: string, dynTotal?: number): string {
+  const parts: string[] = ["【知识边界】"];
+  if (dynLatest) parts.push(`动态层最新采集：${dynLatest}（共${dynTotal ?? "?"}条，快照类30天强制过期，过期条目不注入）`);
+  parts.push(
+    "未覆盖声明：知识库与注入数据没有的具体事实（未收录公司细节、非公开数据、无来源的数字与日期），明确说\"知识库暂无此内容\"并说明判断依据来自哪一层（框架推理/实时行情/通用常识），禁止用模型常识编造具体数字。",
+  );
+  parts.push(
+    "引用标注：本次回答若实际依赖知识库某模块的具体条目（快照数字/洞察/案例），在机器记账行末尾追加\"KB引用：模块N[,模块M]\"（10/11 B3a埋线：为检索反馈权重积累引用数据，只标真实依赖的，没依赖就不标）。",
+  );
+  return parts.join("\n");
+}
+
 interface RouteRule {
   module: number;
   pattern: RegExp;
@@ -92,7 +109,9 @@ const GURU_STYLE_MODULE = /^(blend|munger|buffett|livermore|duan|soros|musk)$/;
 
 // 股票问题指示：具体标的（代码/公司名/持仓）→估值(1)+财务(2)联动
 // 注意：中文词不能用\b（JS \w只含ASCII，中文不是词字符）——直接子串匹配
-const STOCK_HINT = /(?:^|[^A-Za-z])[A-Z]{2,5}(?:\.[A-Z])?(?:$|[^A-Za-z])|苹果|英伟达|特斯拉|微软|谷歌|亚马逊|Meta|脸书|台积电|阿斯麦|博通|超微|英特尔|AMD|高通|礼来|联合健康|摩根大通|可口可乐|百事|麦当劳|耐克|迪士尼|奈飞|伯克希尔|持仓|股票|个股|自选|买入|卖出|加仓|建仓|清仓|止盈|止损|股票代码|市值|股价|现价|多少钱|怎么看|分析下|分析一下/;
+// 10/11金丝雀实锤修复：PE/IV等财务缩写命中[A-Z]{2,5}代码模式→误触发STOCK_HINT（大师会诊白带3.9K）——
+// ASCII模式前加负向前瞻排除已知财务缩写；qrels证据：data/kb_canary_baseline.json首轮P=0.907
+const STOCK_HINT = /(?:^|[^A-Za-z])(?!(?:PE|PB|PS|ROE|ROA|EPS|EV|EBITDA|PEG|IV|ROI|ROIC|FCF|IPO|ETF|GDP|CPI|PMI|YTD|QoQ|WoW|AH|DR|ADR)\b)[A-Z]{2,5}(?:\.[A-Z])?(?:$|[^A-Za-z])|苹果|英伟达|特斯拉|微软|谷歌|亚马逊|Meta|脸书|台积电|阿斯麦|博通|超微|英特尔|AMD|高通|礼来|联合健康|摩根大通|可口可乐|百事|麦当劳|耐克|迪士尼|奈飞|伯克希尔|持仓|股票|个股|自选|买入|卖出|加仓|建仓|清仓|止盈|止损|股票代码|市值|股价|现价|多少钱|怎么看|分析下|分析一下/;
 
 export interface KBSelection {
   kb: string;
