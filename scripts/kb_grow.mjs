@@ -81,8 +81,10 @@ async function main() {
     // 过期迁出（git历史即归档，selectDynamicKB本来就过滤过期——文件层面同 步清理防无限膨胀）
     let kept = entries.filter((e) => !e.expires || e.expires >= today);
     const jaccard = (a, b) => {
-      const A = new Set((a.keywords || []).map((k) => (k || "").toLowerCase()));
-      const B = new Set((b.keywords || []).map((k) => (k || "").toLowerCase()));
+      // 10/11交叉验证修：排除日期keyword与"洞察"通用词——parseInsights给每条insight都加today+洞察，
+      // 不排除则跨日同主题Jaccard被稀释（业务词5同+各自日期+洞察=6/13=0.46<0.5漏合并）
+      const clean = (e) => new Set((e.keywords || []).map((k) => (k || "").toLowerCase()).filter((k) => k && !/^\d{4}-\d{2}-\d{2}$/.test(k) && k !== "洞察"));
+      const A = clean(a), B = clean(b);
       let inter = 0;
       for (const k of B) if (A.has(k)) inter++;
       const union = A.size + B.size - inter;
@@ -103,7 +105,14 @@ async function main() {
         }
       }
     }
-    const mergedInsights = insights.filter((_, idx) => !dropped.has(idx));
+    const mergedInsights = insights.filter((_, idx) => !dropped.has(idx)).map((e) => ({
+      ...e,
+      // 10/11交叉验证修：AI生成keyword带括号后缀（"中国台湾（中国，…）股市"）=超长死词永不命中——截断到括号前
+      keywords: (e.keywords || []).map((k) => {
+        const cut = k.split(/[(（]/)[0].trim();
+        return cut.length >= 2 ? cut : k;
+      }),
+    }));
     // 矛盾标记：同主题且方向相反 → 双方content互指（多空并存是信息不是bug——AI注入时可见矛盾，人审裁决留给结算）
     for (let i = 0; i < mergedInsights.length; i++) {
       for (let j = i + 1; j < mergedInsights.length; j++) {

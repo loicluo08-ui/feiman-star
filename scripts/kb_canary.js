@@ -73,7 +73,7 @@ if (fullFallbackCount > 0) console.log(`⚠️ 保险丝回退${fullFallbackCoun
 
 // 基线文件：commit锚定可复现（GBrain eval-results模式）
 const baseline = {
-  date: new Date().toISOString(),
+  // date字段已去除（10/11交叉验证修：运行时时间戳=每次跑都产生git diff噪声；commit时间即运行时间）
   exact_match: `${hit}/${QRELS.length}`,
   precision_at_module: precision,
   recall_at_module: recall,
