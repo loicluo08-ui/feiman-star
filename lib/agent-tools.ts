@@ -115,12 +115,14 @@ async function toolFinancials(rawSymbol: string): Promise<string> {
 }
 
 // ——— 工具Schema（OpenAI function calling格式，DeepSeek兼容）———
+// 10/11 U2（赋范蒸馏映射）：每工具补负样本（不该调用的反例）——"接上工具不代表会用，什么时候不查光靠工具本身解决不了"
+// 负样本按真实误用场景写：纯框架问题不查行情/快讯池只覆盖24h/价格与基本面两工具互斥/宏观锚不重复查
 const TOOLS = [
   {
     type: "function",
     function: {
       name: "query_quote",
-      description: "查询美股实时行情：现价/涨跌幅/PE/52周区间位置/回撤/市值。分析任何标的的价格位置与估值前必查。",
+      description: "查询美股实时行情：现价/涨跌幅/PE/52周区间位置/回撤/市值。分析任何标的的价格位置与估值前必查。不要在以下情况调用：纯方法论/框架问题（怎么估值、仓位哲学——没有具体标的）；宏观利率问题（用query_macro）；复盘知识库历史案例（案例数字是当时的，查现价反而混淆）。",
       parameters: {
         type: "object",
         properties: {
@@ -134,7 +136,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "query_option_chain",
-      description: "查询美股期权链：ATM附近执行价的bid/ask/IV/delta/持仓量。期权策略类问题（备兑/保护/滚动）必查。",
+      description: "查询美股期权链：ATM附近执行价的bid/ask/IV/delta/持仓量。期权策略类问题（备兑/保护/滚动）必查。不要在以下情况调用：策略框架问题（该不该买保护、什么情景用备兑——先给框架，用户问'具体买哪档/多少钱'才查）；没有明确标的时（先确认标的再查）。",
       parameters: {
         type: "object",
         properties: {
@@ -148,7 +150,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "search_news",
-      description: "在最新快讯池（金十+华尔街见闻，最近数小时~1天）中按关键词搜相关新闻。",
+      description: "在最新快讯池（金十+华尔街见闻+东方财富+新浪+同花顺+财联社+AIHOT，最近数小时~1天）中按关键词搜相关新闻。不要在以下情况调用：历史事件或背景知识问题（池子只覆盖最近24小时，更早的查了返回空）；纯方法论/框架问题（与新闻无关）；同一关键词刚查过且无新意时重复查。",
       parameters: {
         type: "object",
         properties: {
@@ -162,7 +164,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "query_macro",
-      description: "查询宏观锚数据：10Y美债收益率、美元指数及近5日变化。涉及利率/流动性/大盘环境时查。",
+      description: "查询宏观锚数据：10Y美债收益率、美元指数及近5日变化。涉及利率/流动性/大盘环境时查。不要在以下情况调用：个股技术面或公司层面问题（10Y美元锚只服务宏观叙事）；同一对话里已查过且问题没升级（利率5分钟内不会变，重复查浪费轮次）。",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -170,7 +172,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "query_financials",
-      description: "查询美股财务快照：公司简介/行业细分/关键财务指标（毛利率/ROE/营收增长等，Finnhub）。基本面深挖/同行对比时查。",
+      description: "查询美股财务快照：公司简介/行业细分/关键财务指标（毛利率/ROE/营收增长等，Finnhub）。基本面深挖/同行对比时查。不要在以下情况调用：价格位置/行情问题（用query_quote，两者别混）；期权策略问题（quote+option_chain组合）；行业层面问题（用知识库模块1的行业基准，公司快照不等于行业）。",
       parameters: {
         type: "object",
         properties: {
