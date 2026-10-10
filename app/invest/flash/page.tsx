@@ -246,11 +246,11 @@ export default function FlashPage() {
 
       // 金十专板：客户端直连为主源，服务端金十兜底（原有能力不变，9/6红队收紧：同一套filter+dedup）
       const jin10Merged = filterFlashItems([...jin10Client, ...serverData.data]);
-      const jin10Board = dedupFlashItems(jin10Merged).slice(0, 30);
+      const jin10Board = dedupFlashItems(jin10Merged).slice(0, 100);
       // 全市场板：见闻+东财+新浪合流（纯服务端）
-      const othersBoard = dedupFlashItems(filterFlashItems(serverData.others)).slice(0, 30);
+      const othersBoard = dedupFlashItems(filterFlashItems(serverData.others)).slice(0, 100);
       // AI动态板：AIHOT精选（纯服务端，10/10第七源）
-      const aiBoard = dedupFlashItems(filterFlashItems(serverData.ai)).slice(0, 30);
+      const aiBoard = dedupFlashItems(filterFlashItems(serverData.ai)).slice(0, 100);
 
       // 更新source显示（10/4顺手修：原实现漏东方财富/新浪）
       const sources: string[] = [];

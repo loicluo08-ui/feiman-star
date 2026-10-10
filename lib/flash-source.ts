@@ -189,7 +189,7 @@ interface WscnItem {
 
 async function fetchWallstreetCN(): Promise<FlashItem[]> {
     const res = await fetch(
-      "https://api-one-wscn.awtmt.com/apiv1/content/lives?channel=global-channel&limit=20",
+      "https://api-one-wscn.awtmt.com/apiv1/content/lives?channel=global-channel&limit=100",
       {
         headers: { "User-Agent": UA },
         signal: AbortSignal.timeout(5000),
@@ -236,7 +236,7 @@ type EmItem = {
 // 价值：A股/宏观时段补充（金十美股时段强，东财国内时段覆盖更好）
 async function fetchEastmoney(): Promise<FlashItem[]> {
     const res = await fetch(
-      `https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=20&req_trace=${Date.now()}`,
+      `https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=100&req_trace=${Date.now()}`,
       {
         headers: {
           "User-Agent": UA,
@@ -291,7 +291,7 @@ interface SinaFeedItem {
 
 async function fetchSina724(): Promise<FlashItem[]> {
     const res = await fetch(
-      `https://zhibo.sina.com.cn/api/zhibo/feed?page=1&page_size=20&zhibo_id=152&_=${Date.now()}`,
+      `https://zhibo.sina.com.cn/api/zhibo/feed?page=1&page_size=100&zhibo_id=152&_=${Date.now()}`,
       { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(5000) },
     );
     if (!res.ok) return [];
@@ -344,7 +344,7 @@ interface ThsItem {
 
 async function fetch10jqka(): Promise<FlashItem[]> {
     const res = await fetch(
-      "https://news.10jqka.com.cn/tapp/news/push/stock/?page=1&pagesize=20&track=website&tag=",
+      "https://news.10jqka.com.cn/tapp/news/push/stock/?page=1&pagesize=100&track=website&tag=",
       {
         headers: { "User-Agent": UA, Referer: "https://news.10jqka.com.cn/" },
         signal: AbortSignal.timeout(5000),
@@ -393,7 +393,8 @@ interface ClsItem {
 }
 
 async function fetchCls(): Promise<FlashItem[]> {
-  const params = "app=CailianpressWeb&category=&last_time=&os=web&refresh_type=1&rn=20&sv=7.7.5";
+  // rn实测上限50（10/10扩池实测：rn=100 HTTP 200但roll_data静默返空，rn=50满额——财联社接口无错误码的黑洞区，勿再放大）
+  const params = "app=CailianpressWeb&category=&last_time=&os=web&refresh_type=1&rn=50&sv=7.7.5";
   const sign = createHash("md5").update(createHash("sha1").update(params).digest("hex")).digest("hex");
   const res = await fetch(`https://www.cls.cn/v1/roll/get_roll_list?${params}&sign=${sign}`, {
     headers: { "User-Agent": UA, Referer: "https://www.cls.cn/telegraph" },
@@ -448,7 +449,7 @@ async function fetchAihot(): Promise<FlashItem[]> {
   // 注意：不可加 _=Date.now() 之类cache-buster——AIHOT API对未知query参数严格校验直接400（10/10实测A/D组对照实锤）；
   // 站方自带边缘缓存设计（feed ttl=30），无需客户端绕缓存
   const res = await fetch(
-    "https://aihot.news/api/v1/items?window=24h&limit=30",
+    "https://aihot.news/api/v1/items?window=24h&limit=100",
     { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(6000) },
   );
   if (!res.ok) throw new Error(`http_${res.status}`);
@@ -512,7 +513,8 @@ export interface FlashFeed extends FlashBoards {
 }
 
 /**
- * 拉取双板块快讯（金十专板 + 见闻/东财/新浪合流板，各≤30条，最新在前）。
+ * 拉取三板块快讯（金十专板 + 见闻/东财/新浪合流板 + AIHOT产业动态板，各≤100条，最新在前）。
+ * 10/10逸翔令扩池30→100：财联社接口实测上限50（rn=100静默返空）已在fetchAihot/fetchCls注释标明。
  * 10秒节流 + 5分钟兜底缓存，供flash route与chat共用。
  * 失败返回空数组（调用方自行降级，不throw）。
  */
@@ -541,14 +543,14 @@ export async function getFlashBoards(): Promise<FlashBoards> {
     const qualityOk = (i: FlashItem) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text);
 
     // 金十专板：单源全量（原有能力不变），板内也过一遍去重防同条重推
-    const jin10 = dedupFlashItems(jin10Items.filter(qualityOk)).slice(0, 30);
+    const jin10 = dedupFlashItems(jin10Items.filter(qualityOk)).slice(0, 100);
 
     // 合流板：见闻+东财+新浪+同花顺+财联社跨源去重（金十CDN缓存4小时延迟的教训——跨源重叠靠dedup处理）
     const otherRaw = [...wscnItems, ...emItems, ...sinaItems, ...thsItems, ...clsItems].filter(qualityOk);
-    const others = dedupFlashItems(otherRaw).slice(0, 30);
+    const others = dedupFlashItems(otherRaw).slice(0, 100);
 
     // AI产业动态板（10/10第七源）：单源独立不混流，跨源去重防站方重推
-    const ai = dedupFlashItems(aihotItems.filter(qualityOk)).slice(0, 30);
+    const ai = dedupFlashItems(aihotItems.filter(qualityOk)).slice(0, 100);
 
     if (jin10.length === 0 && others.length === 0 && ai.length === 0) {
       // 5分钟兜底（source带缓存标注，口径与原flash route一致）
@@ -603,7 +605,7 @@ export async function getFlashBoards(): Promise<FlashBoards> {
  */
 export async function getFlashFeed(): Promise<FlashFeed> {
   const boards = await getFlashBoards();
-  // AI板进混流（10/10）：chat讯息注入/flash-impact分析可消费AI产业动态；dedup后30条上限内AI条目占比小
-  const items = dedupFlashItems([...boards.jin10, ...boards.others, ...boards.ai]).slice(0, 30);
+  // AI板进混流（10/10）：chat讯息注入/flash-impact分析可消费AI产业动态；dedup后100条上限内AI条目占比小
+  const items = dedupFlashItems([...boards.jin10, ...boards.others, ...boards.ai]).slice(0, 100);
   return { ...boards, items };
 }
