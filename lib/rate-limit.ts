@@ -17,7 +17,7 @@ export const RATE_LIMITS = {
   reviewSummary: { maxRequests: 10, windowMs: 60_000 },  // AI（10/3审计收紧）
   marketPulse: { maxRequests: 180, windowMs: 60_000 },   // 30秒缓存+60分钟日线缓存挡上游
   news: { maxRequests: 180, windowMs: 60_000 },          // 10分钟缓存挡上游
-  flashAnalyze: { maxRequests: 10, windowMs: 60_000 },   // AI（快讯单条分析；10/3审计收紧）
+  flashAnalyze: { maxRequests: 30, windowMs: 60_000 },   // AI（快讯影响标注；10/10扩池30→100条后首标20请求/分>旧10/分被打穿——P2实锤修复；四层保护不变：免费池优先+5min内容hash+股票池硬约束+余额5元熔断）
   admin: { maxRequests: 20, windowMs: 60_000 },          // admin后台+debug端点（10/3审计新增：爆破节流）
 } as const;
 
