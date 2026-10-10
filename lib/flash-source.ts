@@ -425,6 +425,64 @@ async function fetchCls(): Promise<FlashItem[]> {
   });
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 数据源7: AIHOT AI产业动态（10/10逸翔令"开工"）：aihot.news聚合站官方API，匿名免key。
+// 定位：AI行业动态独立板（模型发布/AI公司事件/论文），与财经快讯分板不混流——
+// 精选制（LLM摘要+打分，75分以下不上），节奏为小时~天级，不参与freshest分钟级竞争。
+// score>=80=major（精选线实测62-82，80+为全行业级大事如State of AI Report）。
+// 站方Agent接入页承诺匿名只读稳定服务；旧域名aihot.virxact.com 10/31停用，直接用新域。
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface AihotItem {
+  id: string;
+  title: string;
+  originalTitle?: string;
+  summary?: string;
+  source?: { name?: string };
+  publishedAt?: string;
+  category?: string;
+  score?: number;
+}
+
+async function fetchAihot(): Promise<FlashItem[]> {
+  // 注意：不可加 _=Date.now() 之类cache-buster——AIHOT API对未知query参数严格校验直接400（10/10实测A/D组对照实锤）；
+  // 站方自带边缘缓存设计（feed ttl=30），无需客户端绕缓存
+  const res = await fetch(
+    "https://aihot.news/api/v1/items?window=24h&limit=30",
+    { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(6000) },
+  );
+  if (!res.ok) throw new Error(`http_${res.status}`);
+  const payload = (await res.json()) as { items?: AihotItem[] };
+  const items = payload.items;
+  if (!Array.isArray(items)) return [];
+
+  return items.flatMap((item): FlashItem[] => {
+    const title = (item.title || "").trim();
+    const summary = (item.summary || "").trim();
+    if (!title || !item.id || !item.publishedAt) return [];
+    const ts = Math.floor(Date.parse(item.publishedAt) / 1000);
+    if (!Number.isFinite(ts) || ts <= 0) return [];
+    const major = (item.score ?? 0) >= 80;
+    // 分类中文化前缀放content头：论文/观点类一眼可辨（模型/产品/行业类标题已自明不加）
+    const catLabel =
+      item.category === "paper" ? "【论文】" :
+      item.category === "opinion" ? "【观点】" : "";
+    const content = `${catLabel}${summary || title}`;
+    return [{
+      id: `aihot_${item.id}`,
+      title,
+      content,
+      content_text: `${title}\n${content}`,
+      time_str: formatRelativeTime(ts),
+      timestamp: ts,
+      is_important: major,
+      importance: major ? "major" : "minor",
+      channels: [],
+      source: "AIHOT",
+    } satisfies FlashItem];
+  });
+}
+
 let lastSuccessCache: FlashBoards | null = null;
 let lastSuccessTime = 0;
 const CACHE_TTL = 5 * 60 * 1000;
@@ -437,12 +495,14 @@ let throttleSource = "";
 // 刷新进度去重：并发请求（flash轮询+chat提问同时打进来）只触发一次外呼
 let refreshPromise: Promise<FlashBoards> | null = null;
 
-/** 金十专板+合流板（10/4逸翔令：金十单独一个板块，原有能力不变） */
+/** 金十专板+合流板+AI产业动态板（10/4金十分板；10/10逸翔令接AIHOT第七源=AI独立板） */
 export interface FlashBoards {
   /** 金十专板：金十数据全量（质量过滤后），不与其他源混流 */
   jin10: FlashItem[];
   /** 合流板：华尔街见闻+东方财富+新浪财经，跨源去重 */
   others: FlashItem[];
+  /** AI产业动态板（10/10第七源AIHOT）：独立不混流——精选制节奏慢，混进财经板会被分钟级流挤出视野 */
+  ai: FlashItem[];
   source: string;
 }
 
@@ -468,13 +528,14 @@ export async function getFlashBoards(): Promise<FlashBoards> {
   }
 
   refreshPromise = (async () => {
-    const [jin10Items, wscnItems, emItems, sinaItems, thsItems, clsItems] = await Promise.all([
+    const [jin10Items, wscnItems, emItems, sinaItems, thsItems, clsItems, aihotItems] = await Promise.all([
       guarded("金十数据", fetchJin10, "jin10"),
       guarded("华尔街见闻", fetchWallstreetCN, "wscn"),
       guarded("东方财富", fetchEastmoney, "em"),
       guarded("新浪财经", fetchSina724, "sina"),
       guarded("同花顺", fetch10jqka, "ths"),
       guarded("财联社", fetchCls, "cls"),
+      guarded("AIHOT", fetchAihot, "aihot"),
     ]);
 
     const qualityOk = (i: FlashItem) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text);
@@ -486,15 +547,18 @@ export async function getFlashBoards(): Promise<FlashBoards> {
     const otherRaw = [...wscnItems, ...emItems, ...sinaItems, ...thsItems, ...clsItems].filter(qualityOk);
     const others = dedupFlashItems(otherRaw).slice(0, 30);
 
-    if (jin10.length === 0 && others.length === 0) {
+    // AI产业动态板（10/10第七源）：单源独立不混流，跨源去重防站方重推
+    const ai = dedupFlashItems(aihotItems.filter(qualityOk)).slice(0, 30);
+
+    if (jin10.length === 0 && others.length === 0 && ai.length === 0) {
       // 5分钟兜底（source带缓存标注，口径与原flash route一致）
       if (Date.now() - lastSuccessTime < CACHE_TTL && lastSuccessCache) {
         return { ...lastSuccessCache, source: "缓存数据（数据源暂时不可用）" };
       }
-      return { jin10: [], others: [], source: "" };
+      return { jin10: [], others: [], ai: [], source: "" };
     }
 
-    const boards: FlashBoards = { jin10, others, source: "" };
+    const boards: FlashBoards = { jin10, others, ai, source: "" };
 
     // 写节流缓存+兜底缓存
     throttleCache = boards;
@@ -502,7 +566,8 @@ export async function getFlashBoards(): Promise<FlashBoards> {
     lastSuccessCache = boards;
     lastSuccessTime = Date.now();
 
-    // source标注口径：该源贡献了全网最新一条（列表顺序不可靠，用各源最大timestamp比）
+    // source标注口径：该源贡献了全网最新一条（列表顺序不可靠，用各源最大timestamp比）。
+    // AIHOT不参与freshest比较——精选制publishedAt天然滞后小时级，比必输；有内容即标注
     const maxTs = (arr: FlashItem[]) => arr.reduce((m, i) => Math.max(m, i.timestamp), 0);
     const sources: string[] = [];
     const jin10Max = maxTs(jin10Items);
@@ -518,6 +583,7 @@ export async function getFlashBoards(): Promise<FlashBoards> {
     if (sinaItems.length > 0 && sinaMax === freshest && freshest > 0) sources.push("新浪财经");
     if (thsItems.length > 0 && thsMax === freshest && freshest > 0) sources.push("同花顺");
     if (clsItems.length > 0 && clsMax === freshest && freshest > 0) sources.push("财联社");
+    if (aihotItems.length > 0) sources.push("AIHOT");
     throttleSource = sources.join("+") || "金十数据";
     boards.source = throttleSource;
 
@@ -537,6 +603,7 @@ export async function getFlashBoards(): Promise<FlashBoards> {
  */
 export async function getFlashFeed(): Promise<FlashFeed> {
   const boards = await getFlashBoards();
-  const items = dedupFlashItems([...boards.jin10, ...boards.others]).slice(0, 30);
+  // AI板进混流（10/10）：chat讯息注入/flash-impact分析可消费AI产业动态；dedup后30条上限内AI条目占比小
+  const items = dedupFlashItems([...boards.jin10, ...boards.others, ...boards.ai]).slice(0, 30);
   return { ...boards, items };
 }

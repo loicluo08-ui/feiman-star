@@ -31,8 +31,10 @@ export async function GET(request: Request) {
   const boards = await getFlashBoards();
   const jin10 = withTitleFallback(boards.jin10);
   const others = withTitleFallback(boards.others);
+  // 10/10第七源：AI产业动态板（AIHOT精选），独立不混流——精选制慢节奏，空板属常态不算故障
+  const ai = withTitleFallback(boards.ai);
 
-  if (jin10.length === 0 && others.length === 0) {
+  if (jin10.length === 0 && others.length === 0 && ai.length === 0) {
     return NextResponse.json(
       { error: "快讯数据暂时不可用，请稍后重试" },
       { status: 503 },
@@ -44,6 +46,7 @@ export async function GET(request: Request) {
     {
       data: jin10,
       others,
+      ai,
       timestamp: new Date().toISOString(),
       source: boards.source || "金十数据",
     },

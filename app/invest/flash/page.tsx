@@ -20,13 +20,14 @@ interface FlashItem {
   source: string;
 }
 
-// 来源徽标配色（10/4扩源：合流板每条标来源，金十保持品牌橙）
+// 来源徽标配色（10/4扩源：合流板每条标来源，金十保持品牌橙；10/10加AIHOT紫）
 const SOURCE_BADGES: Record<string, { label: string; cls: string }> = {
   金十数据: { label: "金十", cls: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" },
   华尔街见闻: { label: "见闻", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
   东方财富: { label: "东财", cls: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300" },
   新浪财经: { label: "新浪", cls: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
   同花顺: { label: "同花顺", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300" },
+  AIHOT: { label: "AIHOT", cls: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" },
 };
 
 // 金十channel含义
@@ -55,10 +56,11 @@ function stripDupTitle(title: string, content: string): string {
 }
 
 export default function FlashPage() {
-  // 双板块（10/4逸翔令）：金十专板（原能力不变）+ 全市场合流板（见闻+东财+新浪）
+  // 三板块（10/4金十分板→10/10逸翔令接AIHOT=AI产业动态独立板）：金十专板+全市场合流板+AI动态板
   const [jin10Items, setJin10Items] = useState<FlashItem[]>([]);
   const [otherItems, setOtherItems] = useState<FlashItem[]>([]);
-  const [board, setBoard] = useState<"jin10" | "others">("jin10");
+  const [aiItems, setAiItems] = useState<FlashItem[]>([]);
+  const [board, setBoard] = useState<"jin10" | "others" | "ai">("jin10");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "major" | "minor">("all");
@@ -122,10 +124,10 @@ export default function FlashPage() {
     }
   }, []);
 
-  // 新的主要快讯触发通知（两板块都监控，主次标记10/4：importance==="major"）
+  // 新的主要快讯触发通知（三板块都监控，主次标记10/4：importance==="major"）
   useEffect(() => {
     if (!notifEnabled) return;
-    const all = [...jin10Items, ...otherItems];
+    const all = [...jin10Items, ...otherItems, ...aiItems];
     const newImportant = all.filter(
       (i) => i.importance === "major" && !notifiedRef.current.has(i.id)
     );
@@ -139,7 +141,7 @@ export default function FlashPage() {
         });
       } catch {}
     }
-  }, [jin10Items, otherItems, notifEnabled]);
+  }, [jin10Items, otherItems, aiItems, notifEnabled]);
 
   // 客户端直连金十（绕过Vercel网络限制，cache-buster绕CDN缓存）
   const fetchJin10Client = useCallback(async (): Promise<FlashItem[]> => {
@@ -206,25 +208,27 @@ export default function FlashPage() {
     }
   }, []);
 
-  // 服务端API（10/4双板块：data=金十专板兜底，others=见闻+东财+新浪合流板）——透传HTTP状态，503/0=源不可用（2026-09-26审计P1-1）
+  // 服务端API（10/4双板块→10/10三板块：data=金十专板兜底，others=见闻+东财+新浪合流板，ai=AIHOT产业动态板）——透传HTTP状态，503/0=源不可用（2026-09-26审计P1-1）
   const fetchServerFlash = useCallback(async (): Promise<{
     data: FlashItem[];
     others: FlashItem[];
+    ai: FlashItem[];
     source: string;
     status: number;
   }> => {
     try {
       const res = await fetch("/api/invest/flash", { cache: "no-store" });
-      if (!res.ok) return { data: [], others: [], source: "", status: res.status };
+      if (!res.ok) return { data: [], others: [], ai: [], source: "", status: res.status };
       const json = await res.json();
       return {
         data: json.data || [],
         others: json.others || [],
+        ai: json.ai || [],
         source: json.source || "",
         status: 200,
       };
     } catch {
-      return { data: [], others: [], source: "", status: 0 };
+      return { data: [], others: [], ai: [], source: "", status: 0 };
     }
   }, []);
 
@@ -245,6 +249,8 @@ export default function FlashPage() {
       const jin10Board = dedupFlashItems(jin10Merged).slice(0, 30);
       // 全市场板：见闻+东财+新浪合流（纯服务端）
       const othersBoard = dedupFlashItems(filterFlashItems(serverData.others)).slice(0, 30);
+      // AI动态板：AIHOT精选（纯服务端，10/10第七源）
+      const aiBoard = dedupFlashItems(filterFlashItems(serverData.ai)).slice(0, 30);
 
       // 更新source显示（10/4顺手修：原实现漏东方财富/新浪）
       const sources: string[] = [];
@@ -253,18 +259,19 @@ export default function FlashPage() {
       if (othersBoard.some((i) => i.source === "东方财富")) sources.push("东方财富");
       if (othersBoard.some((i) => i.source === "新浪财经")) sources.push("新浪财经");
       if (othersBoard.some((i) => i.source === "同花顺")) sources.push("同花顺");
+      if (aiBoard.some((i) => i.source === "AIHOT")) sources.push("AIHOT");
       if (sources.length === 0 && serverData.source) sources.push(serverData.source);
 
       setSource(sources.join("+") || "金十数据");
-      // 显示最新快讯的时间，而非前端拉取时间（两板块取最大）
-      const latestTs = Math.max(jin10Board[0]?.timestamp ?? 0, othersBoard[0]?.timestamp ?? 0);
+      // 显示最新快讯的时间，而非前端拉取时间（三板取最大）
+      const latestTs = Math.max(jin10Board[0]?.timestamp ?? 0, othersBoard[0]?.timestamp ?? 0, aiBoard[0]?.timestamp ?? 0);
       if (latestTs > 0) {
         setLastUpdate(new Date(latestTs * 1000).toLocaleTimeString("zh-CN", { hour12: false }));
       } else {
         setLastUpdate(new Date().toLocaleTimeString("zh-CN", { hour12: false }));
       }
 
-      const newAll = [...jin10Board, ...othersBoard];
+      const newAll = [...jin10Board, ...othersBoard, ...aiBoard];
       if (prevIdsRef.current.size > 0) {
         const newSet = new Set<string>();
         for (const item of newAll) {
@@ -277,7 +284,7 @@ export default function FlashPage() {
         }
       }
 
-      // 双源全挂：保留旧列表+错误横幅（还原服务端503语义，此前被catch吞掉用户误以为真没快讯——2026-09-26审计P1-1）
+      // 三源全挂：保留旧列表+错误横幅（还原服务端503语义，此前被catch吞掉用户误以为真没快讯——2026-09-26审计P1-1）
       if (newAll.length === 0 && jin10Client.length === 0 && (serverData.status >= 500 || serverData.status === 0)) {
         setError(serverData.status === 0 ? "快讯数据源网络异常，当前显示最后成功拉取的数据" : "快讯数据源暂时不可用，当前显示最后成功拉取的数据");
       } else {
@@ -285,6 +292,7 @@ export default function FlashPage() {
         prevIdsRef.current = new Set(newAll.map((i) => i.id));
         setJin10Items(jin10Board);
         setOtherItems(othersBoard);
+        setAiItems(aiBoard);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "获取失败");
@@ -364,8 +372,8 @@ export default function FlashPage() {
     setAiError(null);
   }, []);
 
-  // 当前板块的列表（10/4双板：派生值，切换板块即切换列表与影响标注作用域）
-  const items = board === "jin10" ? jin10Items : otherItems;
+  // 当前板块的列表（10/4双板→10/10三板：派生值，切换板块即切换列表与影响标注作用域）
+  const items = board === "jin10" ? jin10Items : board === "ai" ? aiItems : otherItems;
 
   // 批量拉影响标注（10/4逸翔令"每条消息"）：全部未标注条目分批拉取——每批10条拆2并发×5条/请求
   // （服务端批量上限5：免费池单请求≈1600输出token是吞吐甜点，10条/3000token必截断）。
@@ -468,11 +476,12 @@ export default function FlashPage() {
             </div>
           </header>
 
-          {/* 板块切换（10/4逸翔令：金十单独一个板块，其他源合流） */}
+          {/* 板块切换（10/4逸翔令：金十单独一个板块，其他源合流；10/10逸翔令接AIHOT=AI动态第三板） */}
           <div className="mb-3 flex rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-1 text-xs">
             {([
               { key: "jin10", label: "金十专板", count: jin10Items.length },
               { key: "others", label: "全市场", count: otherItems.length },
+              { key: "ai", label: "AI动态", count: aiItems.length },
             ] as const).map((tab) => (
               <button
                 key={tab.key}
@@ -696,7 +705,7 @@ export default function FlashPage() {
       {/* Footer */}
       <footer className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
         <p className="text-xs leading-5 text-[var(--text-muted)]">
-          快讯来源：金十数据（专板）｜华尔街见闻 + 东方财富 + 新浪财经 + 同花顺（全市场板）。快讯按「主要/次要」分级标记，5秒自动刷新，点击快讯可查看AI分析。数据可能有数秒延迟，仅供研究参考，不构成投资建议。
+          快讯来源：金十数据（专板）｜华尔街见闻 + 东方财富 + 新浪财经 + 同花顺（全市场板）｜AIHOT（AI动态板，AI精选摘要仅供参考，以原文为准）。快讯按「主要/次要」分级标记，5秒自动刷新，点击快讯可查看AI分析。数据可能有数秒延迟，仅供研究参考，不构成投资建议。
         </p>
       </footer>
     </div>
