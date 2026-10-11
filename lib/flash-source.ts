@@ -115,9 +115,47 @@ export function formatRelativeTime(ts: number): string {
 interface Jin10Raw {
   id: string;
   time: string;
-  data: { content: string; title: string; source: string };
+  data: { content: string; title: string; source: string; source_link?: string };
   important: number;
   channel: number[];
+}
+
+// 金十历史翻页（10/11 12:40逸翔令"金十还没推到100"）：
+// flash_newest.js只有最新50条且无翻页参数（10/10实锤）——但金十网页历史加载用flash-api.jin10.com/get_flash_list
+// （channel=-8200全球快讯，max_time=上一页末条time滚动锚点，每页~21条）——12:40实测页1/页2翻页正常，
+// id与flash_newest.js同空间（重叠=锚点边界1条）；英文外电被isEnglishDominant拦后中文存活率≈58%，
+// 到100条需~200条原始→动态翻页到目标量或页数/时限上限（7s硬预算防拖垮route冷路径）
+// x-app-id=金十网页公开值（前端源码可见，匿名只读）；失效时静默退回最新50条池，板语义不变
+const JIN10_APP_ID = "bVBF4FyRTn5NJF5n";
+
+async function fetchJin10History(anchor: string, targetRaw: number, maxPages: number): Promise<Jin10Raw[]> {
+  const all: Jin10Raw[] = [];
+  const start = Date.now();
+  let cur = anchor;
+  for (let i = 0; i < maxPages; i++) {
+    if (Date.now() - start > 7000) break;
+    try {
+      const res = await fetch(
+        `https://flash-api.jin10.com/get_flash_list?channel=-8200&vip=1&max_time=${encodeURIComponent(cur)}`,
+        {
+          headers: { "x-app-id": JIN10_APP_ID, "x-version": "1.0.0", "User-Agent": UA, Referer: "https://www.jin10.com/" },
+          signal: AbortSignal.timeout(3500),
+        },
+      );
+      if (!res.ok) break;
+      const payload = (await res.json()) as { data?: Jin10Raw[] };
+      const arr = payload.data;
+      if (!Array.isArray(arr) || arr.length === 0) break;
+      all.push(...arr);
+      const last = arr[arr.length - 1]?.time;
+      if (!last || last === cur) break;
+      cur = last;
+      if (all.length >= targetRaw) break;
+    } catch {
+      break;
+    }
+  }
+  return all;
 }
 
 async function fetchJin10(): Promise<FlashItem[]> {
@@ -148,6 +186,21 @@ async function fetchJin10(): Promise<FlashItem[]> {
       if (!match) continue;
 
       const raw = JSON.parse(match[1]) as Jin10Raw[];
+      // 历史翻页补池（10/11 12:40逸翔令"金十还没推到100"）：50条最新+~200条历史，id去重合并；
+      // 中文存活率≈58%（英文外电被拦是设计意图）→过滤后≈100；翻页失败静默退回最新50条池
+      const oldest = raw.length > 0 ? raw[raw.length - 1].time : "";
+      if (oldest) {
+        const history = await fetchJin10History(oldest, 200, 10);
+        if (history.length > 0) {
+          const seen = new Set(raw.map((r) => String(r.id)));
+          for (const h of history) {
+            if (!seen.has(String(h.id))) {
+              seen.add(String(h.id));
+              raw.push(h);
+            }
+          }
+        }
+      }
       return raw.map((item) => {
         const rawContent = item.data.content || "";
         const cleanContent = stripHtml(rawContent);
@@ -167,6 +220,8 @@ async function fetchJin10(): Promise<FlashItem[]> {
           importance: major ? "major" : "minor",
           channels: item.channel || [],
           source: "金十数据",
+          // 原文链接（10/11深度轮同AI板）：仅部分条目有（CCTV/微博等转发源≈14%），无则不显示
+          url: item.data.source_link || undefined,
         } satisfies FlashItem;
       });
     } catch {
