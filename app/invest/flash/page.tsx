@@ -128,7 +128,11 @@ export default function FlashPage() {
   // 10/11交叉验证修：开启时刻种子化当前在库全部条目=只提醒开启之后新到的major。
   // 原实现对开启时已在库的全部存量major发通知（130条池~15条+AI板7d窗口11条major=开启瞬间flood 25+条桌面通知）；
   // 语义对齐开关文案"开启重要快讯提醒"=提醒我之后发生的，不是把历史重播一遍
+  // 10/11深度轮补丁：时间戳双闸——种子化用的state在poll-in-flight窗口是旧数据（开关在两次轮询之间点下，
+  // 在途poll带回96条新AI条目→11条major被误判"新到"→flood复发，每次开启20-40%概率中招）；
+  // timestamp>开启时刻才配通知，顺带堵住AIHOT向7d窗口回补旧条目触发通知的暗道
   const notifSeededRef = useRef(false);
+  const notifSeedTsRef = useRef(0);
   useEffect(() => {
     if (!notifEnabled) {
       notifSeededRef.current = false;
@@ -139,12 +143,13 @@ export default function FlashPage() {
       // 首次开启（或开关先于数据到达）：等数据到齐后种子化，当轮不发通知
       if (all.length > 0) {
         for (const item of all) notifiedRef.current.add(item.id);
+        notifSeedTsRef.current = Math.floor(Date.now() / 1000);
         notifSeededRef.current = true;
       }
       return;
     }
     const newImportant = all.filter(
-      (i) => i.importance === "major" && !notifiedRef.current.has(i.id)
+      (i) => i.importance === "major" && !notifiedRef.current.has(i.id) && (i.timestamp || 0) > notifSeedTsRef.current
     );
     for (const item of newImportant) {
       notifiedRef.current.add(item.id);
