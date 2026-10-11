@@ -1,3 +1,10 @@
+import VisitorSeed from "./visitor-seed";
+
 export default function InvestLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <VisitorSeed />
+      {children}
+    </>
+  );
 }

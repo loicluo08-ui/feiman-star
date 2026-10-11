@@ -21,14 +21,16 @@ export async function POST(request: NextRequest) {
   if (token !== ADMIN) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!supabaseConfigured()) return NextResponse.json({ error: "supabase_not_configured" }, { status: 501 });
 
-  let body: { action?: string; ip?: string; name?: string };
+  let body: { action?: string; ip?: string; vid?: string; name?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
   const ip = (body.ip || "").trim();
+  const vid = (body.vid || "").trim();
   const action = body.action;
+  // 10/11"修"：vid拉黑（VPN换IP绕过IP黑名单后指纹仍被拦）——action=block/unblock支持ip或vid至少其一
   // 10/2 P1-E：名字解绑（不需要ip）——POST {action:"unbind", name:"X"}
   if (action === "unbind") {
     const uname = (body as { name?: string }).name || "";
@@ -50,8 +52,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, action: "unbind", name: uname, deleted });
   }
 
-  if (!ip || !["block", "unblock"].includes(action || "")) {
-    return NextResponse.json({ error: "need_ip_and_action" }, { status: 400 });
+  if (!ip && !vid) return NextResponse.json({ error: "need_ip_or_vid" }, { status: 400 });
+  if (!["block", "unblock"].includes(action || "")) {
+    return NextResponse.json({ error: "need_action_block_unblock" }, { status: 400 });
+  }
+  // 10/11：vid维度——条目id前缀vblock-与ipblock-区分，unblock按传入维度删对应条目
+  if (vid && !ip) {
+    const vidId = `vblock-${vid.replace(/[^A-Za-z0-9]/g, "-")}`;
+    if (action === "block") {
+      await sbRest("kb_dynamic?on_conflict=id", {
+        method: "POST",
+        prefer: "resolution=merge-duplicates,return=minimal",
+        body: {
+          id: vidId,
+          type: "ip_block",
+          keywords: [],
+          content: JSON.stringify({ vid, blocked_at: new Date().toISOString() }),
+          source: "admin",
+          created: new Date().toISOString(),
+        },
+      });
+      return NextResponse.json({ ok: true, action: "blocked", vid });
+    }
+    await sbRest(`kb_dynamic?id=eq.${encodeURIComponent(vidId)}`, { method: "DELETE" });
+    return NextResponse.json({ ok: true, action: "unblocked", vid });
   }
 
   try {
@@ -128,6 +152,7 @@ export async function GET(request: NextRequest) {
       return {
         ts: (log.ts as string) || (r.created as string) || "",
         ip: (log.ip as string) || "unknown",
+        vid: (log.vid as string) || null,  // 10/11"修"：设备指纹ID（middleware fx_vid cookie写入）
         path: pth,
         method: mth,
         ua,
@@ -190,7 +215,7 @@ export async function GET(request: NextRequest) {
     if (unknownIPs.length > 0 && unknownIPs.length <= 100) {
       try {
         const geoRes = await fetch(
-          `http://ip-api.com/batch?fields=status,country,regionName,city,query&lang=zh-CN`,
+          `http://ip-api.com/batch?fields=status,country,regionName,city,query,proxy,hosting&lang=zh-CN`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -199,19 +224,22 @@ export async function GET(request: NextRequest) {
           },
         );
         if (geoRes.ok) {
-          const list = (await geoRes.json()) as Array<{ status: string; country?: string; regionName?: string; city?: string; query?: string }>;
+          const list = (await geoRes.json()) as Array<{ status: string; country?: string; regionName?: string; city?: string; query?: string; proxy?: boolean; hosting?: boolean }>;
           const persist: Array<Record<string, unknown>> = [];
           for (const g of list) {
             if (g.status === "success" && g.query) {
               const parts = [g.country, g.regionName, g.city].filter(Boolean);
-              const label = parts.join(" ") || "未知";
+              // 10/11"修"（VPN绕过）：ip-api的proxy/hosting字段标记代理/机房IP——监控里直接可见"这是VPN出口"
+              // 这是"识别"而非"拦截"——VPN绕不了IP定位但能被标出来（多锚监控的第一信号）
+              const flags = [g.proxy ? "代理" : "", g.hosting ? "机房" : ""].filter(Boolean).join("/");
+              const label = (parts.join(" ") || "未知") + (flags ? `（${flags}）` : "");
               geoCache.set(g.query, label);
               persist.push({
                 // D3修复：id不含月份（同IP更新不堆积）+merge-duplicates
                 id: `geo-${g.query.replace(/[^A-Za-z0-9]/g, "-").slice(0, 40)}`,
                 type: "geo_cache",
                 keywords: [],
-                content: JSON.stringify({ ip: g.query, label }),
+                content: JSON.stringify({ ip: g.query, label, proxy: !!g.proxy, hosting: !!g.hosting }),
                 source: "usage-geo",
                 created: new Date().toISOString(),
               });
@@ -260,19 +288,23 @@ export async function GET(request: NextRequest) {
       humanIPs: Array.from(
         accessList.filter((r) => r.user_type === "human").reduce((m, r) => {
           // P2聚合键修复：有名字按名字聚合（同人跨IP合并），无名字按IP——家庭WiFi同IP两人不再错挂名
+          // 10/11"修"：vid三级聚合（名字>设备指纹>IP）——VPN换IP后同指纹归并同一访客
+          // 10/11暗bug修复：原m.set(ip,e)与m.get(aggKey)键不一致——按名字聚合从未真正生效（同名恒count=1/ips单IP）
           const ip = r.ip as string;
           const uname = (r.username as string) || null;
-          const aggKey = uname ? `n:${uname}` : `ip:${ip}`;
-          const e = m.get(aggKey) || { ip, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), ips: new Set<string>(), geo: (r.geo as string) || "", username: uname };
+          const vid = (r.vid as string) || null;
+          const aggKey = uname ? `n:${uname}` : vid ? `v:${vid}` : `ip:${ip}`;
+          const e = m.get(aggKey) || { ip, vid, count: 0, first: r.ts as string, last: r.ts as string, paths: new Set<string>(), ips: new Set<string>(), geo: (r.geo as string) || "", username: uname };
           e.count += 1;
           // A2修复：聚合行收集全部IP（同名多设备3个IP——拉黑/排查时找得到，不只首IP）
           e.ips.add(ip);
-          // username取首个非空
+          // username/vid取首个非空
           if (!e.username && r.username) e.username = (r.username as string);
+          if (!(e as { vid?: string | null }).vid && vid) (e as { vid?: string | null }).vid = vid;
           if ((r.ts as string) < e.first) e.first = r.ts as string;
           if ((r.ts as string) > e.last) e.last = r.ts as string;
           e.paths.add(r.path as string);
-          m.set(ip, e);
+          m.set(aggKey, e);
           return m;
         }, new Map()).values(),
       ).map((e) => ({ ...e, paths: Array.from(e.paths).slice(0, 6), ips: Array.from(e.ips) })),

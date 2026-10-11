@@ -24,7 +24,9 @@ function clientIP(req: NextRequest): string {
 // 恶意爬虫UA特征（合规界限内：robots.txt已声明禁止，此处是技术执行）
 const BAD_BOT_RE = /python-requests|python-urllib|scrapy|aiohttp|httpx|go-http-client|java\/|okhttp|libwww|curl\/|wget\//i;
 // IP黑名单内存缓存（来源kb_dynamic type=ip_block，后台cleanup/usage可管理；2分钟刷新）
+// 10/11扩展：条目content可含vid（设备指纹ID）——VPN换IP绕过IP黑名单后指纹仍被拦截
 const BLOCKED_IPS = new Set<string>();
+const BLOCKED_VIDS = new Set<string>();
 let blLastRefresh = 0;
 function refreshBlocklistOnce() {
   const now = Date.now();
@@ -36,10 +38,12 @@ function refreshBlocklistOnce() {
     cache: "no-store",
   }).then((r) => (r.ok ? r.json() : [])).then((rows: Array<{ content: string }>) => {
     BLOCKED_IPS.clear();
+    BLOCKED_VIDS.clear();
     for (const row of rows || []) {
       try {
-        const ip = JSON.parse(row.content).ip;
-        if (ip) BLOCKED_IPS.add(ip);
+        const o = JSON.parse(row.content);
+        if (o.ip) BLOCKED_IPS.add(o.ip);
+        if (o.vid) BLOCKED_VIDS.add(o.vid);
       } catch { /* 坏行跳过 */ }
     }
   }).catch(() => {});
@@ -105,9 +109,12 @@ export async function middleware(request: NextRequest) {
   const ip = clientIP(request);
   const isAPI = path.startsWith("/api/invest/");
 
-  // 合规反爬第一层：黑名单IP→全站403（黑名单存kb_dynamic type=ip_block，后台可管理）
-  // 检查以异步缓存方式进行：每2分钟刷新一次黑名单（Edge/Node内存缓存，避免每请求查库）
-  if (BLOCKED_IPS.size > 0 && BLOCKED_IPS.has(ip)) {
+  // 合规反爬第一层：黑名单IP/设备指纹→全站403（黑名单存kb_dynamic type=ip_block，后台可管理）
+  // 10/11：vid维度接入——VPN换IP绕过IP黑名单后，同设备指纹仍被拦（fx_vid cookie）
+  // vid格式校验hex16：cookie可被客户端伪造，格式不符一律视为无vid（防伪造顶替他人指纹）
+  const vidRaw = request.cookies.get("fx_vid")?.value || "";
+  const vid = /^[0-9a-f]{16}$/.test(vidRaw) ? vidRaw : "";
+  if ((BLOCKED_IPS.size > 0 && BLOCKED_IPS.has(ip)) || (vid && BLOCKED_VIDS.size > 0 && BLOCKED_VIDS.has(vid))) {
     return new NextResponse("访问已被限制", { status: 403 });
   }
   refreshBlocklistOnce();
@@ -151,6 +158,9 @@ export async function middleware(request: NextRequest) {
         return USERNAME_RE.test(raw) ? raw : null;
       })(),  // 10/2自称式用户名，无则null
       ip,
+      // 10/11逸翔令"修"（VPN绕过IP监控）：设备指纹ID（fx_vid cookie，前端invest layout采集）——
+      // VPN换节点换IP后vid不变，监控同访客归并+按vid拉黑有效
+      vid: (/^[0-9a-f]{16}$/.test(request.cookies.get("fx_vid")?.value || "") ? request.cookies.get("fx_vid")!.value : null),
       path,
       method: request.method,
       ua: (request.headers.get("user-agent") || "").slice(0, 300),

@@ -11,7 +11,7 @@ type UsageData = {
   overview: { uniqueIPs: number; totalRequests: number; requests24h: number; requests7d: number; aiCalls: number; chatCount: number };
   ipRows: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; country: string | null; city: string | null; geo?: string; username?: string | null }>;
   intentStats: { human: number; searchbot: number; aicrawler: number; badbot: number; scan: number; unknown: number };
-  humanIPs: Array<{ ip: string; count: number; first: string; last: string; paths: string[]; geo?: string; username?: string | null; ips?: string[] }>;
+  humanIPs: Array<{ ip: string; vid?: string | null; count: number; first: string; last: string; paths: string[]; geo?: string; username?: string | null; ips?: string[] }>;
   recent: Array<{ ts: string; ip: string; path: string; method: string; ua: string | null; country: string | null; city: string | null; username?: string | null }>;
   chats: Array<{ id: number; question: string; style: string; ip: string | null; created_at: string; username?: string | null }>;
 };
@@ -119,7 +119,7 @@ export default function AdminPage() {
     }
   }
 
-  // 10/1：拉黑/解封（合规反爬——监控联动处置）
+  // 10/1：拉黑/解封（合规反爬——监控联动处置）；10/11扩展vid维度（VPN换IP绕过IP黑名单后按设备指纹拦截）
   const [blockMsg, setBlockMsg] = useState("");
   async function toggleBlock(ip: string) {
     const t = token || sessionStorage.getItem("fx_admin_token") || "";
@@ -148,6 +148,35 @@ export default function AdminPage() {
     }
   }
   const [blockedSet, setBlockedSet] = useState<Set<string>>(new Set());
+  // 10/11：指纹维度拉黑状态（vid→同设备跨IP拦截）
+  const [blockedVids, setBlockedVids] = useState<Set<string>>(new Set());
+  async function toggleVid(vid: string) {
+    const t = token || sessionStorage.getItem("fx_admin_token") || "";
+    const blockedNow = blockedVids.has(vid);
+    const short = vid.slice(0, 8);
+    setBlockMsg(`指纹${short} 处理中…`);
+    try {
+      const res = await fetch("/api/admin/usage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": t },
+        body: JSON.stringify({ action: blockedNow ? "unblock" : "block", vid }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setBlockMsg(`指纹${short} 已${blockedNow ? "解封" : "拉黑"}（约2分钟内全站生效，对方换IP也拦得住）`);
+        setBlockedVids((prev) => {
+          const next = new Set(prev);
+          if (blockedNow) next.delete(vid);
+          else next.add(vid);
+          return next;
+        });
+      } else {
+        setBlockMsg(`指纹${short} 操作失败`);
+      }
+    } catch {
+      setBlockMsg(`指纹${short} 网络错误`);
+    }
+  }
 
   // 10/1：自动刷新（快讯同款30秒轮询）——静默模式不闪加载态，保证刷新有效
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -301,7 +330,7 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {data.humanIPs.map((r) => (
-                  <tr key={r.ip} className={`border-b border-[var(--border)] last:border-0 ${r.username ? "bg-[var(--accent-surface)]" : ""}`}>
+                  <tr key={r.username || r.vid || r.ip} className={`border-b border-[var(--border)] last:border-0 ${r.username ? "bg-[var(--accent-surface)]" : ""}`}>
                     <td className="px-3 py-2 font-mono">
                       {r.username ? (
                         <span className="font-sans font-semibold text-[var(--accent)]">{r.username}</span>
@@ -310,6 +339,19 @@ export default function AdminPage() {
                       )}
                       {r.ips && r.ips.length > 1 ? (
                         <span className="ml-1 text-[10px] text-[var(--text-muted)]">（{r.ips.length}个IP）</span>
+                      ) : null}
+                      {/* 10/11"修"：设备指纹短码——VPN换IP后同一访客仍可辨认（同名>指纹>IP三级聚合的中间层标记） */}
+                      {r.vid ? (
+                        <span className="ml-1 text-[10px] text-[var(--text-muted)]" title={`设备指纹 ${r.vid}`}>#{r.vid.slice(0, 6)}</span>
+                      ) : null}
+                      {r.vid ? (
+                        <button
+                          onClick={() => void toggleVid(r.vid as string)}
+                          className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${blockedVids.has(r.vid) ? "bg-[var(--positive-bg)] text-[var(--positive)]" : "text-[var(--text-muted)] hover:text-[var(--negative)]"}`}
+                          title={blockedVids.has(r.vid) ? "解封此设备指纹" : "按设备指纹拉黑（对方换IP也拦得住）"}
+                        >
+                          {blockedVids.has(r.vid) ? "已封指纹·解" : "封指纹"}
+                        </button>
                       ) : null}
                     </td>
                     <td className="px-3 py-2 tabular-nums">{r.count}</td>
