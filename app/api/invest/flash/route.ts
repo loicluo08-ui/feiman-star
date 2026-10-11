@@ -50,6 +50,6 @@ export async function GET(request: Request) {
       timestamp: new Date().toISOString(),
       source: boards.source || "金十数据",
     },
-    { headers: { "Cache-Control": "public, s-maxage=45, stale-while-revalidate=120" } },
+    { headers: { "Cache-Control": "public, s-maxage=90, stale-while-revalidate=180" } },
   );
 }

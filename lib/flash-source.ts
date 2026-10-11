@@ -508,9 +508,10 @@ async function fetchAihot(): Promise<FlashItem[]> {
   // 站方自带边缘缓存设计（feed ttl=30），无需客户端绕缓存
   // 10/11逸翔令"三个板块都拉满"：window 24h→7d（24h窗口源供给仅4-9条，精选制太稀；7d实测100条原始→过滤链100/100零损耗
   // 零重复，时效分布24h内4/1-3天29/3-7天67；window只支持24h/7d两档，72h/3d均400）；>24h条目formatRelativeTime走绝对时间显示
+  // 10/11 P0修复：超时6s→8s——7d窗口响应107KB，冷启动TLS+传输下6s边缘超时实锤（14:0x线上AI板清空）
   const res = await fetch(
     "https://aihot.news/api/v1/items?window=7d&limit=100",
-    { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(6000) },
+    { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(8000) },
   );
   if (!res.ok) throw new Error(`http_${res.status}`);
   const payload = (await res.json()) as { items?: AihotItem[] };
@@ -604,15 +605,26 @@ export async function getFlashBoards(): Promise<FlashBoards> {
 
     const qualityOk = (i: FlashItem) => !isLowQuality(i.content) && !isEnglishDominant(i.content_text);
 
+    // 10/11 P0修复（逸翔报"AI动态全无"）：单源失败时"半瘫结果"照写缓存且无回退——AIHOT一次失败=板清空10秒，
+    // 持续失败（如站方对函数出口IP限流）=板持续空。修=per-source回退：失败源用上次成功缓存（5分钟内有效，
+    // 标"（缓存）"）；上一轮"半瘫结果只写throttleCache不写lastSuccessCache"的口径取消——回退层已兜住单源抖动
+    const prev = Date.now() - lastSuccessTime < CACHE_TTL ? lastSuccessCache : null;
+
     // 金十专板：单源全量（原有能力不变），板内也过一遍去重防同条重推
-    const jin10 = dedupFlashItems(jin10Items.filter(qualityOk)).slice(0, 100);
+    const jin10 = jin10Items.length > 0
+      ? dedupFlashItems(jin10Items.filter(qualityOk)).slice(0, 100)
+      : (prev?.jin10 ?? []);
 
     // 合流板：见闻+东财+新浪+同花顺+财联社跨源去重（金十CDN缓存4小时延迟的教训——跨源重叠靠dedup处理）
     const otherRaw = [...wscnItems, ...emItems, ...sinaItems, ...thsItems, ...clsItems].filter(qualityOk);
-    const others = dedupFlashItems(otherRaw).slice(0, 100);
+    const others = otherRaw.length > 0
+      ? dedupFlashItems(otherRaw).slice(0, 100)
+      : (prev?.others ?? []);
 
     // AI产业动态板（10/10第七源）：单源独立不混流，跨源去重防站方重推
-    const ai = dedupFlashItems(aihotItems.filter(qualityOk)).slice(0, 100);
+    const ai = aihotItems.length > 0
+      ? dedupFlashItems(aihotItems.filter(qualityOk)).slice(0, 100)
+      : (prev?.ai ?? []);
 
     if (jin10.length === 0 && others.length === 0 && ai.length === 0) {
       // 5分钟兜底（source带缓存标注，口径与原flash route一致）
@@ -642,12 +654,15 @@ export async function getFlashBoards(): Promise<FlashBoards> {
     const clsMax = maxTs(clsItems);
     const freshest = Math.max(jin10Max, wscnMax, emMax, sinaMax, thsMax, clsMax);
     if (jin10Items.length > 0) sources.push("金十数据");
+    else if (jin10.length > 0) sources.push("金十缓存");
     if (wscnItems.length > 0 && wscnMax === freshest && freshest > 0) sources.push("华尔街见闻");
     if (emItems.length > 0 && emMax === freshest && freshest > 0) sources.push("东方财富");
     if (sinaItems.length > 0 && sinaMax === freshest && freshest > 0) sources.push("新浪财经");
     if (thsItems.length > 0 && thsMax === freshest && freshest > 0) sources.push("同花顺");
     if (clsItems.length > 0 && clsMax === freshest && freshest > 0) sources.push("财联社");
+    if (others.length > 0 && !sources.some((s) => ["华尔街见闻", "东方财富", "新浪财经", "同花顺", "财联社"].includes(s))) sources.push("合流缓存");
     if (aihotItems.length > 0) sources.push("AIHOT");
+    else if (ai.length > 0) sources.push("AIHOT缓存");
     throttleSource = sources.join("+") || "金十数据";
     boards.source = throttleSource;
 
