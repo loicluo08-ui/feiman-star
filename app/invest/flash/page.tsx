@@ -125,9 +125,24 @@ export default function FlashPage() {
   }, []);
 
   // 新的主要快讯触发通知（三板块都监控，主次标记10/4：importance==="major"）
+  // 10/11交叉验证修：开启时刻种子化当前在库全部条目=只提醒开启之后新到的major。
+  // 原实现对开启时已在库的全部存量major发通知（130条池~15条+AI板7d窗口11条major=开启瞬间flood 25+条桌面通知）；
+  // 语义对齐开关文案"开启重要快讯提醒"=提醒我之后发生的，不是把历史重播一遍
+  const notifSeededRef = useRef(false);
   useEffect(() => {
-    if (!notifEnabled) return;
+    if (!notifEnabled) {
+      notifSeededRef.current = false;
+      return;
+    }
     const all = [...jin10Items, ...otherItems, ...aiItems];
+    if (!notifSeededRef.current) {
+      // 首次开启（或开关先于数据到达）：等数据到齐后种子化，当轮不发通知
+      if (all.length > 0) {
+        for (const item of all) notifiedRef.current.add(item.id);
+        notifSeededRef.current = true;
+      }
+      return;
+    }
     const newImportant = all.filter(
       (i) => i.importance === "major" && !notifiedRef.current.has(i.id)
     );
