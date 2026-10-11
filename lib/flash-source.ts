@@ -18,6 +18,8 @@ export interface FlashItem {
   importance: FlashImportance;
   channels: number[];
   source: string;
+  /** 原文链接（10/11深度轮补：AIHOT links.original；金十/混流源为流接口无文章页故缺省） */
+  url?: string;
 }
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -440,6 +442,7 @@ interface AihotItem {
   originalTitle?: string;
   summary?: string;
   source?: { name?: string };
+  links?: { aihot?: string; original?: string };
   publishedAt?: string;
   category?: string;
   score?: number;
@@ -482,6 +485,8 @@ async function fetchAihot(): Promise<FlashItem[]> {
       importance: major ? "major" : "minor",
       channels: [],
       source: "AIHOT",
+      // 原文链接：links.original优先（媒体原文），缺省回退站方聚合页（10/11深度轮：AI板条目此前无任何原文跳转）
+      url: item.links?.original || item.links?.aihot || undefined,
     } satisfies FlashItem];
   });
 }

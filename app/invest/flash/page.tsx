@@ -18,6 +18,8 @@ interface FlashItem {
   importance?: "major" | "minor";
   channels: number[];
   source: string;
+  /** 原文链接（10/11深度轮：AIHOT links.original，与flash-source.FlashItem同步） */
+  url?: string;
 }
 
 // 来源徽标配色（10/4扩源：合流板每条标来源，金十保持品牌橙；10/10加AIHOT紫）
@@ -594,6 +596,18 @@ export default function FlashPage() {
                       {/* 10/1虚实审计：AI分析入口提示（功能实但藏——点击条目即出AI分析面板，角标提示可发现性） */}
                       {selectedItem?.id !== item.id && !newIds.has(item.id) && (
                         <span className="rounded border border-[var(--accent)] px-1 py-0.5 text-[10px] font-medium text-[var(--accent)]">AI</span>
+                      )}
+                      {/* 10/11深度轮：原文链接（AIHOT links.original）——点击条目=AI分析面板，原文跳转独立入口；stopPropagation防触发分析面板；仅接受http(s)防javascript:注入 */}
+                      {item.url && /^https?:\/\//.test(item.url) && (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                        >
+                          原文↗
+                        </a>
                       )}
                       {newIds.has(item.id) && (
                         <span className="ml-auto rounded bg-[var(--positive)] px-1.5 py-0.5 font-medium text-white">NEW</span>
