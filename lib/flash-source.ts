@@ -448,8 +448,10 @@ interface AihotItem {
 async function fetchAihot(): Promise<FlashItem[]> {
   // 注意：不可加 _=Date.now() 之类cache-buster——AIHOT API对未知query参数严格校验直接400（10/10实测A/D组对照实锤）；
   // 站方自带边缘缓存设计（feed ttl=30），无需客户端绕缓存
+  // 10/11逸翔令"三个板块都拉满"：window 24h→7d（24h窗口源供给仅4-9条，精选制太稀；7d实测100条原始→过滤链100/100零损耗
+  // 零重复，时效分布24h内4/1-3天29/3-7天67；window只支持24h/7d两档，72h/3d均400）；>24h条目formatRelativeTime走绝对时间显示
   const res = await fetch(
-    "https://aihot.news/api/v1/items?window=24h&limit=100",
+    "https://aihot.news/api/v1/items?window=7d&limit=100",
     { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(6000) },
   );
   if (!res.ok) throw new Error(`http_${res.status}`);
