@@ -550,10 +550,13 @@ async function fetchAihot(): Promise<FlashItem[]> {
 let lastSuccessCache: FlashBoards | null = null;
 let lastSuccessTime = 0;
 const CACHE_TTL = 5 * 60 * 1000;
-// 主路径节流缓存：快讯更新频率分钟级，10秒内的重复请求直接回缓存（防前端5秒轮询打穿金十）
+// 主路径节流缓存：快讯更新频率分钟级，60秒内的重复请求直接回缓存（防flash轮询+chat提问打穿外部源）
 let throttleCache: FlashBoards | null = null;
 let throttleTime = 0;
-const THROTTLE_TTL = 10 * 1000;
+// 60秒节流（10/17实测调整：原10s下每分钟全量拉6源，金十翻页预算7s→冷路径实测6.5s，
+// 贴死chat快讯注入7s软超时——源稍慢即静默拉空"没有最新快讯"。快讯是分钟级数据60s新鲜度无损，
+// 板块端与chat注入共享缓存后常态<100ms，外部源压力同步降一个量级）
+const THROTTLE_TTL = 60 * 1000;
 let throttleSource = "";
 
 // 刷新进度去重：并发请求（flash轮询+chat提问同时打进来）只触发一次外呼
