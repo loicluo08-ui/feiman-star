@@ -27,10 +27,10 @@ async function deepseekBalance(): Promise<{ balance?: number; error?: string }> 
     if (!res.ok) return { error: `http_${res.status}` };
     const j = (await res.json()) as {
       is_available?: boolean;
-      balance_infos?: Array<{ currency: string; total_amount: string }>;
+      balance_infos?: Array<{ currency: string; total_balance: string }>;
     };
     const cny = (j.balance_infos || []).find((x) => x.currency === "CNY");
-    return { balance: cny ? Number(cny.total_amount) : undefined };
+    return { balance: cny ? Number(cny.total_balance) : undefined };
   } catch (e) {
     return { error: e instanceof Error ? e.message.slice(0, 60) : "unknown" };
   }
