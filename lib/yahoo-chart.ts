@@ -46,8 +46,9 @@ const BROWSER_HEADERS: Record<string, string> = {
 };
 
 export async function getYahooChart(code: string, range = "3mo"): Promise<YahooChartResult | null> {
-  // 带点代码（BRK.A）在Yahoo是横杠（BRK-A）
-  const yahooCode = code.replace(".", "-");
+  // 带点代码（BRK.A）在Yahoo是横杠（BRK-A）；期货主力（GC=F等号=符号本体）与美元指数（DX-Y.NYB，
+  // 点是官方符号一部分→replace成DX-Y-NYB会404）保持原样（10/17 commodity扩展验证轮补缺）
+  const yahooCode = code.includes("=") || code.endsWith(".NYB") ? code : code.replace(".", "-");
 
   for (const host of ["query2.finance.yahoo.com", "query1.finance.yahoo.com"]) {
     try {

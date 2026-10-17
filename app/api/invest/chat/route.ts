@@ -18,6 +18,7 @@ import { fetchPeerComparison } from "@/lib/sector-peers";
 import { isMacroQuery, fetchMacroContext } from "@/lib/macro-context";
 import { isOptionQuery, fetchOptionContext, buildOptionBlock } from "@/lib/option-context";
 import { buildNewsContext } from "@/lib/news-context";
+import { extractCommodityQueries, fetchCommodityData, buildCommodityContext, type CommodityQuote } from "@/lib/commodity-context";
 import { buildEarningsContext } from "@/lib/chat-earnings-context";
 import { buildDeliberationBlock } from "@/lib/chat-deliberation";
 import { buildCaseLibraryBlock } from "@/lib/case-library";
@@ -392,10 +393,13 @@ export async function POST(request: NextRequest) {
       new Promise<string>((resolve) => setTimeout(() => resolve(""), 7000)),
     ]);
 
-  // 加密资产识别：提取符号但不拉股票行情（同名ticker是美股产品不是币），注入数据边界声明
+  // 加密资产识别：主流币（BTC/ETH）已由commodity链路正向拉价注入；未覆盖币种（SOL/DOGE等）
+  // 仍走数据边界声明——宁可明说覆盖范围，不冒充（同名ETF陷阱：BTC=Grayscale基金份额非币价）
   const cryptoSymbols = extractCryptoSymbols(combinedText);
-  const cryptoContext = cryptoSymbols.length > 0
-    ? `\n\n⚠️ 加密资产数据边界（必须遵守）：用户提到加密资产（${cryptoSymbols.join("、")}）。费曼星行情源仅覆盖股票，本次未注入任何加密货币行情数据。注意：BTC/ETH等符号在美股存在同名产品（如BTC=Grayscale比特币ETF），那是基金份额价格，与加密货币现货价格量级完全不同，严禁引用为币价。对加密资产只能做定性框架分析（波动率/仓位纪律/损失厌恶/流动性风险），说明这是框架性判断而非实时行情分析，明确告知用户"无法提供加密货币实时行情"，具体现货价格一律不写。`
+  const uncoveredCrypto = cryptoSymbols.filter((s) => !["BTC", "ETH"].includes(s));
+  const coveredCryptoNames = cryptoSymbols.filter((s) => ["BTC", "ETH"].includes(s));
+  const cryptoContext = uncoveredCrypto.length > 0
+    ? `\n\n⚠️ 加密资产数据边界（必须遵守）：用户提到加密资产（${uncoveredCrypto.join("、")}）。费曼星行情源覆盖股票+主要商品+仅BTC/ETH主流币，本次${coveredCryptoNames.length > 0 ? `已注入${coveredCryptoNames.join("、")}行情，但` : "未注入"}${uncoveredCrypto.join("、")}的行情数据。注意：部分币符号在美股存在同名产品（如BTC=Grayscale比特币ETF），那是基金份额价格，与加密货币现货价格量级完全不同，严禁引用为币价。对未覆盖加密资产只能做定性框架分析（波动率/仓位纪律/损失厌恶/流动性风险），明确告知用户该币种暂无实时行情，具体现货价格一律不写。`
     : "";
 
   // 图片路径并入下方统一流：两段式管线（GLM-4V结构化转述 → DeepSeek全上下文流式分析）
@@ -620,7 +624,15 @@ export async function POST(request: NextRequest) {
             return "";
           }
         })();
-        const [stockContext, newsContext, marketMood, optionCtx, earningsContext, peerComparisonText, macroContextText, edgarBlock] = await Promise.all([
+        // 商品/加密行情（10/17扩覆盖：黄金/白银/原油/铜/天然气/美元指数/BTC/ETH）——8秒deadline与stock对齐
+        const commodityCodes = extractCommodityQueries(currentTurnText ? `${combinedText} ${currentTurnText.slice(0, 800)}` : combinedText);
+        const commodityTask = commodityCodes.length > 0
+          ? Promise.race([
+              fetchCommodityData(commodityCodes),
+              new Promise<CommodityQuote[]>((resolve) => setTimeout(() => resolve([]), 8_000)),
+            ])
+          : Promise.resolve<CommodityQuote[]>([]);
+        const [stockContext, newsContext, marketMood, optionCtx, earningsContext, peerComparisonText, macroContextText, edgarBlock, commodityQuotes] = await Promise.all([
           stockTask,
           fetchNewsWithDeadline(newsQueryText),
           vixTask,
@@ -629,9 +641,11 @@ export async function POST(request: NextRequest) {
           peerTask,
           macroTask,
           edgarTask,
+          commodityTask,
         ]);
         const moodContext = buildMarketMoodBlock(marketMood);
         const optionContextText = optionCtx ? buildOptionBlock(optionCtx) : "";
+        const commodityContext = buildCommodityContext(commodityQuotes);
 
         const finalSystemPrompt = systemPrompt;
 
@@ -640,6 +654,7 @@ export async function POST(request: NextRequest) {
           injectedParts.push(`实时行情${effectiveStockCodes.length}只`);
         }
         if (newsContext) injectedParts.push("最新市场快讯");
+        if (commodityContext) injectedParts.push(`商品/币行情${commodityQuotes.length}只`);
         if (moodContext) injectedParts.push("VIX情绪");
         if (optionContextText) injectedParts.push("期权链（IV/Greeks/OI）");
         if (earningsContext) injectedParts.push("财报日历");
@@ -715,7 +730,8 @@ export async function POST(request: NextRequest) {
         // 代码层标注比prompt硬记可靠；只加在每轮变化的注入区，不碰systemPrompt前缀缓存）
         const SLOT_NOTE = {
           stock: "[槽位：质量维度=估值锚｜时机维度=关键位锚——引用数字须标功能（支撑/阈值/风险度量）]",
-          crypto: "[槽位：数据边界声明——加密资产无行情，仅定性框架]",
+          crypto: "[槽位：数据边界声明——未覆盖加密资产仅定性框架]",
+          commodity: "[槽位：价格锚+时机维度——商品/币报价按最新可得价引用，涨跌方向必须与注入数据一致]",
           mood: "[槽位：情绪维度=逆向指标（VIX读数越高恐慌越重，逆向检验用）]",
           earnings: "[槽位：质量+时机维度=事件风险阈值（财报日=波动窗口，仓位计划必须核对）]",
           news: "[槽位：事件证据=支撑论据须带时间戳，旧闻不得伪装成当期]",
@@ -727,6 +743,7 @@ export async function POST(request: NextRequest) {
           stockContext || newsContext || moodContext || optionContextText ? `[交易日状态] 美东${nyDate} ${nyDay}，${marketStatus}。` : "",
           stockContext ? `${stockContext}\n\n⚠️ 以上实时行情数据已由系统自动注入，请直接引用。${SLOT_NOTE.stock}` : "",
           cryptoContext ? `${cryptoContext}${SLOT_NOTE.crypto}` : "",
+          commodityContext ? `${commodityContext}\n\n⚠️ 以上商品/加密行情已由系统自动注入，请直接引用（数字锚定规则同实时行情）。${SLOT_NOTE.commodity}` : "",
           moodContext ? `${moodContext}${SLOT_NOTE.mood}` : "",
           earningsContext ? `${earningsContext}${SLOT_NOTE.earnings}` : "",
           newsContext ? `${newsContext}${SLOT_NOTE.news}` : "",
