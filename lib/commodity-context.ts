@@ -24,7 +24,7 @@ export interface CommodityQuote {
   price: number;
   prevClose: number;
   changePct: number;       // 相对昨收/前结算，%
-  basis: "prevClose" | "windowClose";  // 涨跌基准口径：prevClose=上一交易日收盘（准）；windowClose=5日窗口前值（previousClose缺失时的诚实降级，标注防口径漂移）
+  basis: "prevClose" | "windowClose" | "24h";  // 涨跌基准口径：prevClose=上一交易日收盘（准）；windowClose=5日窗口前值（previousClose缺失时的诚实降级）；24h=CoinGecko 24小时前（crypto专用，根治Yahoo不给币昨收的口径漂移）
   ts: number;              // 行情时间戳（秒）
 }
 
@@ -96,17 +96,76 @@ export function extractCommodityQueries(text: string): string[] {
 const quoteCache = new Map<string, { data: CommodityQuote; at: number }>();
 const QUOTE_CACHE_TTL = 5 * 60 * 1000;
 
+// CoinGecko符号映射（crypto走24h change口径：Yahoo v8对BTC-USD等不供previousClose，5日窗口口径偏长；
+// CoinGecko免费无key，30次/分限额+5分钟缓存远用不满。10/18晨检后逸翔"继续"令补优化）
+const COINGECKO_IDS: Record<string, string> = {
+  "BTC-USD": "bitcoin",
+  "ETH-USD": "ethereum",
+};
+
+async function fetchCryptoFromCoingecko(symbols: string[]): Promise<Map<string, CommodityQuote>> {
+  const map = new Map<string, CommodityQuote>();
+  if (symbols.length === 0) return map;
+  const ids = Array.from(new Set(symbols.map((s) => COINGECKO_IDS[s]).filter(Boolean)));
+  if (ids.length === 0) return map;
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    if (!res.ok) return map;
+    const d = (await res.json()) as Record<string, { usd?: number; usd_24h_change?: number; last_updated_at?: number } | undefined>;
+    for (const sym of symbols) {
+      const row = d[COINGECKO_IDS[sym]];
+      const price = row?.usd;
+      if (typeof price !== "number" || !isFinite(price) || price <= 0) continue;
+      const chg = typeof row?.usd_24h_change === "number" ? row.usd_24h_change : 0;
+      // 24小时前价反推：price/(1+chg%)——chg=0时反推无意义，直接用现价（标注诚实：0变动）
+      const prev = chg !== 0 ? price / (1 + chg / 100) : price;
+      map.set(sym, {
+        symbol: sym,
+        name: ALIAS_SYMBOL_MAP.get(sym)?.name ?? sym,
+        category: "crypto",
+        price,
+        prevClose: Number(prev.toFixed(8)),
+        changePct: chg,
+        basis: "24h",
+        ts: typeof row?.last_updated_at === "number" ? row.last_updated_at : Math.floor(Date.now() / 1000),
+      });
+    }
+  } catch {
+    // 网络失败/限流：返回空map，crypto全部退走Yahoo 5d链兜底
+  }
+  return map;
+}
+
 export async function fetchCommodityData(symbols: string[]): Promise<CommodityQuote[]> {
   const now = Date.now();
   const results: CommodityQuote[] = [];
+  const pending: string[] = [];
 
+  for (const sym of symbols) {
+    const hit = quoteCache.get(sym);
+    if (hit && now - hit.at < QUOTE_CACHE_TTL) {
+      results.push(hit.data);
+    } else {
+      pending.push(sym);
+    }
+  }
+
+  // crypto分流：CoinGecko批量（一次请求拿全部币，省限额）；拿不到的退Yahoo
+  const cryptoPending = pending.filter((s) => ALIAS_SYMBOL_MAP.get(s)?.category === "crypto");
+  const cgResults = await fetchCryptoFromCoingecko(cryptoPending);
+  // forEach而非for..of——es5 target下Map迭代需downlevelIteration，forEach无此限制（stock-context同款解法）
+  cgResults.forEach((q, sym) => {
+    results.push(q);
+    quoteCache.set(sym, { data: q, at: now });
+  });
+
+  // 期货/金属/汇率+CoinGecko失败的crypto：走Yahoo 5d链
+  const yahooPending = pending.filter((s) => !cgResults.has(s));
   await Promise.all(
-    symbols.map(async (sym) => {
-      const hit = quoteCache.get(sym);
-      if (hit && now - hit.at < QUOTE_CACHE_TTL) {
-        results.push(hit.data);
-        return;
-      }
+    yahooPending.map(async (sym) => {
       try {
         const chart = await getYahooChart(sym, "5d");
         const meta = chart?.meta as
@@ -159,7 +218,7 @@ export function buildCommodityContext(quotes: CommodityQuote[]): string {
   const lines = quotes.map((q) => {
     const arrow = q.changePct >= 0 ? "涨" : "跌";
     // 口径诚实：windowClose=previousClose缺失降级为5日窗口基准，标注防"5日涨幅被当昨日涨幅"漂移（10/17验证轮补缺）
-    const baseLabel = q.basis === "windowClose" ? "近5日前值" : "昨收";
+    const baseLabel = q.basis === "windowClose" ? "近5日前值" : q.basis === "24h" ? "24小时前" : "昨收";
     return `- ${q.name}（${q.symbol}）：$${fmt(q.price)}，${baseLabel}$${fmt(q.prevClose)}（${arrow}${Math.abs(q.changePct).toFixed(2)}%）`;
   });
   const covered = Array.from(new Set(quotes.map((q) => CATEGORY_LABEL[q.category]))).join("、");
@@ -167,7 +226,7 @@ export function buildCommodityContext(quotes: CommodityQuote[]): string {
   const ts = new Date(Math.max(...quotes.map((q) => q.ts)) * 1000);
   const nyTime = ts.toLocaleString("zh-CN", { timeZone: "America/New_York", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
   return (
-    `【${covered}实时行情】（Yahoo Finance口径：期货=主力连续合约最新价，加密=现货聚合价，美元计价；行情时间≈纽约时间${nyTime}——周末/盘后为上一交易时段价格，加密为24/7实时）\n` +
+    `【${covered}实时行情】（口径：期货=主力连续合约最新价（Yahoo Finance），加密=现货聚合价（CoinGecko），美元计价；行情时间≈纽约时间${nyTime}——周末/盘后期货为上一交易时段价格，加密为24/7实时）\n` +
     lines.join("\n") +
     `\n⚠️ 引用规则：以上是数据源最新可得价（加密24/7实时，期货含电子盘时段），非"A股/B股收盘价"；未列出的品种（其他小币种、农产品、国内期货品种如沪金/螺纹钢）行情源未覆盖，严禁编造价格，可定性分析。`
   );
