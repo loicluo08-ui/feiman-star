@@ -41,6 +41,20 @@
       "chgFromKeyLevel": 46.02,
       "outcome": "中性",
       "pattern": "观望|收盘连续两日低于14.84"
+    },
+    {
+      "symbol": "VIX",
+      "stance": "观望",
+      "keyLevel": "20.00",
+      "invalidation": "收盘连续两日低于15.21",
+      "confidence": "65%",
+      "date": "2026-10-18",
+      "ts": 1792302303237,
+      "verifiedAt": "2026-10-19",
+      "priceNow": 21.67,
+      "chgFromKeyLevel": 8.35,
+      "outcome": "中性",
+      "pattern": "观望|收盘连续两日低于15.21"
     }
   ],
   "promoted": []
