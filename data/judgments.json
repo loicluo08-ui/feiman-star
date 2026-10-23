@@ -36,6 +36,15 @@
       "confidence": "60%",
       "date": "2026-10-19",
       "ts": 1792382677068
+    },
+    {
+      "symbol": "AAPL",
+      "stance": "观望",
+      "keyLevel": "$345.34",
+      "invalidation": "收盘价站上345.34",
+      "confidence": "65%",
+      "date": "2026-10-23",
+      "ts": 1792760942310
     }
   ]
 }
