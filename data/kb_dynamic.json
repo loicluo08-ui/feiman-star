@@ -95,78 +95,6 @@
    "expires": "2026-10-28"
   },
   {
-   "id": "snapshot_usNVDA_2026-10-22",
-   "type": "data_snapshot",
-   "keywords": [
-    "英伟达",
-    "nvda"
-   ],
-   "content": "英伟达行情快照（2026-10-22）：现价$221.97，PE(TTM) 28.1，52周高$243.37/低$163.89，处52周区间73.1%位置，距高点回撤-8.8%。数据来源：腾讯行情2026-10-22。",
-   "source": "vercel_cron",
-   "created": "2026-10-22",
-   "expires": "2026-11-21"
-  },
-  {
-   "id": "snapshot_usTSLA_2026-10-22",
-   "type": "data_snapshot",
-   "keywords": [
-    "特斯拉",
-    "tsla"
-   ],
-   "content": "特斯拉行情快照（2026-10-22）：现价$386.47，PE(TTM) 357.8，52周高$498.83/低$297.38，处52周区间44.2%位置，距高点回撤-22.5%。数据来源：腾讯行情2026-10-22。",
-   "source": "vercel_cron",
-   "created": "2026-10-22",
-   "expires": "2026-11-21"
-  },
-  {
-   "id": "snapshot_usAAPL_2026-10-22",
-   "type": "data_snapshot",
-   "keywords": [
-    "苹果",
-    "aapl"
-   ],
-   "content": "苹果行情快照（2026-10-22）：现价$343.99，PE(TTM) 39.5，52周高$348.15/低$242.76，处52周区间96.1%位置，距高点回撤-1.2%。数据来源：腾讯行情2026-10-22。",
-   "source": "vercel_cron",
-   "created": "2026-10-22",
-   "expires": "2026-11-21"
-  },
-  {
-   "id": "snapshot_usMSFT_2026-10-22",
-   "type": "data_snapshot",
-   "keywords": [
-    "微软",
-    "msft"
-   ],
-   "content": "微软行情快照（2026-10-22）：现价$532.95，PE(TTM) 29.7，52周高$551.15/低$348.54，处52周区间91.0%位置，距高点回撤-3.3%。数据来源：腾讯行情2026-10-22。",
-   "source": "vercel_cron",
-   "created": "2026-10-22",
-   "expires": "2026-11-21"
-  },
-  {
-   "id": "snapshot_usAMD_2026-10-22",
-   "type": "data_snapshot",
-   "keywords": [
-    "amd",
-    "超微"
-   ],
-   "content": "AMD行情快照（2026-10-22）：现价$552.72，PE(TTM) 141.7，52周高$658.52/低$188.22，处52周区间77.5%位置，距高点回撤-16.1%。数据来源：腾讯行情2026-10-22。",
-   "source": "vercel_cron",
-   "created": "2026-10-22",
-   "expires": "2026-11-21"
-  },
-  {
-   "id": "snapshot_usMU_2026-10-22",
-   "type": "data_snapshot",
-   "keywords": [
-    "美光",
-    "mu"
-   ],
-   "content": "美光行情快照（2026-10-22）：现价$913.67，PE(TTM) 12.3，52周高$1254.50/低$192.17，处52周区间67.9%位置，距高点回撤-27.2%。数据来源：腾讯行情2026-10-22。",
-   "source": "vercel_cron",
-   "created": "2026-10-22",
-   "expires": "2026-11-21"
-  },
-  {
    "id": "insight_2026-10-22_00_0",
    "type": "insight",
    "keywords": [
@@ -208,6 +136,78 @@
    "source": "kb-grow-insights",
    "created": "2026-10-22",
    "expires": "2026-10-29"
+  },
+  {
+   "id": "snapshot_usNVDA_2026-10-23",
+   "type": "data_snapshot",
+   "keywords": [
+    "英伟达",
+    "nvda"
+   ],
+   "content": "英伟达行情快照（2026-10-23）：现价$212.21，PE(TTM) 26.8，52周高$243.37/低$163.89，处52周区间60.8%位置，距高点回撤-12.8%。数据来源：腾讯行情2026-10-23。",
+   "source": "vercel_cron",
+   "created": "2026-10-23",
+   "expires": "2026-11-22"
+  },
+  {
+   "id": "snapshot_usTSLA_2026-10-23",
+   "type": "data_snapshot",
+   "keywords": [
+    "特斯拉",
+    "tsla"
+   ],
+   "content": "特斯拉行情快照（2026-10-23）：现价$374.58，PE(TTM) 413.0，52周高$498.83/低$297.38，处52周区间38.3%位置，距高点回撤-24.9%。数据来源：腾讯行情2026-10-23。",
+   "source": "vercel_cron",
+   "created": "2026-10-23",
+   "expires": "2026-11-22"
+  },
+  {
+   "id": "snapshot_usAAPL_2026-10-23",
+   "type": "data_snapshot",
+   "keywords": [
+    "苹果",
+    "aapl"
+   ],
+   "content": "苹果行情快照（2026-10-23）：现价$348.22，PE(TTM) 39.9，52周高$348.36/低$242.76，处52周区间99.9%位置，距高点回撤-0.0%。数据来源：腾讯行情2026-10-23。",
+   "source": "vercel_cron",
+   "created": "2026-10-23",
+   "expires": "2026-11-22"
+  },
+  {
+   "id": "snapshot_usMSFT_2026-10-23",
+   "type": "data_snapshot",
+   "keywords": [
+    "微软",
+    "msft"
+   ],
+   "content": "微软行情快照（2026-10-23）：现价$521.08，PE(TTM) 29.0，52周高$551.15/低$348.54，处52周区间85.2%位置，距高点回撤-5.5%。数据来源：腾讯行情2026-10-23。",
+   "source": "vercel_cron",
+   "created": "2026-10-23",
+   "expires": "2026-11-22"
+  },
+  {
+   "id": "snapshot_usAMD_2026-10-23",
+   "type": "data_snapshot",
+   "keywords": [
+    "amd",
+    "超微"
+   ],
+   "content": "AMD行情快照（2026-10-23）：现价$507.93，PE(TTM) 130.2，52周高$658.52/低$188.22，处52周区间68.0%位置，距高点回撤-22.9%。数据来源：腾讯行情2026-10-23。",
+   "source": "vercel_cron",
+   "created": "2026-10-23",
+   "expires": "2026-11-22"
+  },
+  {
+   "id": "snapshot_usMU_2026-10-23",
+   "type": "data_snapshot",
+   "keywords": [
+    "美光",
+    "mu"
+   ],
+   "content": "美光行情快照（2026-10-23）：现价$856.49，PE(TTM) 11.5，52周高$1254.50/低$192.36，处52周区间62.5%位置，距高点回撤-31.7%。数据来源：腾讯行情2026-10-23。",
+   "source": "vercel_cron",
+   "created": "2026-10-23",
+   "expires": "2026-11-22"
   }
  ]
 }
