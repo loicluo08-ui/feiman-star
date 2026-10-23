@@ -78,6 +78,22 @@ export async function selectDynamicKB(
     // 强相关的较早洞察被截断）。评分=语义命中3分（向量相似>0.75内）+每命中1个关键词2分；
     // 同分按新鲜度。快照条目keywords含标的名，问题提到该标的即命中。
     interface PickedEntry { id: string; type: string; keywords: string[]; content: string; source: string; created: string; expires?: string | null; sem: boolean; score: number }
+    // 10/23件3（BM25第三通道）：专名/代码类query关键词标签漏+向量弱的补通道——零依赖纯计算
+    const { bm25Search } = await import("@/lib/kb-bm25");
+    const bm25Docs = list
+      .filter((e) => !e.expires || e.expires >= now)
+      .filter((e) => e.source !== "cron-judgment-settle")
+      .map((e) => ({ id: e.id, text: e.content + "\n" + (e.keywords || []).join(" ") }));
+    const bm25Hits = bm25Search(userText || "", bm25Docs);
+    const bm25Top = bm25Hits.slice(0, 8);
+    const bm25ScoreMap = new Map<string, number>();
+    if (bm25Top.length > 0) {
+      const topScore = bm25Top[0].score;
+      for (const h of bm25Top) {
+        // 归一化>0.25才有效命中（相对top1），防弱匹配噪声进上下文
+        if (h.score / topScore >= 0.25) bm25ScoreMap.set(h.id, h.score);
+      }
+    }
     const picked: PickedEntry[] = [];
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -88,8 +104,10 @@ export async function selectDynamicKB(
         if (q.indexOf(kws[j].toLowerCase()) >= 0) kwHits += 1;
       }
       const sem = (e as { sem?: boolean }).sem === true;
-      if (kwHits > 0 || sem) {
-        picked.push({ ...e, sem, score: (sem ? 3 : 0) + kwHits * 2 });
+      const bm25 = bm25ScoreMap.get(e.id) !== undefined;
+      if (kwHits > 0 || sem || bm25) {
+        // BM25=更聪明的关键词匹配，2分与关键词同级；语义3分保留
+        picked.push({ ...e, sem, score: (sem ? 3 : 0) + kwHits * 2 + (bm25 ? 2 : 0) });
       }
     }
     picked.sort(function (a, b) {
