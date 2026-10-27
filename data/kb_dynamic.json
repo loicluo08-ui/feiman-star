@@ -1,47 +1,6 @@
 {
  "entries": [
   {
-   "id": "insight_2026-10-19_00_0",
-   "type": "insight",
-   "keywords": [
-    "日经225指数",
-    "日经225",
-    "2026-10-19",
-    "洞察"
-   ],
-   "content": "日经225指数扩大跌幅至1%，显示市场情绪谨慎（方向：利空 日经225指数；来源：金十数据+新浪财经+AIHOT2026-10-19快讯提炼）",
-   "source": "kb-grow-insights",
-   "created": "2026-10-19",
-   "expires": "2026-10-26"
-  },
-  {
-   "id": "insight_2026-10-19_00_1",
-   "type": "insight",
-   "keywords": [
-    "AI投资",
-    "美债",
-    "2026-10-19",
-    "洞察"
-   ],
-   "content": "AI投资走弱，美债避险功能重获青睐（方向：利多 美债；来源：金十数据+新浪财经+AIHOT2026-10-19快讯提炼）",
-   "source": "kb-grow-insights",
-   "created": "2026-10-19",
-   "expires": "2026-10-26"
-  },
-  {
-   "id": "insight_2026-10-19_00_2",
-   "type": "insight",
-   "keywords": [
-    "印度股市",
-    "2026-10-19",
-    "洞察"
-   ],
-   "content": "印度股市表现不佳因流动性过剩（方向：利空 印度股市；来源：金十数据+新浪财经+AIHOT2026-10-19快讯提炼）",
-   "source": "kb-grow-insights",
-   "created": "2026-10-19",
-   "expires": "2026-10-26"
-  },
-  {
    "id": "insight_2026-10-21_00_0",
    "type": "insight",
    "keywords": [
@@ -138,78 +97,6 @@
    "expires": "2026-10-29"
   },
   {
-   "id": "snapshot_usNVDA_2026-10-26",
-   "type": "data_snapshot",
-   "keywords": [
-    "英伟达",
-    "nvda"
-   ],
-   "content": "英伟达行情快照（2026-10-26）：现价$210.96，PE(TTM) 26.7，52周高$243.37/低$163.89，处52周区间59.2%位置，距高点回撤-13.3%。数据来源：腾讯行情2026-10-26。",
-   "source": "vercel_cron",
-   "created": "2026-10-26",
-   "expires": "2026-11-25"
-  },
-  {
-   "id": "snapshot_usTSLA_2026-10-26",
-   "type": "data_snapshot",
-   "keywords": [
-    "特斯拉",
-    "tsla"
-   ],
-   "content": "特斯拉行情快照（2026-10-26）：现价$372.22，PE(TTM) 409.0，52周高$498.83/低$297.38，处52周区间37.2%位置，距高点回撤-25.4%。数据来源：腾讯行情2026-10-26。",
-   "source": "vercel_cron",
-   "created": "2026-10-26",
-   "expires": "2026-11-25"
-  },
-  {
-   "id": "snapshot_usAAPL_2026-10-26",
-   "type": "data_snapshot",
-   "keywords": [
-    "苹果",
-    "aapl"
-   ],
-   "content": "苹果行情快照（2026-10-26）：现价$347.73，PE(TTM) 39.9，52周高$351.73/低$242.76，处52周区间96.3%位置，距高点回撤-1.1%。数据来源：腾讯行情2026-10-26。",
-   "source": "vercel_cron",
-   "created": "2026-10-26",
-   "expires": "2026-11-25"
-  },
-  {
-   "id": "snapshot_usMSFT_2026-10-26",
-   "type": "data_snapshot",
-   "keywords": [
-    "微软",
-    "msft"
-   ],
-   "content": "微软行情快照（2026-10-26）：现价$524.51，PE(TTM) 29.2，52周高$551.15/低$348.54，处52周区间86.9%位置，距高点回撤-4.8%。数据来源：腾讯行情2026-10-26。",
-   "source": "vercel_cron",
-   "created": "2026-10-26",
-   "expires": "2026-11-25"
-  },
-  {
-   "id": "snapshot_usAMD_2026-10-26",
-   "type": "data_snapshot",
-   "keywords": [
-    "amd",
-    "超微"
-   ],
-   "content": "AMD行情快照（2026-10-26）：现价$516.79，PE(TTM) 132.5，52周高$658.52/低$188.22，处52周区间69.9%位置，距高点回撤-21.5%。数据来源：腾讯行情2026-10-26。",
-   "source": "vercel_cron",
-   "created": "2026-10-26",
-   "expires": "2026-11-25"
-  },
-  {
-   "id": "snapshot_usMU_2026-10-26",
-   "type": "data_snapshot",
-   "keywords": [
-    "美光",
-    "mu"
-   ],
-   "content": "美光行情快照（2026-10-26）：现价$877.55，PE(TTM) 11.8，52周高$1254.50/低$192.36，处52周区间64.5%位置，距高点回撤-30.0%。数据来源：腾讯行情2026-10-26。",
-   "source": "vercel_cron",
-   "created": "2026-10-26",
-   "expires": "2026-11-25"
-  },
-  {
    "id": "insight_2026-10-26_00_0",
    "type": "insight",
    "keywords": [
@@ -221,6 +108,119 @@
    "source": "kb-grow-insights",
    "created": "2026-10-26",
    "expires": "2026-11-02"
+  },
+  {
+   "id": "snapshot_usNVDA_2026-10-27",
+   "type": "data_snapshot",
+   "keywords": [
+    "英伟达",
+    "nvda"
+   ],
+   "content": "英伟达行情快照（2026-10-27）：现价$216.00，PE(TTM) 27.3，52周高$243.37/低$163.89，处52周区间65.6%位置，距高点回撤-11.2%。数据来源：腾讯行情2026-10-27。",
+   "source": "vercel_cron",
+   "created": "2026-10-27",
+   "expires": "2026-11-26"
+  },
+  {
+   "id": "snapshot_usTSLA_2026-10-27",
+   "type": "data_snapshot",
+   "keywords": [
+    "特斯拉",
+    "tsla"
+   ],
+   "content": "特斯拉行情快照（2026-10-27）：现价$391.62，PE(TTM) 430.4，52周高$498.83/低$297.38，处52周区间46.8%位置，距高点回撤-21.5%。数据来源：腾讯行情2026-10-27。",
+   "source": "vercel_cron",
+   "created": "2026-10-27",
+   "expires": "2026-11-26"
+  },
+  {
+   "id": "snapshot_usAAPL_2026-10-27",
+   "type": "data_snapshot",
+   "keywords": [
+    "苹果",
+    "aapl"
+   ],
+   "content": "苹果行情快照（2026-10-27）：现价$343.91，PE(TTM) 39.4，52周高$351.73/低$242.76，处52周区间92.8%位置，距高点回撤-2.2%。数据来源：腾讯行情2026-10-27。",
+   "source": "vercel_cron",
+   "created": "2026-10-27",
+   "expires": "2026-11-26"
+  },
+  {
+   "id": "snapshot_usMSFT_2026-10-27",
+   "type": "data_snapshot",
+   "keywords": [
+    "微软",
+    "msft"
+   ],
+   "content": "微软行情快照（2026-10-27）：现价$532.60，PE(TTM) 29.7，52周高$551.15/低$348.54，处52周区间90.8%位置，距高点回撤-3.4%。数据来源：腾讯行情2026-10-27。",
+   "source": "vercel_cron",
+   "created": "2026-10-27",
+   "expires": "2026-11-26"
+  },
+  {
+   "id": "snapshot_usAMD_2026-10-27",
+   "type": "data_snapshot",
+   "keywords": [
+    "amd",
+    "超微"
+   ],
+   "content": "AMD行情快照（2026-10-27）：现价$531.28，PE(TTM) 136.2，52周高$658.52/低$188.22，处52周区间72.9%位置，距高点回撤-19.3%。数据来源：腾讯行情2026-10-27。",
+   "source": "vercel_cron",
+   "created": "2026-10-27",
+   "expires": "2026-11-26"
+  },
+  {
+   "id": "snapshot_usMU_2026-10-27",
+   "type": "data_snapshot",
+   "keywords": [
+    "美光",
+    "mu"
+   ],
+   "content": "美光行情快照（2026-10-27）：现价$903.70，PE(TTM) 12.2，52周高$1254.50/低$192.36，处52周区间67.0%位置，距高点回撤-28.0%。数据来源：腾讯行情2026-10-27。",
+   "source": "vercel_cron",
+   "created": "2026-10-27",
+   "expires": "2026-11-26"
+  },
+  {
+   "id": "insight_2026-10-27_00_0",
+   "type": "insight",
+   "keywords": [
+    "日经指数",
+    "芯片相关股",
+    "2026-10-27",
+    "洞察"
+   ],
+   "content": "日经指数上涨1.7%，芯片相关股领涨。东京电子上涨4.5%，Screen Holdings上涨5.2%。（方向：利多 芯片相关股；来源：金十数据+新浪财经+AIHOT2026-10-27快讯提炼）",
+   "source": "kb-grow-insights",
+   "created": "2026-10-27",
+   "expires": "2026-11-03"
+  },
+  {
+   "id": "insight_2026-10-27_00_1",
+   "type": "insight",
+   "keywords": [
+    "英伟达",
+    "物理AI",
+    "2026-10-27",
+    "洞察"
+   ],
+   "content": "中信证券研报指出，物理AI关注度升温，端侧应用关注度迅速升温。（方向：利多 物理AI相关股票；来源：金十数据+新浪财经+AIHOT2026-10-27快讯提炼）",
+   "source": "kb-grow-insights",
+   "created": "2026-10-27",
+   "expires": "2026-11-03"
+  },
+  {
+   "id": "insight_2026-10-27_00_2",
+   "type": "insight",
+   "keywords": [
+    "日经225指数",
+    "2026-10-27",
+    "洞察"
+   ],
+   "content": "日经225指数涨幅扩大至1%，现报62910.71点。（方向：利多 日经225指数；来源：金十数据+新浪财经+AIHOT2026-10-27快讯提炼）",
+   "source": "kb-grow-insights",
+   "created": "2026-10-27",
+   "expires": "2026-11-03"
   }
  ]
 }
