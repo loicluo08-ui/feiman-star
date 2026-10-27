@@ -195,6 +195,21 @@ export default function AdminPage() {
 
   const saved = typeof window !== "undefined" ? sessionStorage.getItem("fx_admin_token") : null;
 
+  // 10/27用户反馈区块：登录成功后拉一次，手动刷新按钮重拉（不复用30s自动刷新——反馈低频，省请求）
+  const [feedbacks, setFeedbacks] = useState<{ id: string; kind: string; nickname: string; text: string; ip: string; ts: string }[] | null>(null);
+  async function loadFeedback(t: string) {
+    try {
+      const res = await fetch("/api/admin/feedback", { headers: { "x-admin-token": t }, cache: "no-store" });
+      const json = await res.json();
+      if (json.ok) setFeedbacks(json.rows);
+    } catch { /* 反馈区块加载失败不打断主面板 */ }
+  }
+  useEffect(() => {
+    if (!data) return;
+    const t = token || sessionStorage.getItem("fx_admin_token") || "";
+    if (t) void loadFeedback(t);
+  }, [data, token]);
+
   if (!data) {
     return (
       <div className="mx-auto max-w-md px-5 py-16">
@@ -467,6 +482,43 @@ export default function AdminPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* 10/27用户反馈区块：关于页表单直进这里 */}
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">用户反馈{feedbacks && feedbacks.length > 0 ? `（${feedbacks.length}）` : ""}</h2>
+          <button
+            onClick={() => { const t = token || sessionStorage.getItem("fx_admin_token") || ""; if (t) void loadFeedback(t); }}
+            className="rounded-lg border border-[var(--border)] px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-muted)]"
+          >
+            刷新
+          </button>
+        </div>
+        {feedbacks === null ? (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs text-[var(--text-muted)]">反馈加载中…</div>
+        ) : feedbacks.length === 0 ? (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-xs text-[var(--text-muted)]">暂无用户反馈（来自 /about 页表单）</div>
+        ) : (
+          <div className="space-y-2">
+            {feedbacks.map((f) => (
+              <div key={f.id} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
+                  <span className={
+                    f.kind === "bug" ? "rounded-md bg-red-500/10 px-2 py-0.5 text-red-500"
+                    : f.kind === "suggestion" ? "rounded-md bg-[var(--positive-bg)] px-2 py-0.5 text-[var(--positive)]"
+                    : "rounded-md bg-[var(--surface-muted)] px-2 py-0.5 text-[var(--text-secondary)]"
+                  }>
+                    {f.kind === "bug" ? "问题反馈" : f.kind === "suggestion" ? "功能建议" : "其他"}
+                  </span>
+                  <span className="font-medium text-[var(--text)]">{f.nickname}</span>
+                  <span className="text-[var(--text-muted)]">{fmtTime(f.ts)} · {f.ip}</span>
+                </div>
+                <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text)]">{f.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

@@ -89,9 +89,60 @@ export async function readKbEntries(limit = 200): Promise<KbDynamicRow[] | null>
     // 10/2漏洞审计P0修复：username_claim（用户名字+城市PII）与ip_block（拉黑记录）混进语义检索
     // =PII注入AI回答+挤占知识配额——与access_log同一性质，读路径统一排除
     // 10/27追加chat_session（用户持仓摘要PII，敏感度与judgment_ledger同级但用途是会话恢复非知识检索）
-    `kb_dynamic?select=id,type,keywords,content,source,created,expires&type=neq.access_log&type=neq.username_claim&type=neq.ip_block&type=neq.geo_cache&type=neq.chat_session&order=created.desc&limit=${limit}`
+    // 10/27追加feedback（用户提交的自由文本，可能含任意PII，仅经admin接口人工读取）
+    `kb_dynamic?select=id,type,keywords,content,source,created,expires&type=neq.access_log&type=neq.username_claim&type=neq.ip_block&type=neq.geo_cache&type=neq.chat_session&type=neq.feedback&order=created.desc&limit=${limit}`
   );
   return out;
+}
+
+// ——— 用户反馈（10/27逸翔授权"你来做出最优决定"：关于页+反馈闭环，反馈进/lyx后台）———
+// 存储=kb_dynamic表type="feedback"零DDL复用（access_log同款模式）；隐私边界=同表PII排除清单已加feedback
+export interface FeedbackEntry {
+  id: string;
+  kind: string; // suggestion | bug | other
+  nickname: string;
+  text: string;
+  ip: string;
+  ua: string;
+  ts: string; // 完整ISO时间戳（created列是date类型只存日期——10/2实锤教训，时间戳放content里）
+}
+
+export async function insertFeedback(entry: FeedbackEntry): Promise<boolean> {
+  try {
+    await sbRest("kb_dynamic", {
+      method: "POST",
+      prefer: "return=minimal",
+      body: [
+        {
+          id: entry.id,
+          type: "feedback",
+          keywords: [],
+          content: JSON.stringify({ kind: entry.kind, nickname: entry.nickname, text: entry.text, ip: entry.ip, ua: entry.ua, ts: entry.ts }),
+          source: "feedback-api",
+          created: entry.ts.slice(0, 10), // date-only格式与列类型匹配（10/2 access_log零落库实锤）
+        },
+      ],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function readFeedback(limit = 100): Promise<{ rows: FeedbackEntry[]; total: number } | null> {
+  try {
+    const out = await sbRest<KbDynamicRow[]>(
+      // 排序只用真实列：created(date) + id(fb_时间戳_前缀，同日内递增可排)；ts在content JSON里非列
+      `kb_dynamic?select=id,content,created&type=eq.feedback&order=created.desc,id.desc&limit=${limit}`
+    );
+    const rows: FeedbackEntry[] = (out || []).map((r) => {
+      const c = JSON.parse(r.content) as Omit<FeedbackEntry, "id">;
+      return { id: r.id, kind: c.kind, nickname: c.nickname, text: c.text, ip: c.ip, ua: c.ua, ts: c.ts };
+    });
+    return { rows, total: rows.length };
+  } catch {
+    return null;
+  }
 }
 
 // ——— 会话摘要真源（10/27 dsh对照P1：滚动摘要从localStorage升级为服务端唯一真源）———

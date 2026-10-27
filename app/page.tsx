@@ -90,6 +90,7 @@ export default function HomePage() {
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-subtle)] p-5">
         <p className="text-xs leading-6 text-[var(--text-muted)]">
           行情来自实时接口。所有数据和分析由AI生成，仅供研究参考，不构成任何投资建议。
+          <a href="/about" className="ml-1 underline-offset-2 hover:underline">关于与反馈</a>
         </p>
       </section>
     </div>

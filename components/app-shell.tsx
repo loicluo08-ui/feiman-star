@@ -14,6 +14,7 @@ const navItems = [
   { href: "/invest/review", label: "交易复盘", icon: "M9 17v-6h4v6M7 7h10v10H7zM5 5h14v14H5z" },
   { href: "/invest/chat", label: "投资对话", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" },
   { href: "/invest/ledger", label: "判断账本", icon: "M4 5h16v14H4zM8 9h8M8 13h5" },
+  { href: "/about", label: "关于", icon: "M12 8v.01M12 12v4M12 3a9 9 0 100 18 9 9 0 000-18z" },
 ];
 
 function SidebarContent({
