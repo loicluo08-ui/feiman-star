@@ -88,9 +88,62 @@ export async function readKbEntries(limit = 200): Promise<KbDynamicRow[] | null>
   const out = await sbRest<KbDynamicRow[]>(
     // 10/2漏洞审计P0修复：username_claim（用户名字+城市PII）与ip_block（拉黑记录）混进语义检索
     // =PII注入AI回答+挤占知识配额——与access_log同一性质，读路径统一排除
-    `kb_dynamic?select=id,type,keywords,content,source,created,expires&type=neq.access_log&type=neq.username_claim&type=neq.ip_block&type=neq.geo_cache&order=created.desc&limit=${limit}`
+    // 10/27追加chat_session（用户持仓摘要PII，敏感度与judgment_ledger同级但用途是会话恢复非知识检索）
+    `kb_dynamic?select=id,type,keywords,content,source,created,expires&type=neq.access_log&type=neq.username_claim&type=neq.ip_block&type=neq.geo_cache&type=neq.chat_session&order=created.desc&limit=${limit}`
   );
   return out;
+}
+
+// ——— 会话摘要真源（10/27 dsh对照P1：滚动摘要从localStorage升级为服务端唯一真源）———
+// 设计对齐dsh compaction（packages/compaction/compaction/src/types.ts）：
+//   摘要=表面替换非删除，真源落库可回放；shadowedCount/shadowedChars=压缩范围记账（对齐shadowedSeqs思想）。
+// 隐私边界：内容含用户持仓数字（摘要的全部价值），敏感度与judgment_ledger同级（存储侧既有先例）；
+//   仅服务端service key可读写，客户端不直连supabase；已从readKbEntries语义检索读路径排除。
+export async function upsertChatSession(
+  sessionId: string,
+  summary: string,
+  shadowedCount: number,
+  shadowedChars: number,
+): Promise<boolean> {
+  if (!supabaseConfigured() || !sessionId) return false;
+  const row: KbDynamicRow = {
+    id: `chat_${sessionId}`,
+    type: "chat_session",
+    keywords: [],
+    content: JSON.stringify({ summary, shadowedCount, shadowedChars, ts: new Date().toISOString() }),
+    source: "chat-summarize",
+    created: new Date().toISOString(),
+    expires: null,
+    embedding: null,
+  };
+  try {
+    await sbRest("kb_dynamic?on_conflict=id", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: [row],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function readChatSession(
+  sessionId: string,
+): Promise<{ summary: string; shadowedCount: number; ts: string } | null> {
+  if (!supabaseConfigured() || !sessionId) return null;
+  try {
+    const rows = await sbRest<KbDynamicRow[]>(
+      `kb_dynamic?select=id,type,content,created&type=eq.chat_session&id=eq.chat_${encodeURIComponent(sessionId)}&limit=1`
+    );
+    const row = rows?.[0];
+    if (!row?.content) return null;
+    const parsed = JSON.parse(row.content) as { summary?: string; shadowedCount?: number; ts?: string };
+    if (!parsed.summary) return null;
+    return { summary: parsed.summary, shadowedCount: parsed.shadowedCount ?? 0, ts: parsed.ts ?? row.created };
+  } catch {
+    return null;
+  }
 }
 
 // ——— 判断账本（服务端化：localStorage退役为缓存）———

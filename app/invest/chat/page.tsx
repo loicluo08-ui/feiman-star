@@ -57,6 +57,8 @@ type ChatHistoryRecord = {
   messages: ChatItem[];
   /** 滚动摘要（长对话记忆）：窗口外对话的压缩版，随历史存档，重载会话后恢复 */
   summary?: string;
+  /** 10/27 dsh对照P1：该会话的服务端摘要真源标识——恢复会话时凭它兜底拉回摘要 */
+  chatSessionId?: string;
 };
 
 type ChatTaskResult = {
@@ -78,6 +80,51 @@ class ChatTaskError extends Error {
 
 const CHAT_HISTORY_KEY = "feimanstar_chat_history";
 const CHAT_TASK_KEY = "chat-response";
+// 10/27 dsh对照P1：会话摘要真源服务端化的会话标识——持久于localStorage，"开新对话"时轮换
+const CHAT_SESSION_ID_KEY = "feimanstar_chat_session_id";
+
+function newSessionId(): string {
+  const raw = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `s${Date.now()}${Math.random().toString(36).slice(2, 12)}`;
+  return raw.replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64) || `s${Date.now()}`;
+}
+
+function loadChatSessionId(): string {
+  try {
+    const saved = localStorage.getItem(CHAT_SESSION_ID_KEY);
+    if (saved && /^[a-zA-Z0-9-]{8,64}$/.test(saved)) return saved;
+    const fresh = newSessionId();
+    localStorage.setItem(CHAT_SESSION_ID_KEY, fresh);
+    return fresh;
+  } catch {
+    return newSessionId();
+  }
+}
+
+function rotateChatSessionId(): string {
+  const fresh = newSessionId();
+  try {
+    localStorage.setItem(CHAT_SESSION_ID_KEY, fresh);
+  } catch {
+    // localStorage不可用：会话级session id照常在内存生成
+  }
+  return fresh;
+}
+
+// 10/27 dsh对照P1：摘要兜底恢复——本地无摘要时凭会话sessionId从服务端拉回（fire-and-forget，失败静默）
+// 场景：localStorage爆容丢弃summary/换设备/清缓存/存档瘦身折叠（dsh"日志为唯一真源"的客户端消费端）
+function ensureSummaryFromServer(sessionId: string, apply: (summary: string) => void): void {
+  if (!/^[a-zA-Z0-9-]{8,64}$/.test(sessionId)) return;
+  void gateFetch(`/api/invest/chat-summarize?sessionId=${encodeURIComponent(sessionId)}`)
+    .then((res) => (res.ok ? res.json() : null))
+    .then((json: { summary?: string | null } | null) => {
+      if (json?.summary) apply(json.summary);
+    })
+    .catch(() => {
+      // 兜底失败静默：本地无摘要时窗口外记忆暂缺，下次摘要触发重建
+    });
+}
 
 type HistoryRange = "7" | "30" | "all";
 
@@ -111,6 +158,8 @@ function storeConversation(
     messages: textOnlyMessages,
     // 滚动摘要随历史存档：重载会话后loadConversation恢复（长对话跨会话不失忆）
     ...(summaryText ? { summary: summaryText } : {}),
+    // 10/27 dsh对照P1：会话身份随存档——恢复时凭它从服务端兜底拉回摘要
+    chatSessionId: loadChatSessionId(),
   };
   const next = [record, ...readChatHistory().filter((item) => item.id !== historyId)].slice(0, 20);
   // 9/13长途对话护栏③：存档瘦身——单会话消息>24条时，窗口外的旧消息折叠为提示（全文由滚动摘要承载），
@@ -267,6 +316,16 @@ export default function ChatPage() {
   useEffect(() => {
     mountedRef.current = true;
     setHistory(readChatHistory());
+    // 10/27 dsh对照P1：mount兜底——localStorage的summary爆容丢失后，凭sessionId从服务端拉回
+    // （延续会话语义：重开页面继续聊=同一sessionId摘要链，prevSummary由服务端摘要续上不断档）
+    try {
+      const sid = localStorage.getItem(CHAT_SESSION_ID_KEY) || "";
+      if (/^[a-zA-Z0-9-]{8,64}$/.test(sid)) {
+        ensureSummaryFromServer(sid, (s) => summary.set(s));
+      }
+    } catch {
+      // ignore
+    }
 
     const task = getTask<ChatTaskResult>(CHAT_TASK_KEY);
     const applyResult = (result: ChatTaskResult) => {
@@ -333,6 +392,8 @@ export default function ChatPage() {
     // 摘要状态随会话重置
     summary.set("");
     lastSummarizedCountRef.current = 0;
+    // 10/27 dsh对照P1：新会话=新摘要链——轮换sessionId，旧会话真源留服务端可回放
+    rotateChatSessionId();
   }
 
   function loadConversation(record: ChatHistoryRecord) {
@@ -346,6 +407,17 @@ export default function ChatPage() {
     // 摘要恢复：历史存档里的summary（无则空，窗口外消息在下次提交时重新触发摘要）
     summary.set(record.summary ?? "");
     lastSummarizedCountRef.current = record.summary ? Math.max(0, record.messages.length - 11) : 0;
+    // 10/27 dsh对照P1：会话身份随档切换+摘要空时服务端兜底（爆容/换设备/清缓存场景的恢复通道）
+    if (record.chatSessionId) {
+      try {
+        localStorage.setItem(CHAT_SESSION_ID_KEY, record.chatSessionId);
+      } catch {
+        // ignore
+      }
+    }
+    if (!record.summary && record.chatSessionId) {
+      ensureSummaryFromServer(record.chatSessionId, (s) => summary.set(s));
+    }
     nearBottomRef.current = true;
     setNearBottom(true);
     scrollToBottom(true);
@@ -566,7 +638,13 @@ export default function ChatPage() {
         void gateFetch("/api/invest/chat-summarize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prevSummary: currentSummary, messages: newPart }),
+          // 10/27 dsh对照P1：sessionId+shadowedCount随请求上行→服务端真源落库（本地localStorage降级为缓存）
+          body: JSON.stringify({
+            prevSummary: currentSummary,
+            messages: newPart,
+            sessionId: loadChatSessionId(),
+            shadowedCount: overflowCount,
+          }),
         })
           .then((res) => (res.ok ? res.json() : null))
           .then((json: { summary?: string } | null) => {

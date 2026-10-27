@@ -3,6 +3,7 @@ import { gateCheck } from "@/lib/gate";
 import { z } from "zod";
 import { callAI, type ChatMessage } from "@/lib/ai";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
+import { upsertChatSession, readChatSession } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,10 @@ const msgSchema = z.object({
 const requestSchema = z.object({
   prevSummary: z.string().max(2000).optional().default(""),
   messages: z.array(msgSchema).min(1).max(8),
+  // 10/27 dsh对照P1：会话摘要真源服务端化——客户端生成uuid随请求带上，服务端落库可回放
+  sessionId: z.string().min(8).max(64).regex(/^[a-zA-Z0-9-]+$/).optional(),
+  // 累计已压缩消息数（shadowed记账，对齐dsh compaction/summary的shadowedSeqs思想）
+  shadowedCount: z.number().int().min(0).max(10000).optional(),
 });
 
 const SUMMARY_PROMPT = [
@@ -87,11 +92,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "摘要引擎无响应" }, { status: 503 });
     }
 
+    const clean = summary.trim().slice(0, 2000);
+
+    // 真源落库（10/27 dsh对照P1）：await而非fire-and-forget——Vercel serverless响应返回后
+    // 后台任务可能被冻结，void调用=落库静默丢失（恰是本修复要消灭的失效模式）。
+    // 落库失败不阻塞返回（客户端摘要照常用，下次触发重写=自愈）。
+    if (input.sessionId) {
+      try {
+        await upsertChatSession(input.sessionId, clean, input.shadowedCount ?? 0, transcript.length);
+      } catch {
+        // 静默：摘要服务照常，真源下次触发重写
+      }
+    }
+
     return NextResponse.json(
-      { summary: summary.trim().slice(0, 2000) },
+      { summary: clean },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch {
     return NextResponse.json({ error: "摘要失败" }, { status: 503 });
   }
+}
+
+// 10/27 dsh对照P1：会话摘要兜底读——客户端localStorage爆容/换设备/清缓存后，
+// 凭sessionId从服务端拉回最新摘要（对齐dsh"日志为唯一真源"：本地副本只是缓存）
+export async function GET(request: NextRequest) {
+  const gated = gateCheck(request, "FX_AI_GATE_TOKEN", "open_until_configured");
+  if (gated) return gated;
+  const limited = await enforceRateLimitAsync(request, "chat", RATE_LIMITS.chat);
+  if (limited) {
+    return NextResponse.json(
+      { error: `请求过于频繁，请${limited.retryAfter}秒后重试` },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfter) } },
+    );
+  }
+  const sessionId = request.nextUrl.searchParams.get("sessionId") || "";
+  if (!/^[a-zA-Z0-9-]{8,64}$/.test(sessionId)) {
+    return NextResponse.json({ error: "参数不合法" }, { status: 400 });
+  }
+  const row = await readChatSession(sessionId);
+  return NextResponse.json(
+    { summary: row?.summary ?? null, shadowedCount: row?.shadowedCount ?? 0, ts: row?.ts ?? null },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }
