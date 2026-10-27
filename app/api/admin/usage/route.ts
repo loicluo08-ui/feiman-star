@@ -185,7 +185,8 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.count - a.count);
 
     // 聚合：AI调用数（chat/pick-analyze/flash-analyze/review-summary等AI端点）
-    const aiPaths = ["/invest/chat", "/invest/pick", "/invest/review-summary", "/invest/flash-analyze"];
+    // 10/27修复：middleware access_log记录的是完整pathname（/api/invest/chat），原前缀"/invest/chat"永不匹配→AI调用恒0
+    const aiPaths = ["/api/invest/chat", "/api/invest/pick", "/api/invest/review-summary", "/api/invest/flash-analyze"];
     const aiCount = accessList.filter((r) => aiPaths.some((p) => (r.path as string).startsWith(p) && (r.method as string) === "POST")).length;
 
     const now = Date.now();
