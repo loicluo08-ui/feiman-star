@@ -54,6 +54,24 @@
       "confidence": "58%",
       "date": "2026-10-27",
       "ts": 1793111421699
+    },
+    {
+      "symbol": "VIX",
+      "stance": "空",
+      "keyLevel": "16.68",
+      "invalidation": "收盘站上19.45",
+      "confidence": "52%",
+      "date": "2026-10-27",
+      "ts": 1793111540850
+    },
+    {
+      "symbol": "VIX",
+      "stance": "观望",
+      "keyLevel": "19.45",
+      "invalidation": "收盘站上19.45",
+      "confidence": "55%",
+      "date": "2026-10-27",
+      "ts": 1793122926255
     }
   ]
 }
