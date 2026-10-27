@@ -681,7 +681,13 @@ export default function ChatPage() {
 
         if (!res.ok) {
           const json = await res.json().catch(() => ({}));
-          throw new Error(json.error || "请求失败");
+          // 10/27体验体检P2：服务端错误码中文映射——技术码直出（gate_required/401等）违反"UI说人话"
+          const ERROR_ZH: Record<string, string> = {
+            gate_required: "需要访问口令（口令错误或未输入，本设备输入一次后免输）",
+            gate_not_configured: "服务通道未开放",
+            unauthorized: "需要访问口令",
+          };
+          throw new Error(ERROR_ZH[json.error as string] || json.error || "请求失败，请稍后重试");
         }
 
         const contentType = res.headers.get("content-type") || "";
