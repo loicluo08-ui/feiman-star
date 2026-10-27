@@ -18,6 +18,19 @@ function stabilizeFences(content: string): string {
 }
 
 /**
+ * 10/27真机体检P2：CommonMark标点邻接规则坑——中文后直接接`**$数字**`时，
+ * 开定界符`**`右邻$为punctuation且左邻为文字→不构成left-flanking→星号原样直出
+ * （真机实锤："现价**$343.91**"裸星号，而" **算式核对** "正常渲染成粗体）。
+ * 修复：CJK字符与`**`之间补空格使left-flanking成立——
+ * 收窄pattern只打实际坏形态（文字+**+数字/字母/$，即价格与代码强调场景）；
+ * closing侧（**后跟CJK）不匹配=零误伤；正常" **粗体** "前已是空白零影响。
+ * 残余边界："**强调**$300"（closing贴美元数）会被误处理致该处强调失效——形态罕见且后果=维持现状不劣化。
+ */
+function fixCjkEmphasis(content: string): string {
+  return content.replace(/([\u4e00-\u9fff])\*\*(?=[\$\dA-Za-z])/g, "$1 **");
+}
+
+/**
  * 1b-2表格化后处理（10/1 Phase1③——排期定案："不再prompt对抗模型"）
  * 两连败实锤：prompt规则1b-2要求并列数字用表格，模型仍输出"MSFT 28.9/GOOGL 17.6/AMZN 20.2"式内联——
  * prompt层修不动，渲染层兜底：检测同行≥3个(代码+数值)对用 / 、 ; 分隔 → 自动转markdown表格
@@ -135,7 +148,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Prop
           ),
         }}
       >
-        {tableizeInlineLists(stabilizeFences(content))}
+        {tableizeInlineLists(fixCjkEmphasis(stabilizeFences(content)))}
       </ReactMarkdown>
     </div>
   );
