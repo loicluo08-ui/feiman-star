@@ -69,6 +69,20 @@
       "chgFromKeyLevel": -13.32,
       "outcome": "中性",
       "pattern": "观望|回落至15以下且维持两日"
+    },
+    {
+      "symbol": "AAPL",
+      "stance": "观望",
+      "keyLevel": "$345.34",
+      "invalidation": "收盘价站上345.34",
+      "confidence": "65%",
+      "date": "2026-10-23",
+      "ts": 1792760942310,
+      "verifiedAt": "2026-10-26",
+      "priceNow": 343.91,
+      "chgFromKeyLevel": -0.41,
+      "outcome": "中性",
+      "pattern": "观望|收盘价站上345.34"
     }
   ],
   "promoted": []
