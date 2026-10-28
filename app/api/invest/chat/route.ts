@@ -8,6 +8,7 @@ import { selectKBForQuestion, KB_BOUNDARY_BLOCK } from "@/lib/kb-router";
 import { selectDynamicKB } from "@/lib/kb-dynamic";
 import { runAgentDataCollection } from "@/lib/agent-tools";
 import { buildSettleRecallBlock, normalizeSymbol, readSettleRecords } from "@/lib/settle-recall";
+import { decodeFxUsername, readUserMemory, buildMemoryBlock, appendUserMemory, extractMemories } from "@/lib/user-memory";
 import { buildSignalContext, type SignalInputStock } from "@/lib/signal-context";
 import { BASE_SKILLS } from "@/lib/chat-skills";
 import { getStylePrompt, CHAT_STYLES } from "@/lib/chat-styles";
@@ -222,6 +223,17 @@ export async function POST(request: NextRequest) {
       }
     } catch {
       // 结算召回失败静默——增强不依赖
+    }
+  }
+  // 10/28用户记忆读取（AgentMore模式read_memory映射）：按fx_username身份拉既往提取记忆
+  // 游客/解码失败/存储异常=空串（增强不依赖）；注入块在messages组装处消费
+  const fxUser = decodeFxUsername(request.cookies.get("fx_username")?.value);
+  let memoryBlock = "";
+  if (fxUser) {
+    try {
+      memoryBlock = buildMemoryBlock(await readUserMemory(fxUser));
+    } catch {
+      memoryBlock = "";
     }
   }
   const imageMessages = messages.filter((message) => message.content.type === "image");
@@ -951,6 +963,8 @@ export async function POST(request: NextRequest) {
           // 10/1结算结果回灌：cron结算（kb_dynamic）按symbol注入——与上方"现场机械核验"互补：
           // 前者=历史结算终态（证伪/存活/信号完成/过期），后者=本轮现价对失效条件的实时判定
           ...(settleRecallBlock ? [{ role: "system" as const, content: settleRecallBlock }] : []),
+          // 10/28用户记忆注入（AgentMore模式）：该用户历史对话提取的事实，帮助AI"记得"他的持仓/关注/背景
+          ...(memoryBlock ? [{ role: "system" as const, content: memoryBlock }] : []),
           ...(turnMessage ? [turnMessage] : []),
         ];
 
@@ -1252,6 +1266,20 @@ const chatIP = request.headers.get("cf-connecting-ip") || (request.headers.get("
           });
         } catch {
           // 日志写失败不影响对话
+        }
+        // 10/28用户记忆提取（AgentMore模式edit_memory映射）：done前同步await（同insertChatLog模式）
+        // 不用void fire-and-forget：chat的done后响应彻底结束=serverless函数冻结，floating promise丢失率高
+        // （与middleware转发场景不同——那边响应未返回进程活着，裸fetch实测可靠）。免费池1-3s，done瞬间用户已见全文
+        if (fxUser) {
+          try {
+            const memItems = await extractMemories(
+              (lastUserText || trimmedQuestion || "").slice(0, 1500),
+              fullText.slice(0, 2500)
+            );
+            if (memItems.length > 0) await appendUserMemory(fxUser, memItems);
+          } catch {
+            // 记忆提取失败静默——增强不依赖
+          }
         }
         send({ type: "done" });
       } catch (error) {

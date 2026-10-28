@@ -264,6 +264,47 @@ export default function ChatPage() {
   // 判断账本面板（9/12）：本设备存档的AI主判断可视化——记账/对账链路的用户可见端
   const [showLedger, setShowLedger] = useState(false);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+  // 用户记忆面板（10/28 AgentMore模式）：AI从你历史对话里记住了什么，全透明可删（隐私主权）
+  const [showMemory, setShowMemory] = useState(false);
+  const [memoryItems, setMemoryItems] = useState<Array<{ text: string; created: string; src: string }>>([]);
+  const [memoryUsername, setMemoryUsername] = useState("");
+  const [memoryLoading, setMemoryLoading] = useState(false);
+
+  async function toggleMemoryPanel() {
+    const next = !showMemory;
+    setShowMemory(next);
+    if (next) {
+      setMemoryLoading(true);
+      try {
+        const res = await fetch("/api/invest/memory", { cache: "no-store" });
+        const d = await res.json();
+        setMemoryItems(d.items || []);
+        setMemoryUsername(d.username || "");
+      } catch {
+        setMemoryItems([]);
+      } finally {
+        setMemoryLoading(false);
+      }
+    }
+  }
+
+  async function deleteMemoryAt(index: number) {
+    try {
+      const res = await fetch("/api/invest/memory", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.ok) {
+          setMemoryItems((prev) => prev.filter((_, i) => i !== index));
+        }
+      }
+    } catch {
+      // 删除失败静默，面板下次打开重新拉取
+    }
+  }
   const [history, setHistory] = useState<ChatHistoryRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
@@ -987,6 +1028,17 @@ export default function ChatPage() {
           >
             账本{ledgerEntries.length > 0 ? ` ${ledgerEntries.length}` : ""}
           </button>
+          <button
+            onClick={toggleMemoryPanel}
+            className={`inline-flex h-7 items-center rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+              showMemory
+                ? "border-[var(--accent)] bg-[var(--accent-surface)] text-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text)]"
+            }`}
+            title="AI记住了什么：从你历史对话自动提取的背景事实，全透明可删"
+          >
+            记忆{memoryItems.length > 0 ? ` ${memoryItems.length}` : ""}
+          </button>
           <div className="ml-auto hidden items-center gap-1 lg:flex">
             <button
               onClick={() => {
@@ -1175,6 +1227,42 @@ export default function ChatPage() {
                   </button>
                 ))}
             </div>
+        {showMemory && (
+          <div className="mx-auto mt-3 w-full max-w-3xl rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold">
+                AI的记忆{memoryUsername ? `（${memoryUsername}）` : ""}
+              </span>
+              <span className="text-[var(--text-muted)]">
+                {memoryLoading ? "读取中…" : "AI从你的历史对话自动记住的背景事实"}
+              </span>
+            </div>
+            {memoryUsername === "" ? (
+              <p className="mt-2 text-[var(--text-muted)]">未检测到身份（游客模式不做记忆）。填写用户名后，AI会开始记住你明确说过的持仓与背景。</p>
+            ) : memoryItems.length === 0 ? (
+              <p className="mt-2 text-[var(--text-muted)]">还没有记忆。你对话中明确说过的持仓、关注的标的、经验背景，AI会自动提炼到这里——只记你说过的话，不推断。</p>
+            ) : (
+              <ul className="mt-2 space-y-1.5">
+                {memoryItems.map((it, i) => (
+                  <li key={i} className="flex items-start justify-between gap-2 rounded border border-[var(--border)] px-2 py-1.5">
+                    <span className="min-w-0">
+                      <span className="text-[var(--text)]">{it.text}</span>
+                      <span className="ml-1.5 text-[var(--text-muted)]">（{it.created}）</span>
+                    </span>
+                    <button
+                      onClick={() => deleteMemoryAt(i)}
+                      className="shrink-0 text-[var(--text-secondary)] underline hover:text-red-600 dark:hover:text-red-400"
+                      title="删除这条记忆"
+                    >
+                      删
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-[var(--text-muted)]">记忆只在对话时作为背景参考（可能过时），与实时数据冲突以实时为准。删除即生效。</p>
+          </div>
+        )}
         {showLedger && (
           <div className="mx-auto mt-3 w-full max-w-3xl rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
             <div className="flex items-center justify-between">
