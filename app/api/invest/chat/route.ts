@@ -225,17 +225,6 @@ export async function POST(request: NextRequest) {
       // 结算召回失败静默——增强不依赖
     }
   }
-  // 10/28用户记忆读取（AgentMore模式read_memory映射）：按fx_username身份拉既往提取记忆
-  // 游客/解码失败/存储异常=空串（增强不依赖）；注入块在messages组装处消费
-  const fxUser = decodeFxUsername(request.cookies.get("fx_username")?.value);
-  let memoryBlock = "";
-  if (fxUser) {
-    try {
-      memoryBlock = buildMemoryBlock(await readUserMemory(fxUser));
-    } catch {
-      memoryBlock = "";
-    }
-  }
   const imageMessages = messages.filter((message) => message.content.type === "image");
   const hasOversizedImage = imageMessages.some(
     (message) => message.content.type === "image"
@@ -286,6 +275,17 @@ export async function POST(request: NextRequest) {
   const dynKB = await selectDynamicKB(kbRouteQuestion, 4000);
   if (dynKB.count > 0) {
     console.log(`[invest/chat] kb_dynamic injected=${dynKB.count}条`);
+  }
+  // 10/28用户记忆读取（AgentMore模式read_memory映射）：按fx_username身份拉既往提取记忆
+  // 位置在kbRouteQuestion/lastUserText声明后（buildMemoryBlock路由需要问题hint）；游客/异常=空串增强不依赖
+  const fxUser = decodeFxUsername(request.cookies.get("fx_username")?.value);
+  let memoryBlock = "";
+  if (fxUser) {
+    try {
+      memoryBlock = buildMemoryBlock(await readUserMemory(fxUser), kbRouteQuestion);
+    } catch {
+      memoryBlock = "";
+    }
   }
 
   // 纯文字对话将费曼星V4.1知识库注入DeepSeek system prompt（按路由选择子集）。
