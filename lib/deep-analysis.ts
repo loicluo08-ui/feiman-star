@@ -21,7 +21,7 @@ export async function runDeepAnalysis(
 ): Promise<DeepAnalysisResult> {
   updateTaskProgress(taskId, "拆解目标中…");
 
-  // 段1：拆解（免费池可胜任结构化任务，但拆解质量影响全链——用主池小输出）
+  // 段1：拆解（Hobby 60s预算：timeout 15s；免费池可胜任结构化拆解且快）
   const planRaw = await callAI(
     [
       {
@@ -35,7 +35,7 @@ export async function runDeepAnalysis(
         ].join("\n"),
       },
     ],
-    { temperature: 0.3, max_tokens: 600, timeout: 30_000, retry: 1, responseFormat: "json" }
+    { temperature: 0.3, max_tokens: 600, timeout: 15_000, retry: 0, task: "extract", responseFormat: "json" }
   );
   let subQuestions: string[] = [];
   try {
@@ -50,26 +50,27 @@ export async function runDeepAnalysis(
   }
   if (subQuestions.length === 0) subQuestions = [goal.slice(0, 200)];
 
-  // 段2：逐个子问题跑agent数据收集（复用chat同款工具链——行情/财报/快讯/SEC）
-  const materials: string[] = [];
+  // 段2：并行收集（10/28交叉验证修正——Hobby版函数cap 60s，串行5×20s+拆解+汇总必超时；
+  // 并行化后时间=拆解15s+max(收集)30s+汇总35s≤60s预算内。失败子任务降级为占位不拖垮整体）
+  const materials: string[] = new Array(subQuestions.length).fill("");
   const toolsUsed = new Set<string>();
-  for (let i = 0; i < subQuestions.length; i++) {
-    updateTaskProgress(taskId, `收集数据 ${i + 1}/${subQuestions.length}：${subQuestions[i].slice(0, 30)}`);
-    try {
-      const collect = await runAgentDataCollection(
-        [{ role: "user", content: subQuestions[i] }],
-        () => {} // 后台任务无流式，status静默
-      );
-      if (collect.blocks.length > 0) {
-        materials.push(`## ${subQuestions[i]}\n${collect.blocks.join("\n\n")}`);
+  await Promise.all(
+    subQuestions.map(async (sq, i) => {
+      try {
+        const collect = await runAgentDataCollection(
+          [{ role: "user", content: sq }],
+          () => {} // 后台任务无流式，status静默
+        );
+        materials[i] = collect.blocks.length > 0 ? `## ${sq}\n${collect.blocks.join("\n\n")}` : `## ${sq}\n（该子问题无可用数据）`;
+        for (const t of collect.toolsUsed) toolsUsed.add(t);
+      } catch {
+        materials[i] = `## ${sq}\n（数据收集失败——汇总时如实标注）`;
       }
-      for (const t of collect.toolsUsed) toolsUsed.add(t);
-    } catch {
-      materials.push(`## ${subQuestions[i]}\n（数据收集失败——汇总时如实标注）`);
-    }
-  }
+    })
+  );
+  updateTaskProgress(taskId, `收集完成，汇总分析中…`);
 
-  // 段3：汇总（主池+判断纪律prompt——agent模式不降分析标准）
+  // 段3：汇总（主池+判断纪律prompt——agent模式不降分析标准；timeout 35s卡60s预算）
   updateTaskProgress(taskId, "汇总分析中…");
   const report = await callAI(
     [
@@ -80,7 +81,7 @@ export async function runDeepAnalysis(
           "",
           "以下是逐个子问题收集的数据材料：",
           "",
-          materials.join("\n\n---\n\n").slice(0, 24_000),
+          materials.filter(Boolean).join("\n\n---\n\n").slice(0, 24_000),
           "",
           "任务：基于上述材料完成用户目标，输出完整分析报告。",
           "纪律：①判断先行，第一句就是核心结论；②材料里有的数据才可引用，材料没有的明确标注「材料未覆盖」；",
@@ -88,7 +89,7 @@ export async function runDeepAnalysis(
         ].join("\n"),
       },
     ],
-    { temperature: 0.4, max_tokens: 3000, timeout: 120_000, retry: 1 }
+    { temperature: 0.4, max_tokens: 2500, timeout: 35_000, retry: 0 }
   );
 
   updateTaskProgress(taskId, "完成");

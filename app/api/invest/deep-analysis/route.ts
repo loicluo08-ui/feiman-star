@@ -3,12 +3,13 @@
 // GET  /api/invest/deep-analysis?key= → 轮询状态/进度/结果
 // 鉴权与限流：chat同款门禁（登录墙已在middleware层包裹）+deep限流（防滥用：3次/10分/IP）
 import { NextRequest, NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { enforceRateLimitAsync, RATE_LIMITS } from "@/lib/rate-limit";
 import { startTask, getTask } from "@/lib/background-task";
 import { runDeepAnalysis } from "@/lib/deep-analysis";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 多步任务上限5分钟（Vercel hobby单函数上限内）
+export const maxDuration = 60; // Hobby版cap 60s（10/28交叉验证实锤：300s=Pro only）——预算：拆解15s+并行收集30s+汇总35s
 
 export async function POST(request: NextRequest) {
   const limited = await enforceRateLimitAsync(request, "deepAnalysis", RATE_LIMITS.deepAnalysis);
@@ -29,7 +30,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "goal_too_long" }, { status: 400 });
   }
   const taskId = `deep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  startTask(taskId, () => runDeepAnalysis(taskId, goal));
+  const task = startTask(taskId, () => runDeepAnalysis(taskId, goal));
+  // 10/28交叉验证P1修正：响应返回后serverless进程冻结=floating promise被杀（chat await方案此处不适用
+  // ——任务跑60s不能阻塞响应）。waitUntil（@vercel/functions，Node runtime官方支持）=响应后存活到promise完成
+  waitUntil(task.promise);
   return NextResponse.json({ ok: true, taskId });
 }
 
