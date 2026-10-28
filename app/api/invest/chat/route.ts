@@ -7,7 +7,7 @@ import { buildSourcePool, verifySourceLabels } from "@/lib/source-integrity";
 import { selectKBForQuestion, KB_BOUNDARY_BLOCK } from "@/lib/kb-router";
 import { selectDynamicKB } from "@/lib/kb-dynamic";
 import { runAgentDataCollection } from "@/lib/agent-tools";
-import { buildSettleRecallBlock, normalizeSymbol, readSettleRecords } from "@/lib/settle-recall";
+import { buildSettleRecallBlock, buildFailurePatternBlock, normalizeSymbol, readSettleRecords, type SettleRecord } from "@/lib/settle-recall";
 import { decodeFxUsername, readUserMemory, buildMemoryBlock, appendUserMemory, extractMemories } from "@/lib/user-memory";
 import { buildSignalContext, type SignalInputStock } from "@/lib/signal-context";
 import { BASE_SKILLS } from "@/lib/chat-skills";
@@ -203,23 +203,28 @@ export async function POST(request: NextRequest) {
   // 10/1结算结果回灌：cron每日机械结算写kb_dynamic，按historyLedger出现的symbol召回注入——
   // AI生成新判断前"记得"自己该标的的历史结算（含证伪记录），说不出与被证伪判断的实质差异就降信心度
   let settleRecallBlock = "";
+  let failurePatternBlock = "";
   if (historyLedger.length > 0) {
     try {
       const settleMap = await readSettleRecords();
       if (settleMap.size > 0) {
         const blocks: string[] = [];
         const seen = new Set<string>();
+        const allSeenRecords: SettleRecord[] = [];
         for (const entry of historyLedger) {
           const sym = normalizeSymbol(entry.symbol);
           if (!sym || seen.has(sym)) continue;
           seen.add(sym);
           const recs = settleMap.get(sym);
           if (recs && recs.length > 0) {
+            allSeenRecords.push(...recs);
             const b = buildSettleRecallBlock(recs, sym);
             if (b) blocks.push(b);
           }
         }
         if (blocks.length > 0) settleRecallBlock = blocks.join("\n\n");
+        // 10/28跨标的失效模式聚合（AgentMore失效模式库映射——错账复利）：≥2次同型归因才成模式
+        failurePatternBlock = buildFailurePatternBlock(allSeenRecords) ?? "";
       }
     } catch {
       // 结算召回失败静默——增强不依赖
@@ -963,6 +968,8 @@ export async function POST(request: NextRequest) {
           // 10/1结算结果回灌：cron结算（kb_dynamic）按symbol注入——与上方"现场机械核验"互补：
           // 前者=历史结算终态（证伪/存活/信号完成/过期），后者=本轮现价对失效条件的实时判定
           ...(settleRecallBlock ? [{ role: "system" as const, content: settleRecallBlock }] : []),
+          // 10/28跨标的错账模式统计（AgentMore失效模式库映射）：≥2次同型归因才成模式，生成判断前对照
+          ...(failurePatternBlock ? [{ role: "system" as const, content: failurePatternBlock }] : []),
           // 10/28用户记忆注入（AgentMore模式）：该用户历史对话提取的事实，帮助AI"记得"他的持仓/关注/背景
           ...(memoryBlock ? [{ role: "system" as const, content: memoryBlock }] : []),
           ...(turnMessage ? [turnMessage] : []),

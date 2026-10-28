@@ -93,3 +93,44 @@ export function buildSettleRecallBlock(records: SettleRecord[], symbol: string):
     : "\n使用纪律：结算记录作为背景，本轮维持同向判断需引用当前数据佐证，不因历史正确而放松核验。";
   return `【历史判断结算记录】（cron每日机械结算，result为客观结果非观点）\n标的：${symbol}\n${lines.join("\n")}${discipline}`;
 }
+
+const KIND_LABEL_CN: Record<string, string> = {
+  data_shift: "数据前提变化",
+  level_design: "关键位设计",
+  logic_error: "逻辑错误",
+  external_shock: "外部冲击",
+  other: "其他",
+};
+
+/**
+ * 跨标的失效模式聚合（10/28 AgentMore失效模式库映射——错账复利）：
+ * 用户全部被证伪判断按归因四分类统计——"同型错误犯了几次"跨标的可见。
+ * 零新AI调用：归因四分类在结算cron已生成，此处纯聚合。≥2次同型才成"模式"（单次=噪声）。
+ */
+export function buildFailurePatternBlock(allRecords: SettleRecord[]): string | null {
+  const invalidated = allRecords.filter((r) => r.result === "invalidated");
+  if (invalidated.length < 2) return null;
+  const byKind = new Map<string, SettleRecord[]>();
+  for (const r of invalidated) {
+    const k = r.attribution_kind || "other";
+    const arr = byKind.get(k) ?? [];
+    arr.push(r);
+    byKind.set(k, arr);
+  }
+  const lines: string[] = [];
+  for (const [kind, recs] of Array.from(byKind.entries())) {
+    if (recs.length < 2) continue; // 单次不成模式
+    const label = KIND_LABEL_CN[kind] || kind;
+    const examples = recs
+      .slice(-3)
+      .map((r) => `${r.symbol} ${r.judged_date}`)
+      .join("、");
+    lines.push(`- ${label}×${recs.length}（${examples}${recs.length > 3 ? "等" : ""}）`);
+  }
+  if (lines.length === 0) return null;
+  return [
+    "【错账模式统计】（跨标的历史证伪判断的归因聚合——同型错误已重复出现，非孤立事件）",
+    ...lines,
+    "使用纪律：生成新判断前先对照上述模式——若本轮判断与某个已重复的失效模式同型（如同为关键位设计问题的标的），必须显式说明本次设计与上次错在哪不同；说不出来就降信心度。模式统计是用户系统性弱点的镜子，回答时可自然引用，但禁止用此责备用户。",
+  ].join("\n");
+}
