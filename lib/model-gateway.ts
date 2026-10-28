@@ -68,12 +68,12 @@ export const CHANNELS: Record<string, GatewayChannel> = {
     keyEnv: "GROQ_API_KEY", modelEnv: "GROQ_MODEL", modelDefault: "llama-3.3-70b-versatile",
     free: true, priority: 50,
   },
-  // 10/28 基元律动TokenRhythm（中国版OpenRouter，充50送50档）——定位=付费降级备份不做主通道：
+  // 10/28 基元律动TokenRhythm（中国版OpenRouter）——定位=付费降级备份不做主通道：
   // chat链 deepseek(90)→tokenrhythm(95)→免费池；extract链付费殿后时同样deepseek先于它（官方价直连省中间层）
-  // ⚠️baseDefault/modelDefault待逸翔key到位实测确认（curl /models端点核对真实endpoint+模型命名）——env可覆盖
+  // 默认模型deepseek-v4.1-flash-1017（¥1/¥4，与DeepSeek官方同源行为一致性最高）；endpoint与模型名10/28双key实测核对
   tokenrhythm: {
-    name: "tokenrhythm", baseEnv: "TOKENRHYTHM_BASE_URL", baseDefault: "https://api.tokenrhythm.com/v1",
-    keyEnv: "TOKENRHYTHM_API_KEY", modelEnv: "TOKENRHYTHM_MODEL", modelDefault: "deepseek-chat",
+    name: "tokenrhythm", baseEnv: "TOKENRHYTHM_BASE_URL", baseDefault: "https://tokenrhythm.studio/v1",
+    keyEnv: "TOKENRHYTHM_API_KEY", modelEnv: "TOKENRHYTHM_MODEL", modelDefault: "deepseek-v4.1-flash-1017",
     free: false, priority: 95,
   },
 };
