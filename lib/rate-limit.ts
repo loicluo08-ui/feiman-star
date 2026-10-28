@@ -19,6 +19,7 @@ export const RATE_LIMITS = {
   news: { maxRequests: 180, windowMs: 60_000 },          // 10分钟缓存挡上游
   flashAnalyze: { maxRequests: 30, windowMs: 60_000 },   // AI（快讯影响标注；10/10扩池30→100条后首标20请求/分>旧10/分被打穿——P2实锤修复；四层保护不变：免费池优先+5min内容hash+股票池硬约束+余额5元熔断）
   admin: { maxRequests: 20, windowMs: 60_000 },          // admin后台+debug端点（10/3审计新增：爆破节流）
+  deepAnalysis: { maxRequests: 3, windowMs: 10 * 60_000 }, // 深度分析多步任务（10/28：每任务=5+次AI调用，3次/10分防滥用）
 } as const;
 
 /** KV限流（如果配置了KV环境变量则启用全局限流，否则降级为内存限流）

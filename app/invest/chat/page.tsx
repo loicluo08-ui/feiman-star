@@ -305,6 +305,64 @@ export default function ChatPage() {
       // 删除失败静默，面板下次打开重新拉取
     }
   }
+
+  // 深度分析面板（10/28 agent化第一站）：给目标→AI拆解→逐个收集→汇总报告
+  const [showDeep, setShowDeep] = useState(false);
+  const [deepGoal, setDeepGoal] = useState("");
+  const [deepBusy, setDeepBusy] = useState(false);
+  const [deepProgress, setDeepProgress] = useState("");
+  const [deepReport, setDeepReport] = useState("");
+  const deepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function startDeepAnalysis() {
+    const goal = deepGoal.trim();
+    if (!goal || deepBusy) return;
+    setDeepBusy(true);
+    setDeepReport("");
+    setDeepProgress("创建任务中…");
+    try {
+      const res = await fetch("/api/invest/deep-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal }),
+      });
+      const d = await res.json();
+      if (!d.ok || !d.taskId) {
+        setDeepProgress(d.error === "rate_limited" ? "次数已达上限（3次/10分钟），稍后再试" : `创建失败：${d.error || "未知"}`);
+        setDeepBusy(false);
+        return;
+      }
+      deepTimerRef.current = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/invest/deep-analysis?key=${d.taskId}`, { cache: "no-store" });
+          const t = await r.json();
+          if (t.ok) {
+            setDeepProgress(t.progress || t.status);
+            if (t.status === "success") {
+              if (deepTimerRef.current) clearInterval(deepTimerRef.current);
+              setDeepReport(t.result?.report || "（空报告）");
+              setDeepBusy(false);
+            } else if (t.status === "error") {
+              if (deepTimerRef.current) clearInterval(deepTimerRef.current);
+              setDeepProgress(`失败：${t.error || "未知"}`);
+              setDeepBusy(false);
+            } else if (t.status === "running" && t.progress) {
+              setDeepProgress(t.progress);
+            }
+          } else if (r.status === 404) {
+            if (deepTimerRef.current) clearInterval(deepTimerRef.current);
+            setDeepProgress("任务丢失（服务重启），请重试");
+            setDeepBusy(false);
+          }
+        } catch {
+          // 单次轮询失败静默（下一跳重试）
+        }
+      }, 3000);
+    } catch {
+      setDeepProgress("网络异常，请重试");
+      setDeepBusy(false);
+    }
+  }
   const [history, setHistory] = useState<ChatHistoryRecord[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
@@ -1039,6 +1097,17 @@ export default function ChatPage() {
           >
             记忆{memoryItems.length > 0 ? ` ${memoryItems.length}` : ""}
           </button>
+          <button
+            onClick={() => { setShowDeep((v) => !v); }}
+            className={`inline-flex h-7 items-center rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+              showDeep
+                ? "border-[var(--accent)] bg-[var(--accent-surface)] text-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--text)]"
+            }`}
+            title="深度分析：给一个目标，AI自己拆解成子任务逐个收集数据再汇总（约1-3分钟）"
+          >
+            深度
+          </button>
           <div className="ml-auto hidden items-center gap-1 lg:flex">
             <button
               onClick={() => {
@@ -1227,6 +1296,37 @@ export default function ChatPage() {
                   </button>
                 ))}
             </div>
+        {showDeep && (
+          <div className="mx-auto mt-3 w-full max-w-3xl rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold">深度分析（agent模式）</span>
+              <span className="text-[var(--text-muted)]">AI拆解子任务·逐个收集·汇总</span>
+            </div>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={deepGoal}
+                onChange={(e) => setDeepGoal(e.target.value)}
+                placeholder="例：全面体检我的持仓 / 半导体板块现在能碰吗"
+                maxLength={300}
+                className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[var(--text)] outline-none focus:border-[var(--border-strong)]"
+              />
+              <button
+                onClick={startDeepAnalysis}
+                disabled={deepBusy || !deepGoal.trim()}
+                className="shrink-0 rounded bg-[var(--primary)] px-3 py-1.5 font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                {deepBusy ? "运行中…" : "开始"}
+              </button>
+            </div>
+            {deepProgress && <p className="mt-2 text-[var(--text-secondary)]">{deepProgress}</p>}
+            {deepReport && (
+              <div className="mt-2 max-h-96 overflow-y-auto whitespace-pre-wrap rounded border border-[var(--border)] bg-[var(--background)] p-2 leading-relaxed text-[var(--text)]">
+                {deepReport}
+              </div>
+            )}
+            <p className="mt-2 text-[var(--text-muted)]">每任务约1-3分钟（拆解+数据收集+汇总），3次/10分钟。材料不足处AI会如实标注。</p>
+          </div>
+        )}
         {showMemory && (
           <div className="mx-auto mt-3 w-full max-w-3xl rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs">
             <div className="flex items-center justify-between">
