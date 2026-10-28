@@ -74,13 +74,24 @@ export async function appendUserMemory(identity: string, newItems: MemoryItem[])
       return nm === n || (n.length >= 12 && nm.startsWith(n)) || (nm.length >= 12 && n.startsWith(nm));
     });
     if (dup) continue;
-    merged.push({
+    // 10/28交叉验证P2：profile=状态型语义（单值）——新画像覆盖旧画像，否则"激进"与"保守"矛盾条目同时注入
+    // fact/correction/goal=多条并存语义（不同对象/不同目标不冲突）不覆盖
+    let incoming: MemoryItem = {
       text,
       created: item.created || new Date().toISOString().slice(0, 10),
       src: String(item.src || "").slice(0, 30),
       kind: item.kind,
       tags: Array.isArray(item.tags) ? item.tags.slice(0, 3) : [],
-    });
+    };
+    if (incoming.kind === "profile") {
+      const profileIdx = merged.findIndex((m) => m.kind === "profile");
+      if (profileIdx >= 0) {
+        merged[profileIdx] = incoming;
+        added += 1;
+        continue;
+      }
+    }
+    merged.push(incoming);
     added += 1;
   }
   if (added === 0) return 0;
