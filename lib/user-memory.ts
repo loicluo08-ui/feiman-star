@@ -147,7 +147,7 @@ export async function extractMemories(question: string, answer: string): Promise
         { role: "system", content: sys },
         { role: "user", content: `【用户问】${q}\n【助手答（节选）】${a}\n\n提取用户信息：` },
       ],
-      { task: "extract", json: true, maxTokens: 600, timeout: 25_000 }
+      { task: "extract", json: true, maxTokens: 600, timeout: 8_000 }
     );
     if (!r.text) return [];
     const parsed = JSON.parse(r.text.replace(/```json|```/g, "").trim()) as {
