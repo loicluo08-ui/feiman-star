@@ -110,78 +110,6 @@
    "expires": "2026-11-02"
   },
   {
-   "id": "snapshot_usNVDA_2026-10-27",
-   "type": "data_snapshot",
-   "keywords": [
-    "英伟达",
-    "nvda"
-   ],
-   "content": "英伟达行情快照（2026-10-27）：现价$216.00，PE(TTM) 27.3，52周高$243.37/低$163.89，处52周区间65.6%位置，距高点回撤-11.2%。数据来源：腾讯行情2026-10-27。",
-   "source": "vercel_cron",
-   "created": "2026-10-27",
-   "expires": "2026-11-26"
-  },
-  {
-   "id": "snapshot_usTSLA_2026-10-27",
-   "type": "data_snapshot",
-   "keywords": [
-    "特斯拉",
-    "tsla"
-   ],
-   "content": "特斯拉行情快照（2026-10-27）：现价$391.62，PE(TTM) 430.4，52周高$498.83/低$297.38，处52周区间46.8%位置，距高点回撤-21.5%。数据来源：腾讯行情2026-10-27。",
-   "source": "vercel_cron",
-   "created": "2026-10-27",
-   "expires": "2026-11-26"
-  },
-  {
-   "id": "snapshot_usAAPL_2026-10-27",
-   "type": "data_snapshot",
-   "keywords": [
-    "苹果",
-    "aapl"
-   ],
-   "content": "苹果行情快照（2026-10-27）：现价$343.91，PE(TTM) 39.4，52周高$351.73/低$242.76，处52周区间92.8%位置，距高点回撤-2.2%。数据来源：腾讯行情2026-10-27。",
-   "source": "vercel_cron",
-   "created": "2026-10-27",
-   "expires": "2026-11-26"
-  },
-  {
-   "id": "snapshot_usMSFT_2026-10-27",
-   "type": "data_snapshot",
-   "keywords": [
-    "微软",
-    "msft"
-   ],
-   "content": "微软行情快照（2026-10-27）：现价$532.60，PE(TTM) 29.7，52周高$551.15/低$348.54，处52周区间90.8%位置，距高点回撤-3.4%。数据来源：腾讯行情2026-10-27。",
-   "source": "vercel_cron",
-   "created": "2026-10-27",
-   "expires": "2026-11-26"
-  },
-  {
-   "id": "snapshot_usAMD_2026-10-27",
-   "type": "data_snapshot",
-   "keywords": [
-    "amd",
-    "超微"
-   ],
-   "content": "AMD行情快照（2026-10-27）：现价$531.28，PE(TTM) 136.2，52周高$658.52/低$188.22，处52周区间72.9%位置，距高点回撤-19.3%。数据来源：腾讯行情2026-10-27。",
-   "source": "vercel_cron",
-   "created": "2026-10-27",
-   "expires": "2026-11-26"
-  },
-  {
-   "id": "snapshot_usMU_2026-10-27",
-   "type": "data_snapshot",
-   "keywords": [
-    "美光",
-    "mu"
-   ],
-   "content": "美光行情快照（2026-10-27）：现价$903.70，PE(TTM) 12.2，52周高$1254.50/低$192.36，处52周区间67.0%位置，距高点回撤-28.0%。数据来源：腾讯行情2026-10-27。",
-   "source": "vercel_cron",
-   "created": "2026-10-27",
-   "expires": "2026-11-26"
-  },
-  {
    "id": "insight_2026-10-27_00_0",
    "type": "insight",
    "keywords": [
@@ -221,6 +149,120 @@
    "source": "kb-grow-insights",
    "created": "2026-10-27",
    "expires": "2026-11-03"
+  },
+  {
+   "id": "snapshot_usNVDA_2026-10-28",
+   "type": "data_snapshot",
+   "keywords": [
+    "英伟达",
+    "nvda"
+   ],
+   "content": "英伟达行情快照（2026-10-28）：现价$217.94，PE(TTM) 27.6，52周高$243.37/低$163.89，处52周区间68.0%位置，距高点回撤-10.4%。数据来源：腾讯行情2026-10-28。",
+   "source": "vercel_cron",
+   "created": "2026-10-28",
+   "expires": "2026-11-27"
+  },
+  {
+   "id": "snapshot_usTSLA_2026-10-28",
+   "type": "data_snapshot",
+   "keywords": [
+    "特斯拉",
+    "tsla"
+   ],
+   "content": "特斯拉行情快照（2026-10-28）：现价$407.46，PE(TTM) 447.8，52周高$498.83/低$297.38，处52周区间54.6%位置，距高点回撤-18.3%。数据来源：腾讯行情2026-10-28。",
+   "source": "vercel_cron",
+   "created": "2026-10-28",
+   "expires": "2026-11-27"
+  },
+  {
+   "id": "snapshot_usAAPL_2026-10-28",
+   "type": "data_snapshot",
+   "keywords": [
+    "苹果",
+    "aapl"
+   ],
+   "content": "苹果行情快照（2026-10-28）：现价$347.10，PE(TTM) 39.8，52周高$351.73/低$242.76，处52周区间95.8%位置，距高点回撤-1.3%。数据来源：腾讯行情2026-10-28。",
+   "source": "vercel_cron",
+   "created": "2026-10-28",
+   "expires": "2026-11-27"
+  },
+  {
+   "id": "snapshot_usMSFT_2026-10-28",
+   "type": "data_snapshot",
+   "keywords": [
+    "微软",
+    "msft"
+   ],
+   "content": "微软行情快照（2026-10-28）：现价$531.33，PE(TTM) 29.6，52周高$551.15/低$348.54，处52周区间90.2%位置，距高点回撤-3.6%。数据来源：腾讯行情2026-10-28。",
+   "source": "vercel_cron",
+   "created": "2026-10-28",
+   "expires": "2026-11-27"
+  },
+  {
+   "id": "snapshot_usAMD_2026-10-28",
+   "type": "data_snapshot",
+   "keywords": [
+    "amd",
+    "超微"
+   ],
+   "content": "AMD行情快照（2026-10-28）：现价$560.26，PE(TTM) 143.7，52周高$658.52/低$188.22，处52周区间79.1%位置，距高点回撤-14.9%。数据来源：腾讯行情2026-10-28。",
+   "source": "vercel_cron",
+   "created": "2026-10-28",
+   "expires": "2026-11-27"
+  },
+  {
+   "id": "snapshot_usMU_2026-10-28",
+   "type": "data_snapshot",
+   "keywords": [
+    "美光",
+    "mu"
+   ],
+   "content": "美光行情快照（2026-10-28）：现价$928.76，PE(TTM) 12.5，52周高$1254.50/低$192.36，处52周区间69.3%位置，距高点回撤-26.0%。数据来源：腾讯行情2026-10-28。",
+   "source": "vercel_cron",
+   "created": "2026-10-28",
+   "expires": "2026-11-27"
+  },
+  {
+   "id": "insight_2026-10-28_00_0",
+   "type": "insight",
+   "keywords": [
+    "SK海力士",
+    "DDR5",
+    "服务器",
+    "2026-10-28",
+    "洞察"
+   ],
+   "content": "SK海力士第三季度服务器DDR5 DRAM出货量环比增长超过40%，利好DRAM市场。（方向：利多；来源：金十数据+华尔街见闻+AIHOT2026-10-28快讯提炼）",
+   "source": "kb-grow-insights",
+   "created": "2026-10-28",
+   "expires": "2026-11-04"
+  },
+  {
+   "id": "insight_2026-10-28_00_1",
+   "type": "insight",
+   "keywords": [
+    "韩国综指",
+    "三星电子",
+    "2026-10-28",
+    "洞察"
+   ],
+   "content": "韩国KOSPI指数上涨3%，三星电子涨逾4%，SK海力士涨超2%。（方向：利多；来源：金十数据+华尔街见闻+AIHOT2026-10-28快讯提炼）",
+   "source": "kb-grow-insights",
+   "created": "2026-10-28",
+   "expires": "2026-11-04"
+  },
+  {
+   "id": "insight_2026-10-28_00_2",
+   "type": "insight",
+   "keywords": [
+    "黄金ETF",
+    "2026-10-28",
+    "洞察"
+   ],
+   "content": "全球最大的黄金ETF SPDR Gold Trust持仓较前日增加0.85吨，金价上涨0.27%。（方向：利多；来源：金十数据+华尔街见闻+AIHOT2026-10-28快讯提炼）",
+   "source": "kb-grow-insights",
+   "created": "2026-10-28",
+   "expires": "2026-11-04"
   }
  ]
 }
