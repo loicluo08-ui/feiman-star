@@ -424,6 +424,9 @@ export async function* callAIStream(
         model: step.model,
         messages,
         stream: true,
+        // 10/28缓存命中率监控（逸翔"反应速度慢"归因）：usage末chunk带prompt_cache_hit_tokens——
+        // 40K prompt若缓存未命中=prefill 10-20s主因，命中率数据决定优化方向
+        stream_options: { include_usage: true },
         temperature: options.temperature ?? 0.5,
         max_tokens: options.max_tokens ?? 3_000,
       };
@@ -481,6 +484,15 @@ export async function* callAIStream(
 
         try {
           const parsed = JSON.parse(data);
+          // 10/28缓存命中率监控：末chunk usage（prompt_cache_hit_tokens=命中前缀token数）——
+          // 命中率高=慢来自其他段（agent收集/生成），命中率低=40K prefill全价烧（优化方向=结构重排）
+          const usage = parsed.usage;
+          if (usage && typeof usage.prompt_cache_hit_tokens === "number") {
+            const hit = usage.prompt_cache_hit_tokens;
+            const miss = usage.prompt_cache_miss_tokens ?? Math.max(0, (usage.prompt_tokens || 0) - hit);
+            const rate = hit + miss > 0 ? Math.round((hit / (hit + miss)) * 100) : 0;
+            console.log(`[ai-cache] model=${parsed.model || "?"} hit=${hit} miss=${miss} rate=${rate}% prompt_tokens=${usage.prompt_tokens || "?"}`);
+          }
           const choice = parsed.choices?.[0];
           const delta = choice?.delta?.content;
           if (delta) yield { kind: "text", text: delta };
