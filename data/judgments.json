@@ -90,6 +90,15 @@
       "confidence": "65%",
       "date": "2026-11-05",
       "ts": 1793869827272
+    },
+    {
+      "symbol": "VIX",
+      "stance": "观望",
+      "keyLevel": "20.00",
+      "invalidation": "收盘站上20.00",
+      "confidence": "62%",
+      "date": "2026-11-14",
+      "ts": 1794656032613
     }
   ]
 }
